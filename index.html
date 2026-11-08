@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Tiko</title>
+<meta name="theme-color" content="#9b7fd1">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Andika:wght@400;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="world" aria-hidden="true">
+  <div class="sun"></div>
+  <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+  <svg class="hills" viewBox="0 0 1200 200" preserveAspectRatio="none">
+    <path d="M0 120 Q200 40 420 110 T850 90 T1200 100 V200 H0Z" fill="#b8e6a0"/>
+    <path d="M0 160 Q300 90 600 150 T1200 140 V200 H0Z" fill="#8fd47a"/>
+  </svg>
+</div>
+<main id="app"></main>
+<canvas id="fx"></canvas>
+<div id="sheet"></div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
