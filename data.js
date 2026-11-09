@@ -166,7 +166,8 @@ const T = {
   en: {
     start: 'Start', reading: 'Reading', maths: 'Maths', stickers: 'My stickers', parents: 'Parents',
     go: "Let's go!", next: 'Next', home: 'Home', iDidIt: 'I did it!',
-    praise: ['Great job!', 'Yes!', 'Super!', 'Well done!', 'You got it!', 'Brilliant!'],
+    praise: ['Woohoo! Great job!', 'Yes! You got it!', 'Wow! Super!', 'Yay! Well done!', 'High five!', 'Brilliant!',
+      "You're a superstar!", 'Amazing!', 'Hooray!', 'Fantastic!', 'Ooh, so clever!', 'Yippee!', 'Wow, look at you go!', 'Awesome!'],
     retry: 'Try again.', itsThis: "It's this one.",
     gotSticker: 'You got a sticker!', allDone: 'All done! You are amazing!',
     breakTitle: 'Move break!', pathTitle: 'My path',
@@ -257,7 +258,8 @@ const T = {
   fr: {
     start: 'Commencer', reading: 'Lecture', maths: 'Maths', stickers: 'Mes autocollants', parents: 'Parents',
     go: "C'est parti !", next: 'Suivant', home: 'Accueil', iDidIt: "J'ai réussi !",
-    praise: ['Bravo !', 'Super !', 'Oui !', 'Très bien !', 'Génial !', 'Excellent !'],
+    praise: ['Bravo !', 'Super !', 'Oui, bien joué !', 'Youpi !', 'Génial !', 'Waouh, excellent !', 'Tope là !',
+      'Tu es une championne !', 'Hourra !', 'Fantastique !', 'Trop fort !', 'Magnifique !', 'Tu assures !'],
     retry: 'Essaie encore.', itsThis: "C'est celui-là.",
     gotSticker: 'Tu as gagné un autocollant !', allDone: 'Fini ! Tu es formidable !',
     breakTitle: 'On bouge !', pathTitle: 'Mon chemin',

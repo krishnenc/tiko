@@ -492,6 +492,10 @@ button:disabled { cursor: default; }
 .pbtn.alt { background: #eee; color: #333; }
 .pbtn.warn { background: var(--coral); }
 .pbtn.rec { background: var(--coral); animation: pulse 1s infinite; }
+.voicelist { display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow-y: auto; }
+.vrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 2px solid #eee; border-radius: 12px; }
+.vrow span { flex: 1; font-size: 15px; } .vrow small { color: #888; }
+.vrow.inuse { border-color: var(--teal); background: #e9faf6; }
 .recgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .recgrid > div { display: flex; align-items: center; gap: 6px; border: 2px solid #eee; border-radius: 14px; padding: 6px 10px; }
 .recgrid b { font-size: 26px; min-width: 40px; font-family: var(--font); }

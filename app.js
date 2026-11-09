@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 18;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 19;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -115,10 +115,13 @@ function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang
     if (!('speechSynthesis' in window) || !text || /^[?!.,;:\s]*$/.test(text)) return res();
     const u = new SpeechSynthesisUtterance(text), v = voiceFor(lang);
     if (v) u.voice = v;
-    const excited = /!\s*$/.test(text);
+    // Expression, so Tiko doesn't sound like a flat robot: cheering is higher and quicker (with a little random
+    // sparkle each time), short "Wow!"-style words are extra high, questions rise, everything else varies slightly.
+    const excited = /!\s*$/.test(text), question = /\?\s*$/.test(text), shout = excited && text.split(/\s+/).length <= 2;
+    const fr = lang === 'fr', jitter = (Math.random() - .5) * (fr ? .06 : .12);
     u.lang = v ? v.lang : DATA[lang].voiceLang;
-    u.rate = Math.min(1.5, excited ? rate * 1.06 : rate);
-    u.pitch = Math.min(2, excited ? pitch + (lang === 'fr' ? 0.08 : 0.15) : pitch);
+    u.rate = Math.min(1.5, rate * (shout ? 1.12 : excited ? 1.08 : question ? 1.0 : 1.0));
+    u.pitch = Math.min(2, Math.max(.5, pitch + jitter + (shout ? (fr ? .15 : .25) : excited ? (fr ? .1 : .2) + Math.random() * (fr ? .05 : .12) : question ? (fr ? .05 : .1) : 0)));
     // Safety timers, in case the engine never reports "end" (happens on Android):
     // allow a long wait for speech to START (online voices can take seconds), and only once it has
     // started, a length-based limit. Giving up early made the app move on and cut Tiko off mid-sentence.
@@ -193,9 +196,10 @@ async function sayName(bang) {
 }
 // praise, sometimes with her name: "Great job, <name>!"
 function praiseParts() {
-  const p = pick(L().praise);
-  if (childName() && Math.random() < 0.35) return [p.replace(/\s*!\s*$/, ''), { name: true, bang: true }];
-  return [p];
+  // "Woohoo! Great job!" is said as two bursts so the "Woohoo!" can be extra high and bouncy
+  const bursts = pick(L().praise).split(/(?<=!)\s+/);
+  if (childName() && Math.random() < 0.35) { const last = bursts.pop(); return [...bursts, last.replace(/\s*!\s*$/, ''), { name: true, bang: true }]; }
+  return bursts;
 }
 
 // ================= intro jingle (synthesised, no files needed) =================
@@ -2354,6 +2358,9 @@ function parents() {
       <label class="set">English voice <select data-s="voice_en">${voiceOpts('en')}</select></label>
       <label class="set">French voice <select data-s="voice_fr">${voiceOpts('fr')}</select></label>
       <button class="pbtn alt tv" data-l="en">▶ Test English</button><button class="pbtn alt tv" data-l="fr">▶ Tester le français</button>
+      <h4 style="margin:16px 0 4px">🎧 Find the most fun voice</h4>
+      <p style="font-size:14px">Every voice on this tablet. Tap ▶ to hear Tiko in that voice, then <b>Use</b> on the one she likes best. Voices marked "online" need internet and can be slower.</p>
+      <div class="voicelist"></div>
       <p>No French voice listed? On the tablet go to <b>Settings → General management → Text-to-speech → Google → Install voice data</b> and download English (UK) and French (France). Then they work offline too.</p></section>
 
     <section><h3>🎙️ Record letter sounds in your voice (recommended)</h3>
@@ -2380,6 +2387,27 @@ function parents() {
       (voiceFor('fr') && !voiceFor('fr').localService ? 'The French voice is online-only: download French voice data (see below) for smoother speech.' : '');
   };
   vinfo(); $$('[data-s]').forEach(el => el.addEventListener('change', vinfo));
+  // voice audition list
+  const drawVoices = () => {
+    const rows = ['en', 'fr'].flatMap(lg => voicesFor(lg).map(v => ({ lg, v })));
+    $('.voicelist').innerHTML = rows.length ? rows.map(({ lg, v }, i) => {
+      const inUse = voiceFor(lg) && voiceFor(lg).name === v.name;
+      return `<div class="vrow ${inUse ? 'inuse' : ''}"><span>${lg === 'en' ? '🇬🇧' : '🇫🇷'} ${esc(v.name)} <small>${esc(v.lang)}${v.localService ? '' : ' · online'}</small></span>
+        <button class="pbtn alt" data-vp="${i}">▶</button><button class="pbtn ${inUse ? '' : 'alt'}" data-vu="${i}">${inUse ? '✓ In use' : 'Use'}</button></div>`;
+    }).join('') : '<p><i>No voices found yet. Try again in a moment.</i></p>';
+    $$('[data-vp]').forEach(b => b.onclick = async () => {
+      const { lg, v } = rows[+b.dataset.vp], keep = st['voice_' + lg];
+      st['voice_' + lg] = v.name; stopSpeech();
+      await speak(lg === 'fr' ? 'Coucou ! Je suis Tiko !' : "Hi there! I'm Tiko!", ...(lg === 'fr' ? ['Youpi ! Bravo !'] : ['Woohoo! Great job!']));
+      st['voice_' + lg] = keep;
+    });
+    $$('[data-vu]').forEach(b => b.onclick = () => {
+      const { lg, v } = rows[+b.dataset.vu]; st['voice_' + lg] = v.name; save();
+      const sel = $(`[data-s="voice_${lg}"]`); if (sel) sel.value = v.name;
+      vinfo(); drawVoices(); sfx('good');
+    });
+  };
+  drawVoices(); if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', () => { if ($('.voicelist')) drawVoices(); });
   const demo = async l => { stopSpeech(); await sleep(80); await say(l === 'fr' ? "Coucou ! Je suis Tiko. On lit ensemble ?" : "Hi there! I'm Tiko. Shall we read together?", l); await say(l === 'fr' ? 'Bravo, super !' : 'Great job, superstar!', l); };
   $$('.tv').forEach(b => b.onclick = () => demo(b.dataset.l));
   $$('.nm-in').forEach(i => i.addEventListener('keydown', e => e.stopPropagation()));
