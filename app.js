@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 22;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 23;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, calm: false, breaks: true, nudge: true, artInPath: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -36,6 +36,8 @@ if (S.settings.pitch === 1.35) S.settings.pitch = 1.5;
 if (!S.settings.pitchV17) { if (S.settings.pitch < 1.6) S.settings.pitch = 1.6; S.settings.pitchV17 = true; }
 // v22: "known once = never again". Anything she has already got right (box 2+) becomes known for ever.
 if (!S.knownV22) { for (const k of Object.keys(S.boxes || {})) if (S.boxes[k] >= 2) { S.boxes[k] = 5; S.due[k] = 'never'; } S.knownV22 = true; }
+// v23: Memory pairs was too hard — new gentler ladder (2 pairs first), so she starts again at the bottom (once)
+if (!S.memV23) { S.levels = S.levels || {}; S.streak = S.streak || {}; S.levels.memory = 1; S.streak.memory = { ok: 0, bad: 0 }; S.memV23 = true; }
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
 function applySettings() { document.body.classList.toggle('calm', !!S.settings.calm); document.documentElement.lang = S.lang; }
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* ignore */ }
@@ -485,6 +487,8 @@ const BADGES = [
   { id: 'stars200', icon: '💫', en: '200 stars', fr: '200 étoiles', ok: () => S.stars >= 200 },
   { id: 'story10', icon: '🏰', en: 'Read 10 stories', fr: 'Lu 10 histoires', ok: () => bothCnt('story') >= 10 },
   { id: 'castle', icon: '👑', en: 'Reached Story Castle', fr: 'Arrivée au château', ok: () => ['en', 'fr'].some(lg => stageOf(lg) >= 6) },
+  { id: 'explore5', icon: '🔭', en: 'Discovered 5 new games', fr: '5 nouveaux jeux découverts', ok: () => tot('discover') >= 5 },
+  { id: 'explore15', icon: '🚀', en: 'Great explorer (15 new games)', fr: 'Grande exploratrice (15 jeux)', ok: () => tot('discover') >= 15 },
   { id: 'think5', icon: '🧠', en: '5 thinking games', fr: '5 jeux de réflexion', ok: () => tot('think') >= 5 },
   { id: 'simon5', icon: '🎶', en: 'Copied 5 in a row', fr: 'Imité 5 à la suite', ok: () => tot('simon5') >= 1 },
   { id: 'puzzle3', icon: '🧩', en: '3 jigsaws done', fr: '3 puzzles finis', ok: () => tot('puzzles') >= 3 },
@@ -556,12 +560,12 @@ const lvl = a => S.levels[a] || 1;
 const MATH_MAX = { count: 3, add: 4, sub: 4, bonds: 2, next: 3, compare: 3, shapes: 3, patterns: 3, clock: 3, doubles: 2,
   missing: 3, skip: 3, tens: 3, measure: 3, flash: 3, pop: 3, mathStory: 2 };
 function gradeMath(a, first, max = MATH_MAX[a] || 3) { if (first) tally('mathOk'); gradeLevel(a, first, max); }
-const THINK_MAX = { memory: 3, simon: 3, kim: 3, odd: 2, jigsaw: 3 };
-// levels go up after 5 first-try successes in a row, down after 3 misses
+const THINK_MAX = { memory: 6, simon: 3, kim: 3, odd: 2, jigsaw: 3 };
+// levels go up after 3 first-try successes in a row (she moves on instead of staying on easy things), down after 3 misses
 function gradeLevel(a, first, max = THINK_MAX[a] || MATH_MAX[a] || 3) {
   const st = S.streak[a] = S.streak[a] || { ok: 0, bad: 0 };
   if (first) { st.ok++; st.bad = Math.max(0, st.bad - 1); } else { st.bad++; st.ok = 0; }
-  if (st.ok >= 5 && lvl(a) < max) { S.levels[a] = lvl(a) + 1; st.ok = 0; st.bad = 0; (S.levelUps = S.levelUps || []).push([a, S.levels[a]]); }
+  if (st.ok >= 3 && lvl(a) < max) { S.levels[a] = lvl(a) + 1; st.ok = 0; st.bad = 0; (S.levelUps = S.levelUps || []).push([a, S.levels[a]]); }
   if (st.bad >= 3 && lvl(a) > 1) { S.levels[a] = lvl(a) - 1; st.ok = 0; st.bad = 0; }
 }
 function numOpts(ans, min, max, n = 3) {
@@ -666,6 +670,61 @@ Object.assign(T.en.acts, { paint: 'Paint', mirror: 'Magic mirror', readDraw: 'Re
 Object.assign(T.fr.acts, { paint: 'Peinture', mirror: 'Miroir magique', readDraw: 'Lis et dessine', cbn: 'Coloriage magique', mix: 'Mélange les couleurs', music: 'Musique' });
 T.en.acts.sentence = 'Read a sentence'; T.fr.acts.sentence = 'Lire une phrase';
 T.en.acts.story = 'Little stories'; T.fr.acts.story = 'Petites histoires';
+
+// ================= discovery path =================
+// Parent's wish: she tends to replay the same easy things. Tiko steers her FORWARD instead, building on what she
+// already knows: an activity she has mastered (or already played twice today) rests, and new ones she is ready for sparkle.
+T.en.disc = { rest: "You did this one today! Let's discover something new!", mastered: "You're a champion at this one! Let's try something new!",
+  conquered: "You conquered this place! Let's keep going forward!", path: "Let's go on today's adventure!" };
+T.fr.disc = { rest: "Tu l'as déjà fait aujourd'hui ! Découvrons autre chose !", mastered: 'Tu es championne ! Essayons quelque chose de nouveau !',
+  conquered: 'Tu as conquis cet endroit ! Allons plus loin !', path: "Allons à l'aventure du jour !" };
+// the journey place from which each reading activity makes sense (builds on the one before)
+const READ_UNLOCK = { letters: 0, robot: 0, blend: 0, trace: 0, sight: 0, paper: 1, traceWord: 1, family: 1, spell: 1, sentence: 3, traceSentence: 3, story: 5 };
+const playKey = a => S.lang + ':' + a;
+function recordPlay(a) {
+  S.plays = S.plays || {};
+  const p = S.plays[playKey(a)] = S.plays[playKey(a)] || { total: 0, day: '', n: 0 };
+  if (!p.total) tally('discover');
+  p.total++; if (p.day !== today()) { p.day = today(); p.n = 0; } p.n++; save();
+}
+const playsToday = a => { const p = (S.plays || {})[playKey(a)]; return p && p.day === today() ? p.n : 0; };
+const playedEver = a => ((S.plays || {})[playKey(a)] || {}).total || 0;
+// too easy for her now: she has moved past it on the journey, or reached the top level and keeps getting it right
+function mastered(a) {
+  const st = stageOf();
+  if (a === 'letters') return st >= 2 || frac(S.lang, 'letter', DATA[S.lang].letters) >= 1;
+  if (a === 'trace') return st >= 2;            // she traces words and sentences by then
+  if (a === 'robot') return st >= 3;            // listening-only blending is behind her
+  if (a === 'sight') return frac(S.lang, 'sight', DATA[S.lang].sight) >= 1;
+  const max = MATH_MAX[a] || THINK_MAX[a];
+  if (max) return lvl(a) >= max && ((S.streak[a] || {}).ok || 0) >= 3;
+  return false;
+}
+const readyFor = a => ACTS[a].area !== 'read' || (READ_UNLOCK[a] ?? 9) <= stageOf();
+function actState(a) {
+  if (!S.settings.discovery) return 'open';
+  if (mastered(a)) return 'mastered';
+  if (playsToday(a) >= 2) return 'rest';
+  return !playedEver(a) && readyFor(a) ? 'new' : 'open';
+}
+// what Tiko suggests next in a menu: something new she is ready for, else what she has played least
+function suggestIn(area) {
+  const ids = Object.keys(ACTS).filter(k => ACTS[k].area === area && readyFor(k));
+  const nw = ids.find(k => actState(k) === 'new'); if (nw) return nw;
+  const op = ids.filter(k => actState(k) === 'open').sort((x, y) => playsToday(x) - playsToday(y) || playedEver(x) - playedEver(y));
+  return op[0] || null;
+}
+// on the daily path, a mastered stop is swapped for a fresh one from the same area (new ones first)
+function freshen(stops) {
+  if (!S.settings.discovery) return stops;
+  const out = [];
+  for (const a of stops) {
+    if (!ACTS[a] || !mastered(a)) { out.push(a); continue; }
+    const pool = Object.keys(ACTS).filter(k => ACTS[k].area === ACTS[a].area && !mastered(k) && readyFor(k) && !out.includes(k) && !stops.includes(k));
+    out.push(pool.length ? (pool.find(k => !playedEver(k)) || pick(pool)) : a);
+  }
+  return out;
+}
 
 function mkSentence() {
   const R = L().read, known = knownWords(), w = pickFresh('sentence', known);
@@ -1234,18 +1293,20 @@ const ODD_CATS = { animals: ['🐶', '🐱', '🐰', '🐻', '🐸', '🐵', '�
   vehicles: ['🚗', '🚌', '🚲', '✈️', '🚂', '🚀', '🚜', '🚒'], clothes: ['👕', '👖', '👗', '🧦', '🧢', '👟'], weather: ['☀️', '🌧️', '⛄', '🌈', '⚡', '☁️'],
   red: ['🍎', '🍓', '🚒', '❤️', '🌹', '🍒'], yellow: ['🍌', '🌻', '⭐', '🐥', '🧀', '🌽'] };
 
-// 🃏 Memory pairs — a short peek at every card first (friendly for a poor short-term memory)
-function mkMemory() { const pairs = [3, 4, 6][lvl('memory') - 1], set = shuffle(CARD_EMOJI).slice(0, pairs); return { kind: 'memory', cards: shuffle([...set, ...set]), pairs }; }
+// 🃏 Memory pairs — she looks at every card for as long as she wants first (friendly for a poor short-term memory).
+// Gentle ladder: 2 pairs → 3 → 4 → 5 → 6 → 8. Levels 1-3 also help her: after two wrong tries the partner card glows.
+const MEM_PAIRS = [2, 3, 4, 5, 6, 8];
+function mkMemory() { const l = lvl('memory'), pairs = MEM_PAIRS[l - 1] || 2, set = shuffle(CARD_EMOJI).slice(0, pairs); return { kind: 'memory', cards: shuffle([...set, ...set]), pairs, help: l <= 3 }; }
 function askMemory(q, meta) {
   return new Promise(resolve => {
     let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
-    const cols = q.cards.length <= 6 ? 3 : 4;
-    app.innerHTML = actFrame(meta, `${promptHTML(TH().memory)}<div class="memgrid" style="--cols:${cols}">${q.cards.map((c, i) =>
+    const n = q.cards.length, cols = n <= 4 ? 2 : n <= 6 ? 3 : n === 10 ? 5 : 4;
+    app.innerHTML = actFrame(meta, `${promptHTML(TH().memory)}<div class="memgrid ${n <= 6 ? 'big' : ''}" style="--cols:${cols}">${q.cards.map((c, i) =>
       `<button class="mcard up" data-i="${i}" style="--i:${i}"><span class="face">${c}</span><span class="back">❓</span></button>`).join('')}</div>
       <div class="btnrow"><button class="btn primary huge readyb pulse">👀 ${esc(TH().ready)}</button>
       <button class="btn sun peekb" hidden>👀 ${esc(TH().peek)}</button></div>`);
     wire(meta, finish, () => speak(TH().memory), [TH().memory]);
-    const cards = $$('.mcard'); let open = [], matched = 0, misses = 0, ready = false, closeT = null;
+    const cards = $$('.mcard'); let open = [], matched = 0, misses = 0, ready = false, closeT = null, missRun = 0;
     // She decides when she has looked long enough — no timer.
     $('.readyb').onclick = () => {
       sfx('pop'); cards.forEach(c => c.classList.remove('up')); ready = true;
@@ -1264,15 +1325,22 @@ function askMemory(q, meta) {
       if (open.length >= 2) { closeOpen(); if (c.classList.contains('up')) return; }
       if (c.classList.contains('up')) return;
       c.classList.add('up'); sfx('tap'); open.push(c);
-      if (open.length < 2) return;
+      if (open.length < 2) {
+        // easy levels: stuck after two wrong tries → the partner card glows to help her find it
+        if (q.help && missRun >= 2) {
+          const mate = cards.find(x => x !== c && q.cards[+x.dataset.i] === q.cards[+c.dataset.i]);
+          if (mate) { mate.classList.remove('hint'); void mate.offsetWidth; mate.classList.add('hint'); setTimeout(() => mate.classList.remove('hint'), 1800); }
+        }
+        return;
+      }
       const [a, b] = open;
       if (q.cards[+a.dataset.i] === q.cards[+b.dataset.i]) {
-        a.classList.add('matched'); b.classList.add('matched'); open = []; matched++; sfx('good'); burstAt(b, 20);
+        a.classList.add('matched'); b.classList.add('matched'); open = []; matched++; missRun = 0; sfx('good'); burstAt(b, 20);
         if (matched === q.pairs) {
           const first = misses <= q.pairs; gradeLevel('memory', first); tally('think'); logDay(first); if (first) flyStar($('.memgrid')); save();
           owlReact('happy'); await sleep(400); await speak(...praiseParts()); await sleep(300); finish(first);
         }
-      } else { misses++; closeT = setTimeout(() => { if (open.length === 2) closeOpen(); }, 2500); }
+      } else { misses++; missRun++; closeT = setTimeout(() => { if (open.length === 2) closeOpen(); }, q.help ? 3500 : 2500); }
     }));
     speak(TH().memory);
   });
@@ -1642,8 +1710,9 @@ function musicStudio() {
 
 // run any activity: art studios have their own screen, everything else goes through the question engine
 async function runAct(a) {
-  if (ACTS[a].studio) { const r = await ACTS[a].studio(); return r ? { first: 1, count: 1 } : null; }
-  return runStop(a, ACTS[a].per || S.settings.perStop);
+  const r = ACTS[a].studio ? ((await ACTS[a].studio()) ? { first: 1, count: 1 } : null) : await runStop(a, ACTS[a].per || S.settings.perStop);
+  if (r) recordPlay(a);
+  return r;
 }
 
 // ================= question runner =================
@@ -2174,13 +2243,23 @@ function home(fromIntro) {
   $('.corner').onclick = () => parentGate();
 }
 function menu(area) {
-  const ids = Object.keys(ACTS).filter(k => ACTS[k].area === area);
+  const ids = Object.keys(ACTS).filter(k => ACTS[k].area === area), sug = suggestIn(area);
+  const TAG = { new: '✨', mastered: '🏆', rest: '💤' };
   app.innerHTML = `<div class="screen menu">
     <div class="topline"><button class="ic back">🏠</button><h2>${area === 'read' ? '📖 ' + L().reading : area === 'art' ? '🎨 ' + L().artName : area === 'think' ? '🧠 ' + L().thinkName : '🔢 ' + L().maths}</h2><div style="width:64px"></div></div>
-    <div class="grid">${ids.map((k, i) => `<button class="btn card" data-a="${k}" style="--i:${i}">${ACTS[k].icon}<span>${esc(actName(k))}</span></button>`).join('')}</div></div>`;
+    <div class="grid">${ids.map((k, i) => { const s = actState(k);
+      return `<button class="btn card st-${s} ${k === sug ? 'suggest' : ''}" data-a="${k}" style="--i:${i}">${ACTS[k].icon}<span>${esc(actName(k))}</span>${TAG[s] && (s !== 'new' || k === sug) ? `<i class="tag">${TAG[s]}</i>` : ''}</button>`; }).join('')}</div></div>`;
   $('.back').onclick = home;
+  // Tiko points her to something new to discover
+  const point = () => { const s = $('.card.suggest'); if (!s) return false; s.classList.remove('wobble'); void s.offsetWidth; s.classList.add('wobble'); s.scrollIntoView({ block: 'nearest' }); return true; };
+  if (sug && actState(sug) === 'new') setTimeout(point, 900);
   $$('[data-a]').forEach(b => b.onclick = async () => {
-    sfx('pop'); const a = b.dataset.a;
+    const a = b.dataset.a, st = actState(a);
+    if (st === 'rest' || st === 'mastered') {   // easy / already done today: no replay — off to discover something else
+      sfx('tap'); b.classList.remove('wobble'); void b.offsetWidth; b.classList.add('wobble');
+      return speak(L().disc[st === 'rest' ? 'rest' : 'mastered'], ...(point() ? [] : [L().disc.path]));
+    }
+    sfx('pop');
     const r = await runAct(a);
     if (!r) return home();   // 🏠 means home
     await reward(); await checkUnlock(); await celebrateAwards(); menu(area);
@@ -2213,10 +2292,11 @@ function buildPath() {
   ];
   const order = PLANS[Math.min(stageOf(), PLANS.length - 1)].map(x => x === 'A' ? mathA : x === 'B' ? mathB : x);
   const stops = order.slice(0, S.settings.stops);
-  // a creative treat at the end of every path
   // a fun treat at the end of every path: art one day, a thinking game the next
   if (S.settings.artInPath) stops.push(dayNo % 2 ? ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw'][Math.floor(dayNo / 2) % 6]
     : ['memory', 'simon', 'jigsaw', 'kim', 'odd'][Math.floor(dayNo / 2) % 5]);
+  // discovery: anything she has mastered is swapped for something fresh she is ready for
+  stops.splice(0, stops.length, ...freshen(stops));
   const seq = [];
   stops.forEach((s, i) => { seq.push(s); if (S.settings.breaks && i === 2 && stops.length > 3) seq.push('break'); });
   return seq.map(a => ({ a, done: false, sticker: null }));
@@ -2291,6 +2371,11 @@ function journey() {
     if (i > cur) {                       // locked: wiggle + encouragement
       sfx('oops'); b.classList.remove('wobble'); void b.offsetWidth; b.classList.add('wobble');
       return speak(names[i], L().read.locked);
+    }
+    if (i < cur && S.settings.discovery) {   // conquered places are not replayed: celebrate, then point forward
+      sfx('pop'); burstAt(b, 20); owlReact('happy');
+      const now = $('.isle.now'); if (now) { now.scrollIntoView({ block: 'center', behavior: 'smooth' }); now.classList.remove('wobble'); void now.offsetWidth; now.classList.add('wobble'); }
+      return speak(names[i], L().disc.conquered);
     }
     busy = true; sfx('pop'); burstAt(b, 30); owlReact('happy');
     await speak(names[i], L().read.go);
@@ -2456,6 +2541,7 @@ function parents() {
       <label class="set">Questions per stop <select data-s="perStop">${[3, 4, 5, 6, 8].map(n => `<option ${st.perStop === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="set">Movement break mid-path <input type="checkbox" data-s="breaks" ${st.breaks ? 'checked' : ''}></label>
       <label class="set">Fun treat at the end of the path (art or thinking game) <input type="checkbox" data-s="artInPath" ${st.artInPath ? 'checked' : ''}></label>
+      <label class="set">Discovery mode (mastered activities, or ones played twice today, rest; new ones sparkle) <input type="checkbox" data-s="discovery" ${st.discovery ? 'checked' : ''}></label>
       <label class="set">Focus nudges (Tiko says "Your turn!" after 15 s with no taps) <input type="checkbox" data-s="nudge" ${st.nudge ? 'checked' : ''}></label>
       <label class="set">Sound effects <input type="checkbox" data-s="sfx" ${st.sfx ? 'checked' : ''}></label>
       <label class="set">Intro music <input type="checkbox" data-s="music" ${st.music ? 'checked' : ''}></label>

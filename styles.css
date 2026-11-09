@@ -397,6 +397,16 @@ button:disabled { cursor: default; }
 .mcard .face { background: #fff; box-shadow: 0 6px 0 var(--line); transform: rotateY(180deg); }
 .mcard .back { background: linear-gradient(135deg, var(--grape), #c3a8ff); color: #fff; font-size: .6em; box-shadow: 0 6px 0 var(--grape-d); }
 .mcard.up .face { transform: rotateY(0); } .mcard.up .back { transform: rotateY(-180deg); }
+/* discovery path: resting / mastered activities fade, new ones sparkle, Tiko's suggestion glows */
+.card .tag { position: absolute; top: 6px; right: 8px; font-size: 30px; font-style: normal; filter: drop-shadow(0 2px 2px rgba(0,0,0,.2)); }
+.menu .card.st-rest, .menu .card.st-mastered { opacity: .5; filter: grayscale(.6); }
+.menu .card.st-new .tag { animation: pulse 1.2s ease-in-out infinite; }
+.menu .card.suggest { box-shadow: 0 0 0 5px #ffd23f, 0 8px 0 var(--line); }
+.menu .card.wobble { animation: shake .45s; }
+.memgrid.big { grid-template-columns: repeat(var(--cols), clamp(110px, 19vmin, 170px)); gap: 16px; }
+.memgrid.big .mcard { font-size: clamp(60px, 11vmin, 96px); }
+.mcard.hint .back { animation: memhint .6s ease-in-out 3; }
+@keyframes memhint { 0%, 100% { transform: scale(1); box-shadow: 0 6px 0 var(--grape-d); } 50% { transform: scale(1.1); box-shadow: 0 0 0 6px #ffd23f, 0 6px 0 var(--grape-d); } }
 .mcard.matched .face { background: #d4f7e0; box-shadow: 0 6px 0 var(--leaf-d); animation: yay .6s; }
 .simon { display: grid; grid-template-columns: repeat(2, clamp(120px, 20vmin, 170px)); gap: 18px; }
 .spad { aspect-ratio: 1; border-radius: 30px; background: var(--c); font-size: clamp(56px, 10vmin, 84px); opacity: .55;
