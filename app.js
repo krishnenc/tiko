@@ -87,8 +87,12 @@ function voiceFor(lang) {
   const list = voicesFor(lang), want = S.settings['voice_' + lang];
   // prefer brighter, friendlier voices when the device names them
   const bright = /female|libby|sonia|maisie|hollie|denise|eloise|amelie|amélie|audrey|julie|aria|jenny|zira|hortense|samantha|karen/i;
-  return list.find(v => v.name === want) || list.find(v => bright.test(v.name) && v.lang.replace('_', '-') === DATA[lang].voiceLang) ||
-    list.find(v => bright.test(v.name)) || list.find(v => v.localService && /google/i.test(v.name)) ||
+  // on-device voices first: they start instantly and work offline; online voices lag and can cut out
+  const local = list.filter(v => v.localService);
+  return list.find(v => v.name === want) || local.find(v => bright.test(v.name) && v.lang.replace('_', '-') === DATA[lang].voiceLang) ||
+    local.find(v => bright.test(v.name)) || local.find(v => /google/i.test(v.name)) ||
+    local.find(v => v.lang.replace('_', '-') === DATA[lang].voiceLang) || local[0] ||
+    list.find(v => bright.test(v.name)) ||
     list.find(v => v.lang.replace('_', '-') === DATA[lang].voiceLang) || list[0] || null;
 }
 let speakToken = 0, curAudio = null;
@@ -109,12 +113,20 @@ function say(text, lang = S.lang, rate = S.settings.rate, pitch = S.settings.pit
     u.lang = v ? v.lang : DATA[lang].voiceLang;
     u.rate = Math.min(1.5, excited ? rate * 1.06 : rate);
     u.pitch = Math.min(2, excited ? pitch + 0.15 : pitch);
-    let done = false; const fin = () => { if (!done) { done = true; res(); } };
+    // Safety timers, in case the engine never reports "end" (happens on Android):
+    // allow a long wait for speech to START (online voices can take seconds), and only once it has
+    // started, a length-based limit. Giving up early made the app move on and cut Tiko off mid-sentence.
+    let done = false, startT = null, endT = null, keep = null;
+    const fin = () => { if (done) return; done = true; clearTimeout(startT); clearTimeout(endT); clearInterval(keep); res(); };
     u.onend = fin; u.onerror = fin;
-    setTimeout(fin, 1500 + text.length * 110 / rate); // Android sometimes never fires onend
+    u.onstart = () => { clearTimeout(startT); endT = setTimeout(fin, 3000 + text.length * 160 / u.rate); };
+    startT = setTimeout(fin, 10000);
+    // Chrome can silently pause long-running speech; nudge it along
+    keep = setInterval(() => { try { if (speechSynthesis.paused) speechSynthesis.resume(); } catch (e) { /* ignore */ } }, 1000);
     speechSynthesis.speak(u);
   });
 }
+// A sound unit plays, in order of preference: the parent's own recording → the built-in phonics clip → the voice
 async function playUnit(unit, lang = S.lang, rate) {
   if (unit.startsWith('_')) return;
   const key = `${lang}:${unit}`;
@@ -122,8 +134,17 @@ async function playUnit(unit, lang = S.lang, rate) {
     const blob = await idb.get('rec', key);
     if (blob) return playBlob(blob);
   }
+  if ((SOUND_CLIPS[lang] || []).includes(unit)) return playUrl(`sounds/${lang}-${unit}.wav`, rate && rate > 1 ? 1.15 : 1);
   // letter sounds stay close to natural pitch so they remain clear
   return say(DATA[lang].sounds[unit] || unit, lang, (rate || S.settings.rate) * 0.9, Math.min(S.settings.pitch, 1.15));
+}
+function playUrl(url, rate = 1) {
+  return new Promise(res => {
+    const a = new Audio(url); curAudio = a; a.playbackRate = rate;
+    let done = false; const fin = () => { if (!done) { done = true; res(); } };
+    a.onended = fin; a.onerror = fin; a.play().catch(fin);
+    setTimeout(fin, 4000);
+  });
 }
 function playBlob(blob) {
   return new Promise(res => {
@@ -1060,9 +1081,22 @@ function journey() {
     <button class="btn primary huge pulse go">▶ ${L().start}</button></div>`;
   $('.back').onclick = home;
   $('.go').onclick = () => { sfx('pop'); startPath(); };
-  $$('.isle').forEach(b => b.onclick = () => {
-    const i = +b.dataset.i; sfx('tap'); burstAt(b, 15);
-    speak(names[i], i === cur ? L().read.next : '');
+  // what each place practises when tapped after it's been reached
+  const PRACTICE = ['letters', 'blend', 'sight', 'spell', 'sentence', 'story'];
+  let busy = false;
+  $$('.isle').forEach(b => b.onclick = async () => {
+    if (busy) return;
+    const i = +b.dataset.i;
+    if (i > cur) {                       // locked: wiggle + encouragement
+      sfx('oops'); b.classList.remove('wobble'); void b.offsetWidth; b.classList.add('wobble');
+      return speak(names[i], L().read.locked);
+    }
+    busy = true; sfx('pop'); burstAt(b, 30); owlReact('happy');
+    await speak(names[i], L().read.go);
+    if (i === cur) return startPath();   // today's path is built around the current place
+    const a = PRACTICE[i], r = await runStop(a, ACTS[a].per || S.settings.perStop);
+    if (r) { await reward(); await checkUnlock(); await celebrateAwards(); }
+    journey();
   });
   speak(L().read.journey, cur < STAGES.length ? names[cur] : L().allDone);
   const now = $('.isle.now'); if (now) now.scrollIntoView({ block: 'center' });
@@ -1222,7 +1256,7 @@ function parents() {
       <p>No French voice listed? On the tablet go to <b>Settings → General management → Text-to-speech → Google → Install voice data</b> and download English (UK) and French (France). Then they work offline too.</p></section>
 
     <section><h3>🎙️ Record letter sounds in your voice (recommended)</h3>
-      <p>Robot voices can't say pure sounds like "sss" or "mmm" very well. Record each sound once (about 1 second) and Tiko will use your voice in every game.</p>
+      <p>Tiko has built-in pure phonics sounds ("sss", "mmm", "t" not "tuh"). Tap ▶ to hear them. If you'd rather she hears your voice or your accent, record a sound (about 1 second) and Tiko will use your recording instead.</p>
       <div class="tabs" style="margin-bottom:10px"><button class="rl on" data-l="en">🇬🇧</button><button class="rl" data-l="fr">🇫🇷</button></div>
       <div class="recgrid"></div></section>
 

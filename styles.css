@@ -332,6 +332,8 @@ button:disabled { cursor: default; }
 .isle.done { background: #fff6d6; box-shadow: 0 8px 0 var(--sun-d); }
 .isle.now { box-shadow: 0 8px 0 var(--teal-d), 0 0 0 6px #20b2a055; }
 .isle.locked { opacity: .55; filter: grayscale(.6); }
+.isle.wobble { animation: shake .45s; }
+.isle.now .ico { animation: jumpy 1.2s ease-in-out infinite; }
 .isle .flag { position: absolute; top: -16px; right: 18px; font-size: 34px; }
 .isle .owl.mini { position: absolute; top: -50px; right: -10px; width: 70px; height: 70px; }
 

@@ -115,6 +115,14 @@ for (const lang of Object.keys(DATA)) {
   d.recordable = [...d.letters.map(x => x.l), ...Object.keys(d.extraSounds)];
 }
 
+// Built-in pure phonics sound clips in sounds/<lang>-<unit>.wav (generated from IPA, see tools/).
+// French vowels and syllables are read well by the French voice, so only consonants have clips.
+const SOUND_CLIPS = {
+  en: ['a', 'ar', 'b', 'c', 'ch', 'ck', 'd', 'e', 'ee', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'll', 'm', 'n', 'ng', 'o', 'oo',
+    'p', 'q', 'r', 's', 'sh', 't', 'th', 'u', 'v', 'w', 'x', 'y', 'z'],
+  fr: ['b', 'c', 'ch', 'd', 'f', 'g', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 's', 't', 'v', 'z'],
+};
+
 const OBJECTS = ['🍎', '🍓', '⭐', '🐟', '🎈', '🐞', '🍪', '🚗', '🌸', '⚽', '🦆', '🍌'];
 const STICKERS = ['🦄', '🐶', '🐱', '🦊', '🐼', '🐨', '🐯', '🦁', '🐸', '🐵', '🐧', '🐢', '🐙', '🦋', '🐞', '🐝',
   '🦖', '🐳', '🐬', '🦀', '🐠', '🦒', '🐘', '🦔', '🌈', '⭐', '🍓', '🍩', '🚀', '🎈', '🌻', '🍦', '🐰', '🦜', '🐹', '🌙'];
@@ -152,7 +160,8 @@ const T = {
     },
     newLetter: 'This letter says',
     read: { find: 'Read it. Then find the picture!', help: 'Help', iRead: 'I read it!', story: 'Read the story.',
-      yourTurn: 'Your turn!', journey: 'My journey', unlocked: 'You reached a new place!', next: 'Next stop' },
+      yourTurn: 'Your turn!', journey: 'My journey', unlocked: 'You reached a new place!', next: 'Next stop',
+      go: "Let's go!", locked: 'Keep going to unlock it!' },
     hi: { letsPlay: "Let's play!", morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening',
       happy: "I'm so happy to see you! Let's have fun!", tapStart: 'Tap the big Start button!', streak: n => `That's ${n} days in a row!`, combo: n => `${n} in a row!`, there: 'there' },
     aw: { newBadge: 'New badge!', badges: 'Badges', goalReached: 'You did it! You earned:', tellGrownUp: 'Show a grown-up!' },
@@ -194,7 +203,8 @@ const T = {
     },
     newLetter: 'Cette lettre fait',
     read: { find: "Lis la phrase. Puis trouve l'image !", help: 'Aide', iRead: "J'ai lu !", story: "Lis l'histoire.",
-      yourTurn: 'À toi !', journey: 'Mon voyage', unlocked: 'Tu as atteint un nouveau lieu !', next: 'Prochaine étape' },
+      yourTurn: 'À toi !', journey: 'Mon voyage', unlocked: 'Tu as atteint un nouveau lieu !', next: 'Prochaine étape',
+      go: "C'est parti !", locked: 'Continue pour le débloquer !' },
     hi: { letsPlay: 'On joue !', morning: 'Bonjour', afternoon: 'Bonjour', evening: 'Bonsoir',
       happy: 'Je suis trop content de te voir ! On va bien s\'amuser !', tapStart: 'Appuie sur le gros bouton Commencer !', streak: n => `${n} jours de suite, bravo !`, combo: n => `${n} d'affilée !`, there: '' },
     aw: { newBadge: 'Nouveau badge !', badges: 'Badges', goalReached: 'Bravo ! Tu as gagné :', tellGrownUp: 'Montre à un adulte !' },

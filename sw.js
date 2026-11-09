@@ -1,8 +1,14 @@
 // Tiko service worker – works fully offline after first load.
-const VERSION = 'tiko-v5';
+const VERSION = 'tiko-v6';
 const FONTS = 'tiko-fonts';
+const CLIPS = {
+  en: ['a', 'ar', 'b', 'c', 'ch', 'ck', 'd', 'e', 'ee', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'll', 'm', 'n', 'ng', 'o', 'oo',
+    'p', 'q', 'r', 's', 'sh', 't', 'th', 'u', 'v', 'w', 'x', 'y', 'z'],
+  fr: ['b', 'c', 'ch', 'd', 'f', 'g', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 's', 't', 'v', 'z'],
+};
 const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'data.js', 'manifest.webmanifest',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
+  ...Object.entries(CLIPS).flatMap(([l, keys]) => keys.map(k => `sounds/${l}-${k}.wav`))];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
