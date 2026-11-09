@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 14;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 15;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -1090,12 +1090,28 @@ function askMemory(q, meta) {
     let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
     const cols = q.cards.length <= 6 ? 3 : 4;
     app.innerHTML = actFrame(meta, `${promptHTML(TH().memory)}<div class="memgrid" style="--cols:${cols}">${q.cards.map((c, i) =>
-      `<button class="mcard up" data-i="${i}" style="--i:${i}"><span class="face">${c}</span><span class="back">❓</span></button>`).join('')}</div>`);
+      `<button class="mcard up" data-i="${i}" style="--i:${i}"><span class="face">${c}</span><span class="back">❓</span></button>`).join('')}</div>
+      <div class="btnrow"><button class="btn primary huge readyb pulse">👀 ${esc(TH().ready)}</button>
+      <button class="btn sun peekb" hidden>👀 ${esc(TH().peek)}</button></div>`);
     wire(meta, finish, () => speak(TH().memory), [TH().memory]);
-    const cards = $$('.mcard'); let open = [], matched = 0, misses = 0, ready = false;
-    setTimeout(() => { cards.forEach(c => c.classList.remove('up')); ready = true; }, 1800 + q.pairs * 300);
+    const cards = $$('.mcard'); let open = [], matched = 0, misses = 0, ready = false, closeT = null;
+    // She decides when she has looked long enough — no timer.
+    $('.readyb').onclick = () => {
+      sfx('pop'); cards.forEach(c => c.classList.remove('up')); ready = true;
+      $('.readyb').remove(); $('.peekb').hidden = false; $('.bubble').textContent = TH().memoryGo; speak(TH().memoryGo);
+    };
+    // Peek: all cards face up for 2 s — as often as she likes
+    $('.peekb').onclick = async () => {
+      if (!ready) return; sfx('tap');
+      ready = false; const shown = cards.filter(c => !c.classList.contains('up')); shown.forEach(c => c.classList.add('up'));
+      await sleep(2000); shown.forEach(c => { if (!c.classList.contains('matched') && !open.includes(c)) c.classList.remove('up'); }); ready = true;
+    };
+    // a wrong pair stays open for 2.5 s so she can remember it; tapping any card closes it sooner
+    const closeOpen = () => { clearTimeout(closeT); open.forEach(c => c.classList.remove('up')); open = []; };
     cards.forEach(c => c.addEventListener('click', async () => {
-      if (!ready || c.classList.contains('up') || open.length >= 2) return;
+      if (!ready) return;
+      if (open.length >= 2) { closeOpen(); if (c.classList.contains('up')) return; }
+      if (c.classList.contains('up')) return;
       c.classList.add('up'); sfx('tap'); open.push(c);
       if (open.length < 2) return;
       const [a, b] = open;
@@ -1105,7 +1121,7 @@ function askMemory(q, meta) {
           const first = misses <= q.pairs; gradeLevel('memory', first); tally('think'); logDay(first); if (first) flyStar($('.memgrid')); save();
           owlReact('happy'); await sleep(400); await speak(...praiseParts()); await sleep(300); finish(first);
         }
-      } else { misses++; await sleep(900); a.classList.remove('up'); b.classList.remove('up'); open = []; }
+      } else { misses++; closeT = setTimeout(() => { if (open.length === 2) closeOpen(); }, 2500); }
     }));
     speak(TH().memory);
   });
@@ -1117,7 +1133,8 @@ function askSimon(q, meta) {
   return new Promise(resolve => {
     let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
     app.innerHTML = actFrame(meta, `${promptHTML(TH().simonWatch)}<div class="simon">${SIMON_PADS.map(([e, c], i) =>
-      `<button class="spad" data-i="${i}" style="--c:${c}">${e}</button>`).join('')}</div><div class="slen"></div>`);
+      `<button class="spad" data-i="${i}" style="--c:${c}">${e}</button>`).join('')}</div><div class="slen"></div>
+      <button class="btn sun againb" hidden>👀 ${esc(TH().showAgain)}</button>`);
     wire(meta, finish, () => playSeq(), [TH().simonYou]);
     const pads = $$('.spad');
     let len = Math.max(2, Math.min(7, S.simonLen || 2)), round = 0, seq = [], pos = 0, accepting = false, misses = 0, fails = 0;
@@ -1126,7 +1143,13 @@ function askSimon(q, meta) {
       try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); tone(SIMON_PADS[i][2], actx.currentTime, .45, 'triangle', .16); } catch (e) { /* ignore */ }
       await sleep(ms); pads[i].classList.remove('lit'); await sleep(140);
     };
-    const playSeq = async () => { accepting = false; $('.bubble').textContent = TH().simonWatch; await sleep(300); for (const i of seq) { if (done) return; await light(i); } $('.bubble').textContent = TH().simonYou; pos = 0; accepting = true; speak(TH().simonYou); };
+    const playSeq = async () => {
+      accepting = false; $('.againb').hidden = true; $('.bubble').textContent = TH().simonWatch; await sleep(300);
+      for (const i of seq) { if (done) return; await light(i); }
+      $('.bubble').textContent = TH().simonYou; pos = 0; accepting = true; $('.againb').hidden = false; speak(TH().simonYou);
+    };
+    // watch the sequence again as many times as she likes — never counts as a mistake
+    $('.againb').onclick = () => { if (accepting) { sfx('tap'); playSeq(); } };
     const newRound = async () => { seq = Array.from({ length: len }, () => rand(4)); $('.slen').innerHTML = '●'.repeat(len); await speak(TH().simonWatch); await playSeq(); };
     pads.forEach((p, i) => p.addEventListener('pointerdown', async () => {
       if (!accepting) return;
@@ -1154,19 +1177,22 @@ function askSimon(q, meta) {
 }
 // 🙈 What's missing? (Kim's game) — look, a cloud covers them, one disappears
 function mkKim() {
-  const l = lvl('kim'), n = [3, 4, 5][l - 1], items = shuffle(CARD_EMOJI).slice(0, n + 2), shown = items.slice(0, n), gone = pick(shown), show = [4200, 4200, 3800][l - 1];
+  const l = lvl('kim'), n = [3, 4, 5][l - 1], items = shuffle(CARD_EMOJI).slice(0, n + 2), shown = items.slice(0, n), gone = pick(shown);
   const opts = shuffle([gone, ...items.slice(n, n + 2)]);
   return { title: TH().kimLook, speak: [TH().kimLook], gate: true, optClass: '', answer: gone, correctSpeak: [],
-    visual: `<div class="tray">${shown.map((e, i) => `<span class="titem" data-e="${e}" style="--i:${i}">${e}</span>`).join('')}<div class="cover">☁️</div></div>`,
+    visual: `<div class="addwrap"><div class="tray">${shown.map((e, i) => `<span class="titem" data-e="${e}" style="--i:${i}">${e}</span>`).join('')}<div class="cover">☁️</div></div>
+      <button class="btn primary huge readyb pulse">👀 ${esc(TH().ready)}</button></div>`,
     options: opts.map(e => ({ html: e, val: e })), grade: f => { gradeLevel('kim', f); tally('think'); },
     setup(root, unlock) {
-      setTimeout(async () => {
+      // she looks for as long as she wants, then taps "I'm ready"
+      $('.readyb', root).addEventListener('click', async () => {
+        $('.readyb', root).remove(); sfx('pop');
         const tray = $('.tray', root); if (!tray) return;
         tray.classList.add('covered'); await sleep(900);
         const el = $(`.titem[data-e="${gone}"]`, root); if (el) el.classList.add('empty');
         if (l >= 3) { const items2 = $$('.titem', root); items2.forEach(x => x.style.order = rand(10)); }
         tray.classList.remove('covered'); unlock(); $('.bubble').textContent = TH().kimQ; speak(TH().kimQ);
-      }, show);
+      });
     } };
 }
 // 🔍 Odd one out — by category, then (level 2) by colour
