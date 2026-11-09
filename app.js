@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [],
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.35, sfx: true, music: true, calm: false, breaks: true, nudge: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.5, sfx: true, music: true, calm: false, breaks: true, nudge: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -30,6 +30,8 @@ function load() {
   } catch (e) { /* fall through */ }
   return structuredClone(DEFAULTS);
 }
+// lift tablets still on the old default pitch to the new bubblier one (custom choices are left alone)
+if (S.settings.pitch === 1.35) S.settings.pitch = 1.5;
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
 function applySettings() { document.body.classList.toggle('calm', !!S.settings.calm); document.documentElement.lang = S.lang; }
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* ignore */ }
@@ -1247,7 +1249,7 @@ function parents() {
       <label class="set">Intro music <input type="checkbox" data-s="music" ${st.music ? 'checked' : ''}></label>
       <label class="set">Calm mode (less motion and confetti) <input type="checkbox" data-s="calm" ${st.calm ? 'checked' : ''}></label>
       <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:17px">Voice style
-        <span><button class="pbtn alt vs" data-p="1.4" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-r="0.8">🌙 Calm</button></span></div>
+        <span><button class="pbtn alt vs" data-p="1.6" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-r="0.8">🌙 Calm</button></span></div>
       <label class="set">Voice pitch (higher = more bubbly) <input type="range" min="0.8" max="1.7" step="0.05" value="${st.pitch}" data-s="pitch"></label>
       <label class="set">Voice speed <input type="range" min="0.5" max="1.1" step="0.05" value="${st.rate}" data-s="rate"></label>
       <label class="set">English voice <select data-s="voice_en">${voiceOpts('en')}</select></label>

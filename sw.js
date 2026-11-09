@@ -1,5 +1,5 @@
 // Tiko service worker – works fully offline after first load.
-const VERSION = 'tiko-v8';
+const VERSION = 'tiko-v9';
 const FONTS = 'tiko-fonts';
 const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'data.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
