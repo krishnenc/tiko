@@ -1374,6 +1374,23 @@ function worksheet(lang) {
 // ================= boot =================
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeech(); });
-if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Quietly fetch the phonics clips one at a time so they're cached for offline use
+  // (the service worker caches each response). Skips ones already cached; retries next launch if offline.
+  setTimeout(async () => {
+    try {
+      await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller) await new Promise(r => { navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }); setTimeout(r, 10000); });
+      for (const [l, keys] of Object.entries(SOUND_CLIPS)) for (const k of keys) {
+        const url = `sounds/${l}-${k}.wav`;
+        if (await caches.match(url, { ignoreSearch: true })) continue;
+        const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 10000);
+        try { await fetch(url, { signal: ctl.signal }); } catch (e) { /* try again next launch */ }
+        clearTimeout(tm);
+      }
+    } catch (e) { /* ignore */ }
+  }, 3000);
+}
 applySettings();
 intro();
