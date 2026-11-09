@@ -442,7 +442,9 @@ function nudge(replayParts) {
 
 // ================= maths levels =================
 const lvl = a => S.levels[a] || 1;
-function gradeMath(a, first, max = 3) {
+const MATH_MAX = { count: 3, add: 3, sub: 3, bonds: 2, next: 3, compare: 3, shapes: 3, patterns: 3, clock: 3, doubles: 2,
+  missing: 3, skip: 3, tens: 3, measure: 3, flash: 3, pop: 3, mathStory: 2 };
+function gradeMath(a, first, max = MATH_MAX[a] || 3) {
   const st = S.streak[a] = S.streak[a] || { ok: 0, bad: 0 };
   if (first) { st.ok++; st.bad = Math.max(0, st.bad - 1); tally('mathOk'); } else { st.bad++; st.ok = 0; }
   if (st.ok >= 5 && lvl(a) < max) { S.levels[a] = lvl(a) + 1; st.ok = 0; st.bad = 0; }
@@ -453,11 +455,11 @@ function numOpts(ans, min, max, n = 3) {
   for (const x of c) { if (set.size >= n) break; if (x >= min && x <= max) set.add(x); }
   return shuffle([...set]).map(v => ({ html: v, val: v }));
 }
-function objsHTML(n, e, { crossed = 0, offset = 0 } = {}) {
+function objsHTML(n, e, { crossed = 0, offset = 0, away = 0 } = {}) {
   let h = '<div class="objs">';
   for (let g = 0; g < n; g += 5) {
     h += '<div class="five">';
-    for (let i = g; i < Math.min(n, g + 5); i++) h += `<span class="obj ${i >= n - crossed ? 'x' : ''}" style="--i:${i + offset}">${e}</span>`;
+    for (let i = g; i < Math.min(n, g + 5); i++) h += `<span class="obj ${i >= n - crossed ? 'x' : ''} ${i >= n - away ? 'away' : ''}" style="--i:${i + offset}">${e}</span>`;
     h += '</div>';
   }
   return h + '</div>';
@@ -486,6 +488,17 @@ const ACTS = {
   bonds: { icon: '🔟', area: 'math', make: mkBonds },
   next: { icon: '➡️', area: 'math', make: mkNext },
   compare: { icon: '⚖️', area: 'math', make: mkCompare },
+  shapes: { icon: '🔷', area: 'math', make: mkShapes },
+  patterns: { icon: '🔁', area: 'math', make: mkPatterns },
+  clock: { icon: '🕐', area: 'math', make: mkClock },
+  doubles: { icon: '🦋', area: 'math', make: mkDoubles },
+  missing: { icon: '❓', area: 'math', make: mkMissing },
+  skip: { icon: '🐸', area: 'math', make: mkSkip },
+  tens: { icon: '🧱', area: 'math', make: mkTens },
+  measure: { icon: '📏', area: 'math', make: mkMeasure },
+  flash: { icon: '⚡', area: 'math', make: mkFlash },
+  pop: { icon: '🫧', area: 'math', make: mkPop, per: 3 },
+  mathStory: { icon: '📖', area: 'math', make: mkMathStory, per: 4 },
   traceNum: { icon: '✏️', area: 'math', make: mkTraceNum, per: 2 },
   paperMath: { icon: '📒', area: 'math', make: mkPaperMath, per: 2 },
 };
@@ -495,6 +508,10 @@ T.en.acts.trace = 'Trace letters'; T.fr.acts.trace = 'Tracer les lettres';
 T.en.acts.paper = 'Paper mission'; T.fr.acts.paper = 'Mission papier';
 T.en.acts.traceNum = 'Trace numbers'; T.fr.acts.traceNum = 'Tracer les chiffres';
 T.en.acts.paperMath = 'Paper maths'; T.fr.acts.paperMath = 'Maths sur papier';
+Object.assign(T.en.acts, { shapes: 'Shapes', patterns: 'Patterns', clock: 'Tell the time', doubles: 'Doubles', missing: 'Missing number',
+  skip: 'Frog jumps', tens: 'Tens and ones', measure: 'Measuring', flash: 'Quick look', pop: 'Bubble pop', mathStory: 'Maths stories' });
+Object.assign(T.fr.acts, { shapes: 'Les formes', patterns: 'Les suites', clock: "Lire l'heure", doubles: 'Les doubles', missing: 'Le nombre caché',
+  skip: 'Sauts de grenouille', tens: 'Dizaines et unités', measure: 'Mesurer', flash: 'Coup d’œil', pop: 'Éclate les bulles', mathStory: 'Histoires de maths' });
 T.en.acts.sentence = 'Read a sentence'; T.fr.acts.sentence = 'Lire une phrase';
 T.en.acts.story = 'Little stories'; T.fr.acts.story = 'Petites histoires';
 
@@ -628,6 +645,190 @@ function mkCompare() {
     options: shuffle([{ html: a, val: a }, { html: b, val: b }]), answer: Math.max(a, b),
     correctSpeak: [String(Math.max(a, b))], grade: f => gradeMath('compare', f) };
 }
+// ================= more maths =================
+const SHAPE_COLORS = ['#ff7a6b', '#20b2a0', '#9b7fd1', '#ffc94a', '#5bb8f5', '#4cc47c', '#ff9ed2'];
+const SIDES = { triangle: 3, square: 4, rectangle: 4, diamond: 4, pentagon: 5, hexagon: 6 };
+const BASIC_SHAPES = ['circle', 'square', 'triangle', 'rectangle', 'star', 'heart'];
+const ALL_SHAPES = [...BASIC_SHAPES, 'oval', 'diamond', 'pentagon', 'hexagon'];
+const regPoly = (n, r = 44, rot = -90) => Array.from({ length: n }, (_, i) => { const a = (rot + i * 360 / n) * Math.PI / 180; return `${(50 + r * Math.cos(a)).toFixed(1)},${(52 + r * Math.sin(a)).toFixed(1)}`; }).join(' ');
+const starPts = () => Array.from({ length: 10 }, (_, i) => { const r = i % 2 ? 19 : 46, a = (-90 + i * 36) * Math.PI / 180; return `${(50 + r * Math.cos(a)).toFixed(1)},${(53 + r * Math.sin(a)).toFixed(1)}`; }).join(' ');
+function shapeSVG(name, color, size = 120) {
+  const body = {
+    circle: '<circle cx="50" cy="50" r="42"/>', square: '<rect x="10" y="10" width="80" height="80" rx="3"/>',
+    triangle: '<polygon points="50,6 95,90 5,90"/>', rectangle: '<rect x="3" y="25" width="94" height="50" rx="3"/>',
+    star: `<polygon points="${starPts()}"/>`, oval: '<ellipse cx="50" cy="50" rx="46" ry="28"/>',
+    heart: '<path d="M50 90 C 8 62 2 32 24 17 C 38 9 48 18 50 30 C 52 18 62 9 76 17 C 98 32 92 62 50 90 Z"/>',
+    diamond: '<polygon points="50,3 88,50 50,97 12,50"/>', pentagon: `<polygon points="${regPoly(5)}"/>`, hexagon: `<polygon points="${regPoly(6, 45, 0)}"/>`,
+  }[name];
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" style="fill:${color};stroke:#00000022;stroke-width:3;stroke-linejoin:round;overflow:visible">${body}</svg>`;
+}
+const M = () => L().m;
+
+function mkShapes() {
+  const l = lvl('shapes'), m = M();
+  if (l >= 3 && Math.random() < .5) {
+    const t = pick(Object.keys(SIDES)), n = SIDES[t];
+    return { title: m.sides, speak: [m.sides], visual: `<div class="bob">${shapeSVG(t, pick(SHAPE_COLORS), 170)}</div>`, optClass: 'num',
+      options: numOpts(n, 3, 8), answer: n, correctSpeak: [m.sidesAns(m.shapes[t], n)], grade: f => gradeMath('shapes', f) };
+  }
+  const pool = l === 1 ? BASIC_SHAPES : ALL_SHAPES, t = pick(pool);
+  const opts = shuffle([t, ...shuffle(pool.filter(s => s !== t)).slice(0, 2)]), cols = shuffle(SHAPE_COLORS);
+  return { title: m.findShape(m.shapes[t]), speak: [m.findShape(m.shapes[t])], visual: '',
+    options: opts.map((s, i) => ({ html: shapeSVG(s, cols[i]), val: s })), answer: t, correctSpeak: [m.shapes[t]],
+    grade: f => gradeMath('shapes', f) };
+}
+const PATTERN_SETS = [['🍎', '🍌', '🍇'], ['🔴', '🔵', '🟡'], ['🐶', '🐱', '🐭'], ['⭐', '🌙', '☀️'], ['🚗', '🚌', '🚲'], ['🌸', '🍀', '🍄']];
+function mkPatterns() {
+  const l = lvl('patterns'), m = M();
+  if (l >= 3 && Math.random() < .5) {
+    const k = pick([1, 2, 5, 10]), s = k * (1 + rand(4)), seq = [0, 1, 2, 3].map(i => s + i * k), ans = s + 4 * k;
+    return { title: m.nextPattern, speak: [m.nextPattern], optClass: 'num', answer: ans, correctSpeak: [String(ans)],
+      visual: `<div class="seq">${seq.map((x, i) => `<b style="--i:${i}">${x}</b>`).join('')}<b class="q" style="--i:4">?</b></div>`,
+      options: numOpts(ans, 0, 120), grade: f => gradeMath('patterns', f) };
+  }
+  const set = pick(PATTERN_SETS), unit = l === 1 ? [0, 1] : pick([[0, 1, 2], [0, 0, 1], [0, 1, 1]]);
+  const seq = Array.from({ length: 6 }, (_, i) => set[unit[i % unit.length]]), ans = set[unit[6 % unit.length]];
+  return { title: m.nextPattern, speak: [m.nextPattern], answer: ans, correctSpeak: [],
+    visual: `<div class="seq">${seq.map((x, i) => `<b style="--i:${i}">${x}</b>`).join('')}<b class="q" style="--i:6">?</b></div>`,
+    options: shuffle(set).map(x => ({ html: x, val: x })), grade: f => gradeMath('patterns', f) };
+}
+function clockSVG(h, mi) {
+  const ha = ((h % 12) + mi / 60) * 30, ma = mi * 6;
+  const nums = Array.from({ length: 12 }, (_, i) => { const n = i + 1, a = (n * 30 - 90) * Math.PI / 180; return `<text x="${(100 + 74 * Math.cos(a)).toFixed(1)}" y="${(100 + 74 * Math.sin(a)).toFixed(1)}">${n}</text>`; }).join('');
+  const ticks = Array.from({ length: 60 }, (_, i) => `<line x1="100" y1="${i % 5 ? 12 : 10}" x2="100" y2="${i % 5 ? 16 : 22}" transform="rotate(${i * 6} 100 100)" stroke="${i % 5 ? '#c9c2da' : '#9b7fd1'}" stroke-width="${i % 5 ? 2 : 4}"/>`).join('');
+  return `<svg class="clock" viewBox="0 0 200 200"><circle cx="100" cy="100" r="96" fill="#fff" stroke="#9b7fd1" stroke-width="8"/>${ticks}
+    <g font-size="22" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="#2d3142" font-family="Andika, sans-serif">${nums}</g>
+    <line x1="100" y1="100" x2="100" y2="52" stroke="#ff7a6b" stroke-width="9" stroke-linecap="round" transform="rotate(${ha} 100 100)"/>
+    <line x1="100" y1="100" x2="100" y2="26" stroke="#20b2a0" stroke-width="6" stroke-linecap="round" transform="rotate(${ma} 100 100)"/>
+    <circle cx="100" cy="100" r="8" fill="#2d3142"/></svg>`;
+}
+function mkClock() {
+  const l = lvl('clock'), m = M(), mins = l === 1 ? [0] : l === 2 ? [0, 30] : [0, 15, 30];
+  const h = 1 + rand(12), mi = pick(mins);
+  const say = (hh, mm) => mm === 0 ? m.oclock(hh) : mm === 30 ? m.half(hh) : m.quarter(hh);
+  const dig = (hh, mm) => `${hh}:${String(mm).padStart(2, '0')}`;
+  const set = new Map([[dig(h, mi), [h, mi]]]);
+  while (set.size < 3) { const hh = 1 + rand(12), mm = l === 1 ? 0 : pick(mins.length > 1 && Math.random() < .5 ? mins : [mi]); set.set(dig(hh, mm), [hh, mm]); }
+  return { title: m.whatTime, speak: [m.whatTime], visual: clockSVG(h, mi), optClass: 'word',
+    options: shuffle([...set.keys()]).map(k => ({ html: `<span class="digital">${k}</span>`, val: k })), answer: dig(h, mi),
+    correctSpeak: [say(h, mi)], grade: f => gradeMath('clock', f) };
+}
+function mkDoubles() {
+  const m = M(), n = 1 + rand(lvl('doubles') >= 2 ? 10 : 5), spots = Array.from({ length: n }, (_, i) => `<span class="obj spot" style="--i:${i}">●</span>`).join('');
+  return { title: `${n} + ${n} = ?`, speak: [m.double(n)], optClass: 'num',
+    visual: `<div class="fly"><div class="wing l">${spots}</div><div class="fbody"></div><div class="wing r">${spots}</div></div>`,
+    options: numOpts(2 * n, 2, 22), answer: 2 * n, correctSpeak: [m.doubleAns(n)], setup: r => tapToCount(r), grade: f => gradeMath('doubles', f) };
+}
+function mkMissing() {
+  const l = lvl('missing'), m = M(), q = L().q, max = [5, 10, 20][l - 1], e = pick(OBJECTS);
+  if (l >= 3 && Math.random() < .4) {
+    const a = 3 + rand(max - 2), ans = 1 + rand(a - 1), r = a - ans;
+    return { title: `${a} − ? = ${r}`, speak: [m.missingSub(a, r)], optClass: 'num', visual: `<div class="eq">${a} − <span class="q">?</span> = ${r}</div>`,
+      options: numOpts(ans, 0, max), answer: ans, correctSpeak: [`${a} ${q.minus} ${ans} ${q.equals} ${r}`], grade: f => gradeMath('missing', f, 3) };
+  }
+  const s = 2 + rand(max - 1), a = 1 + rand(s - 1), ans = s - a;
+  const ghosts = l < 3 ? `<span class="sign">+</span><div class="objs"><div class="five">${Array.from({ length: ans }, (_, i) => `<span class="obj ghost" style="--i:${a + i}">${e}</span>`).join('')}</div></div>` : '';
+  return { title: `${a} + ? = ${s}`, speak: [m.missingAdd(a, s)], optClass: 'num',
+    visual: `<div style="display:flex;flex-direction:column;align-items:center;gap:14px"><div class="eq">${a} + <span class="q">?</span> = ${s}</div>
+      ${l < 3 ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center">${objsHTML(a, e)}${ghosts}</div>` : ''}</div>`,
+    options: numOpts(ans, 0, max), answer: ans, correctSpeak: [`${a} ${q.plus} ${ans} ${q.equals} ${s}`], setup: r => tapToCount(r), grade: f => gradeMath('missing', f) };
+}
+function mkSkip() {
+  const l = lvl('skip'), m = M();
+  let k, seq, ans, prompt;
+  if (l >= 3 && Math.random() < .3) { const s = 8 + rand(40); seq = [s, s - 1, s - 2]; ans = s - 3; prompt = m.frogBack; }
+  else {
+    k = l === 1 ? 10 : l === 2 ? pick([2, 5, 10]) : pick([2, 5, 10, 3]);
+    const s = l === 1 ? 10 : k * (1 + rand(l === 2 ? 2 : 5));
+    seq = [s, s + k, s + 2 * k]; ans = s + 3 * k; prompt = m.frog(k);
+  }
+  return { title: prompt, speak: [prompt], optClass: 'num', answer: ans, correctSpeak: [String(ans)],
+    visual: `<div class="pads">${seq.map((x, i) => `<span class="pad" style="--i:${i}">${x}${i === 2 ? '<i class="frog">🐸</i>' : ''}</span>`).join('')}<span class="pad q" style="--i:3">?</span></div>`,
+    options: numOpts(ans, 0, 130), grade: f => gradeMath('skip', f),
+    onCorrect: r => { const fr = $('.frog', r), qp = $('.pad.q', r); if (fr && qp) { qp.textContent = ans; qp.appendChild(fr); fr.classList.add('hop'); } } };
+}
+function mkTens() {
+  const l = lvl('tens'), m = M(), n = l === 1 ? 11 + rand(9) : l === 2 ? 11 + rand(40) : 11 + rand(89), t = Math.floor(n / 10), o = n % 10;
+  const rods = Array.from({ length: t }, (_, i) => `<button class="rod" style="--i:${i}">${'<i></i>'.repeat(10)}</button>`).join('');
+  const cubes = Array.from({ length: o }, (_, i) => `<button class="cube" style="--i:${t + i}"></button>`).join('');
+  const cand = new Set([n]); const swap = o * 10 + t;
+  [swap !== n && o > 0 && swap <= 99 ? swap : null, n + 10 <= 99 ? n + 10 : n - 10, n - 1, n + 1].forEach(x => { if (x && x > 0 && cand.size < 3) cand.add(x); });
+  return { title: m.tens, speak: [m.tens], optClass: 'num', visual: `<div class="pv"><div class="rods">${rods}</div><div class="cubes">${cubes}</div></div>`,
+    options: shuffle([...cand]).map(v => ({ html: v, val: v })), answer: n, correctSpeak: [String(n)], grade: f => gradeMath('tens', f),
+    setup(root) {
+      let c = 0;
+      $$('.rod, .cube', root).forEach(b => b.addEventListener('click', () => {
+        if (b.classList.contains('counted')) return;
+        c += b.classList.contains('rod') ? 10 : 1; b.classList.add('counted'); b.dataset.n = c; sfx('tap'); say(String(c), S.lang, 1);
+      }));
+    } };
+}
+function ribbon(len, color, unit) { return `<span class="ribbon" style="width:${len * unit}px;background:${color}"><i>🐛</i></span>`; }
+function mkMeasure() {
+  const l = lvl('measure'), m = M(), unit = Math.min(44, Math.floor((innerWidth - 120) / 14));
+  if (l >= 2) {
+    const n = 2 + rand(l === 2 ? 7 : 11), color = pick(SHAPE_COLORS);
+    return { title: m.blocks, speak: [m.blocks], optClass: 'num', answer: n, correctSpeak: [String(n)], grade: f => gradeMath('measure', f, 3),
+      visual: `<div class="measure">${ribbon(n, color, unit)}<div class="ruler">${Array.from({ length: n + 3 }, (_, i) => `<button class="blk" style="width:${unit}px"></button>`).join('')}</div></div>`,
+      options: numOpts(n, 1, 16),
+      setup(root) { let c = 0; $$('.blk', root).forEach(b => b.addEventListener('click', () => { if (b.classList.contains('counted')) return; c++; b.classList.add('counted'); b.textContent = c; sfx('tap'); say(String(c), S.lang, 1); })); } };
+  }
+  let a = 3 + rand(9), b = 3 + rand(9); while (Math.abs(a - b) < 2) b = 3 + rand(9);
+  const longer = Math.random() < .6, ans = longer ? (a > b ? 'A' : 'B') : (a < b ? 'A' : 'B'), cols = shuffle(SHAPE_COLORS);
+  const prompt = longer ? m.longer : m.shorter;
+  return { title: prompt, speak: [prompt], optClass: 'stack', answer: ans, correctSpeak: [], grade: f => gradeMath('measure', f, 3), visual: '',
+    options: [{ html: ribbon(a, cols[0], unit), val: 'A' }, { html: ribbon(b, cols[1], unit), val: 'B' }] };
+}
+const DICE = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+function mkFlash() {
+  const l = lvl('flash'), m = M(), n = l === 1 ? 1 + rand(6) : l === 2 ? 1 + rand(10) : 3 + rand(7);
+  let dots;
+  if (l === 1) dots = `<div class="dice">${Array.from({ length: 9 }, (_, i) => `<i class="${DICE[n].includes(i) ? 'on' : ''}"></i>`).join('')}</div>`;
+  else if (l === 2) dots = `<div class="frame">${Array.from({ length: 10 }, (_, i) => `<i class="${i < n ? 'on' : ''}" style="--i:0">${i < n ? '🔴' : ''}</i>`).join('')}</div>`;
+  else {
+    const pos = []; while (pos.length < n) { const p = [8 + rand(80), 8 + rand(80)]; if (pos.every(q => (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 > 380)) pos.push(p); }
+    dots = `<div class="scatter">${pos.map(p => `<i style="left:${p[0]}%;top:${p[1]}%"></i>`).join('')}</div>`;
+  }
+  const show = l === 1 ? 2200 : 1800;
+  return { title: m.flash, speak: [m.flash], optClass: 'num', gate: true, answer: n, correctSpeak: [String(n)], grade: f => gradeMath('flash', f),
+    visual: `<div class="flashbox">${dots}<div class="cover">☁️</div></div><button class="btn sun again" hidden>👀 ${esc(m.seeAgain)}</button>`,
+    options: numOpts(n, 1, 12),
+    setup(root, unlock) {
+      const box = $('.flashbox', root), again = $('.again', root);
+      const hide = () => { box.classList.add('hidden'); again.hidden = false; unlock(); };
+      setTimeout(hide, show);
+      again.onclick = () => { sfx('tap'); box.classList.remove('hidden'); setTimeout(() => box.classList.add('hidden'), 1300); };
+    } };
+}
+function mkPop() {
+  const l = lvl('pop'), m = M();
+  let bubbles, prompt;
+  if (l >= 3) {
+    const good = shuffle([[1, 9], [2, 8], [3, 7], [4, 6], [5, 5]]).slice(0, 3).map(([a, b]) => ({ t: `${a}+${b}`, ok: true }));
+    const bad = Array.from({ length: 6 }, () => { let a = 1 + rand(8), b = 1 + rand(8); while (a + b === 10) b = 1 + rand(8); return { t: `${a}+${b}`, ok: false }; });
+    bubbles = shuffle([...good, ...bad]); prompt = m.popTen;
+  } else {
+    const target = l === 1 ? 1 + rand(9) : 5 + rand(16);
+    const near = Array.from({ length: 12 }, (_, i) => target - 4 + i).filter(x => x > 0 && x !== target);
+    bubbles = shuffle([...Array(3).fill({ t: String(target), ok: true }), ...shuffle(near).slice(0, 6).map(x => ({ t: String(x), ok: false }))]);
+    prompt = m.pop(target);
+  }
+  return { kind: 'pop', title: prompt, speak: [prompt], bubbles, grade: f => gradeMath('pop', f) };
+}
+function mkMathStory() {
+  const l = lvl('mathStory'), m = M(), max = l >= 2 ? 10 : 5;
+  if (Math.random() < .5) {
+    const [name, e] = pick(m.things), a = 1 + rand(max - 2), b = 1 + rand(max - a), lines = m.storyAdd(name, a, b);
+    return { title: lines[2], speak: lines, optClass: 'num', answer: a + b, correctSpeak: [String(a + b)], setup: r => tapToCount(r),
+      visual: `${objsHTML(a, e)}<span class="sign late">+</span><div class="late">${objsHTML(b, e, { offset: 0 })}</div>`,
+      options: numOpts(a + b, 0, max + 2), grade: f => gradeMath('mathStory', f, 2) };
+  }
+  const [name, e, verb] = pick(m.away), a = 2 + rand(max - 1), b = 1 + rand(a - 1), lines = m.storySub(name, a, b, verb);
+  return { title: lines[2], speak: lines, optClass: 'num', answer: a - b, correctSpeak: [String(a - b)],
+    visual: objsHTML(a, e, { away: b }),
+    options: numOpts(a - b, 0, max), grade: f => gradeMath('mathStory', f, 2) };
+}
+
 function mkTrace() {
   const d = DATA[S.lang], l = pick(introduced('letter', d.letters));
   return { kind: 'trace', glyph: l.l, say: [{ unit: l.l }, L().q.like, l.k], hint: l.e };
@@ -648,7 +849,18 @@ function mkPaperRead() {
     reveal: { html: `<div class="pic bob">${w.e}</div>`, speak: [P.wasIt, w.w] } };
 }
 function mkPaperMath() {
-  const P = L().paper, kind = rand(3);
+  const P = L().paper, kind = rand(5);
+  if (kind === 3) {
+    const [a, b] = shuffle(BASIC_SHAPES).slice(0, 2), m = M();
+    const nm = s => S.lang === 'fr' ? m.shapes[s].replace(/^le /, 'un ').replace(/^l'étoile/, 'une étoile') : m.shapes[s];
+    return { kind: 'paper', text: P.drawShapes(nm(a), nm(b)), speak: [P.drawShapes(nm(a), nm(b))],
+      visual: `${shapeSVG(a, pick(SHAPE_COLORS), 90)}${shapeSVG(b, pick(SHAPE_COLORS), 90)}` };
+  }
+  if (kind === 4) {
+    const set = pick([['○', '△'], ['○', '□', '△'], ['□', '□', '○'], ['★', '○']]);
+    const seq = Array.from({ length: 6 }, (_, i) => set[i % set.length]).join(' ');
+    return { kind: 'paper', text: P.drawPattern, speak: [P.drawPattern], visual: `<div class="wordbig" style="letter-spacing:8px">${seq} …</div>` };
+  }
   if (kind === 0) {
     const a = 1 + rand(5), b = 1 + rand(4);
     return { kind: 'paper', text: P.drawAdd(a, b), speak: [P.drawAdd(a, b)], visual: `<div class="eq">${a} + ${b} = <span class="q">?</span></div>`,
@@ -681,6 +893,7 @@ function ask(q, meta) {
   if (q.kind === 'trace') return askTrace(q, meta);
   if (q.kind === 'paper') return askPaper(q, meta);
   if (q.kind === 'sentence' || q.kind === 'story') return askReading(q, meta);
+  if (q.kind === 'pop') return askPop(q, meta);
   return askChoice(q, meta, null);
 }
 function wire(meta, finish, replay, nudgeParts) {
@@ -749,6 +962,7 @@ function askChoice(q, meta, container) {
       const o = q.options[+b.dataset.i];
       if (String(o.val) === String(q.answer)) {
         busy = true; b.classList.add('correct'); btns.forEach(x => { if (x !== b) x.disabled = true; });
+        if (q.onCorrect) q.onCorrect(root);
         const first = attempts === 0;
         sfx('good'); burstAt(b, first ? 50 : 20); owlReact('happy');
         if (first) flyStar(b); else tally('retryOk');
@@ -797,6 +1011,39 @@ function askBuild(q, meta) {
       } else {
         misses++; t.classList.remove('wobble'); void t.offsetWidth; t.classList.add('wobble'); sfx('oops'); owlReact('think');
         if (misses >= 2) { const h = tiles.find(x => !x.classList.contains('used') && x.textContent === want); h && h.classList.add('hint'); speak({ unit: units[pos] }); }
+      }
+    }));
+    speak(...q.speak);
+  });
+}
+
+// ---------- bubble pop: tap every bubble that matches ----------
+function askPop(q, meta) {
+  return new Promise(resolve => {
+    let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
+    const cols = 4, rows = Math.ceil(q.bubbles.length / cols);
+    app.innerHTML = actFrame(meta, `${promptHTML(q.title)}<div class="pond" style="--rows:${rows}">${q.bubbles.map((b, i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      return `<button class="bub" data-i="${i}" style="left:${(c + .5) / cols * 100 + (rand(9) - 4)}%;top:${(r + .5) / rows * 100 + (rand(9) - 4)}%;--d:${(2.4 + Math.random() * 1.6).toFixed(2)}s;--w:${(-Math.random() * 3).toFixed(2)}s;--h:${rand(360)}">${esc(b.t)}</button>`;
+    }).join('')}</div>`);
+    wire(meta, finish, () => speak(...q.speak), q.speak);
+    let left = q.bubbles.filter(b => b.ok).length, misses = 0;
+    $$('.bub').forEach(el => el.addEventListener('click', async () => {
+      if (el.classList.contains('popped')) return;
+      const b = q.bubbles[+el.dataset.i];
+      if (b.ok) {
+        el.classList.add('popped'); burstAt(el, 25); sfx('pop'); left--;
+        if (!left) {
+          const first = misses === 0;
+          sfx('good'); owlReact('happy'); if (first) flyStar($('.pond')); else tally('retryOk');
+          q.grade(first); logDay(first); save();
+          const cb = comboHit(first);
+          await sleep(300); await speak(...(first ? (cb ? [cb] : praiseParts()) : [pick(L().praise)]));
+          await sleep(300); finish(first);
+        }
+      } else {
+        misses++; el.classList.remove('wobble'); void el.offsetWidth; el.classList.add('wobble'); sfx('oops'); owlReact('think');
+        if (misses >= 2) $$('.bub').forEach((x, i) => { if (q.bubbles[i].ok && !x.classList.contains('popped')) x.classList.add('hint'); });
       }
     }));
     speak(...q.speak);
@@ -1011,7 +1258,11 @@ let path = null;
 function buildPath() {
   const day = new Date().getDate(), odd = day % 2 === 1;
   const lit = odd ? 'letters' : 'sight', lit2 = odd ? 'sight' : 'letters';
-  const mathA = odd ? 'add' : 'sub', mathB = ['count', 'bonds', 'next', 'compare'][day % 4];
+  // maths rotates daily through a wide mix so each day feels different
+  const dayNo = Math.floor(Date.now() / 864e5);
+  const MATH_A = ['add', 'sub', 'mathStory', 'missing', 'doubles', 'add', 'sub'];
+  const MATH_B = ['shapes', 'patterns', 'pop', 'clock', 'skip', 'tens', 'flash', 'measure', 'bonds', 'next', 'compare', 'count'];
+  const mathA = MATH_A[dayNo % MATH_A.length], mathB = MATH_B[dayNo % MATH_B.length];
   // what the path focuses on depends on where she is on the literacy journey
   const PLANS = [
     ['letters', 'blend', 'A', 'trace', 'B', 'sight', 'paperMath', 'spell'],
@@ -1203,7 +1454,7 @@ function parents() {
     }
     h += `<h4>🏅 Badges: ${Object.keys(S.badges).length}/${BADGES.length}</h4><p>${BADGES.map(b => `<span title="${esc(b.en)}" style="${S.badges[b.id] ? '' : 'opacity:.25;filter:grayscale(1)'}">${b.icon}</span>`).join(' ')}</p>
       <p>Streak: ${streakDays()} day(s) · kept trying after a mistake: ${tot('retryOk')} times · paper missions: ${tot('papers')}</p>`;
-    h += `<h4>🔢 Maths levels</h4><p>${['count', 'add', 'sub', 'bonds', 'next', 'compare'].map(a => `${T.en.acts[a]}: <b>${lvl(a)}</b>/${a === 'bonds' ? 2 : 3}`).join(' · ')}</p>`;
+    h += `<h4>🔢 Maths levels (rise after 5 first-try answers in a row, drop after 3 misses)</h4><p>${Object.keys(MATH_MAX).map(a => `${ACTS[a].icon} ${T.en.acts[a]}: <b>${lvl(a)}</b>/${MATH_MAX[a]}`).join(' · ')}</p>`;
     const days = [...Array(7)].map((_, i) => { const d = new Date(); d.setDate(d.getDate() - 6 + i); const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return [d.toLocaleDateString(undefined, { weekday: 'short' }), S.days[k] || { q: 0, ok: 0 }]; });
     const mx = Math.max(10, ...days.map(d => d[1].q));
     h += `<h4>Last 7 days (answers · first-try correct)</h4><div class="days">${days.map(([n, v]) => `<div><span>${v.q ? `${v.q}·${v.ok}` : ''}</span><i style="height:${v.q / mx * 90}%"></i>${n}</div>`).join('')}</div>`;
