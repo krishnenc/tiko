@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [],
-  settings: { stops: 5, perStop: 5, rate: 0.85, sfx: true, calm: false, breaks: true, nudge: true, voice_en: '', voice_fr: '' },
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.35, sfx: true, calm: false, breaks: true, nudge: true, voice_en: '', voice_fr: '' },
 };
 let S = load();
 function load() {
@@ -84,7 +84,10 @@ if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged
 function voicesFor(lang) { return voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(lang)); }
 function voiceFor(lang) {
   const list = voicesFor(lang), want = S.settings['voice_' + lang];
-  return list.find(v => v.name === want) || list.find(v => v.localService && /google/i.test(v.name)) ||
+  // prefer brighter, friendlier voices when the device names them
+  const bright = /female|libby|sonia|maisie|hollie|denise|eloise|amelie|amélie|audrey|julie|aria|jenny|zira|hortense|samantha|karen/i;
+  return list.find(v => v.name === want) || list.find(v => bright.test(v.name) && v.lang.replace('_', '-') === DATA[lang].voiceLang) ||
+    list.find(v => bright.test(v.name)) || list.find(v => v.localService && /google/i.test(v.name)) ||
     list.find(v => v.lang.replace('_', '-') === DATA[lang].voiceLang) || list[0] || null;
 }
 let speakToken = 0, curAudio = null;
@@ -93,12 +96,16 @@ function stopSpeech() {
   try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
   if (curAudio) { curAudio.pause(); curAudio = null; }
 }
-function say(text, lang = S.lang, rate = S.settings.rate) {
+// Bubbly voice: raised pitch overall, and an extra lift for anything exclaimed ("Bravo !", "Great job!")
+function say(text, lang = S.lang, rate = S.settings.rate, pitch = S.settings.pitch) {
   return new Promise(res => {
     if (!('speechSynthesis' in window) || !text) return res();
     const u = new SpeechSynthesisUtterance(text), v = voiceFor(lang);
     if (v) u.voice = v;
-    u.lang = v ? v.lang : DATA[lang].voiceLang; u.rate = rate; u.pitch = 1.08;
+    const excited = /!\s*$/.test(text);
+    u.lang = v ? v.lang : DATA[lang].voiceLang;
+    u.rate = Math.min(1.5, excited ? rate * 1.06 : rate);
+    u.pitch = Math.min(2, excited ? pitch + 0.15 : pitch);
     let done = false; const fin = () => { if (!done) { done = true; res(); } };
     u.onend = fin; u.onerror = fin;
     setTimeout(fin, 1500 + text.length * 110 / rate); // Android sometimes never fires onend
@@ -112,7 +119,8 @@ async function playUnit(unit, lang = S.lang, rate) {
     const blob = await idb.get('rec', key);
     if (blob) return playBlob(blob);
   }
-  return say(DATA[lang].sounds[unit] || unit, lang, (rate || S.settings.rate) * 0.9);
+  // letter sounds stay close to natural pitch so they remain clear
+  return say(DATA[lang].sounds[unit] || unit, lang, (rate || S.settings.rate) * 0.9, Math.min(S.settings.pitch, 1.15));
 }
 function playBlob(blob) {
   return new Promise(res => {
@@ -1098,6 +1106,9 @@ function parents() {
       <label class="set">Focus nudges (Tiko says "Your turn!" after 15 s with no taps) <input type="checkbox" data-s="nudge" ${st.nudge ? 'checked' : ''}></label>
       <label class="set">Sound effects <input type="checkbox" data-s="sfx" ${st.sfx ? 'checked' : ''}></label>
       <label class="set">Calm mode (less motion and confetti) <input type="checkbox" data-s="calm" ${st.calm ? 'checked' : ''}></label>
+      <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:17px">Voice style
+        <span><button class="pbtn alt vs" data-p="1.4" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-r="0.8">🌙 Calm</button></span></div>
+      <label class="set">Voice pitch (higher = more bubbly) <input type="range" min="0.8" max="1.7" step="0.05" value="${st.pitch}" data-s="pitch"></label>
       <label class="set">Voice speed <input type="range" min="0.5" max="1.1" step="0.05" value="${st.rate}" data-s="rate"></label>
       <label class="set">English voice <select data-s="voice_en">${voiceOpts('en')}</select></label>
       <label class="set">French voice <select data-s="voice_fr">${voiceOpts('fr')}</select></label>
@@ -1121,7 +1132,12 @@ function parents() {
     const k = el.dataset.s; st[k] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : /^\d+$/.test(el.value) ? +el.value : el.value;
     save(); applySettings();
   });
-  $$('.tv').forEach(b => b.onclick = () => { const l = b.dataset.l; stopSpeech(); say(l === 'fr' ? 'Bonjour ! Je suis Tiko. Un, deux, trois.' : "Hello! I'm Tiko. One, two, three.", l); });
+  const demo = async l => { stopSpeech(); await sleep(80); await say(l === 'fr' ? "Coucou ! Je suis Tiko. On lit ensemble ?" : "Hi there! I'm Tiko. Shall we read together?", l); await say(l === 'fr' ? 'Bravo, super !' : 'Great job, superstar!', l); };
+  $$('.tv').forEach(b => b.onclick = () => demo(b.dataset.l));
+  $$('.vs').forEach(b => b.onclick = () => {
+    st.pitch = +b.dataset.p; st.rate = +b.dataset.r; save();
+    $('[data-s="pitch"]').value = st.pitch; $('[data-s="rate"]').value = st.rate; demo(S.lang);
+  });
   $$('.ws').forEach(b => b.onclick = () => worksheet(b.dataset.l));
   const drawGoals = () => {
     const box = $('.goals');
