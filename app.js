@@ -309,19 +309,26 @@ function chooseItem(set, items) {
   const intro = items.filter(i => boxOf(set, i.id) > 0);
   const learning = intro.filter(i => boxOf(set, i.id) <= 2).length;
   const fresh = items.find(i => boxOf(set, i.id) === 0);
+  const rec = recent[set] || [];
   let item, isNew = false;
-  if (fresh && (intro.length < 2 || (learning < 3 && Math.random() < 0.4))) {
+  // up to 5 items in play at once; bring in a new one if there are few to choose from, or half the time otherwise
+  if (fresh && (intro.length < 4 || (learning < 5 && Math.random() < 0.5))) {
     item = fresh; isNew = true; S.boxes[bkey(set, item.id)] = 1;
   } else {
-    const rec = recent[set] || [];
-    let pool = intro.filter(i => !rec.includes(i.id)); if (!pool.length) pool = intro;
+    let pool = intro.filter(i => !rec.includes(i.id));
+    if (!pool.length) pool = intro.filter(i => i.id !== rec[0]);   // never the same item twice in a row
+    if (!pool.length) pool = intro;
     const W = [0, 10, 6, 3, 2, 1];
     item = weighted(pool, i => W[boxOf(set, i.id)]);
   }
-  recent[set] = [item.id, ...(recent[set] || [])].slice(0, Math.max(1, Math.min(3, Math.floor(intro.length / 2))));
+  recent[set] = [item.id, ...rec].slice(0, Math.max(1, Math.min(4, intro.length - 1)));
   return { item, isNew };
 }
-function gradeItem(set, id, first) { const k = bkey(set, id); S.boxes[k] = first ? Math.min(5, (S.boxes[k] || 1) + 1) : 1; }
+// right first time on its very first appearance (no hint shown) = she already knows it → jump ahead to box 3
+function gradeItem(set, id, first, wasNewUnhinted) {
+  const k = bkey(set, id);
+  S.boxes[k] = first ? (wasNewUnhinted ? 3 : Math.min(5, (S.boxes[k] || 1) + 1)) : 1;
+}
 function introduced(set, items) { const l = items.filter(i => boxOf(set, i.id) > 0); return l.length ? l : items.slice(0, 3); }
 
 // ================= the literacy journey =================
@@ -534,26 +541,26 @@ function mkStory() {
 function mkLetters() {
   const d = DATA[S.lang], q = L().q;
   const { item, isNew } = chooseItem('letter', d.letters);
-  const opts = isNew ? [item] : shuffle([item, ...shuffle(d.letters.filter(x => x.l !== item.l)).slice(0, 2)]);
+  const opts = shuffle([item, ...shuffle(d.letters.filter(x => x.l !== item.l)).slice(0, 2)]);
   return {
     title: isNew ? `${L().newLetter}…` : `${q.letter}…?`,
     speak: isNew ? [L().newLetter, { unit: item.l }, q.like, item.k, { pause: 200 }, q.tapIt] : [q.letter, { unit: item.l }, q.like, item.k],
     visual: `<div class="pic bob">${item.e}</div>`,
     options: opts.map(x => ({ html: `<span class="glyph">${esc(x.l)}</span>`, val: x.l })), answer: item.l,
     correctSpeak: [{ unit: item.l }, item.k],
-    grade: f => gradeItem('letter', item.id, f),
+    grade: f => gradeItem('letter', item.id, f), hintNew: isNew,
   };
 }
 function mkSight() {
   const d = DATA[S.lang], q = L().q;
   const { item, isNew } = chooseItem('sight', d.sight);
-  const opts = isNew ? [item] : shuffle([item, ...shuffle(d.sight.filter(x => x.w !== item.w)).slice(0, 2)]);
+  const opts = shuffle([item, ...shuffle(d.sight.filter(x => x.w !== item.w)).slice(0, 2)]);
   return {
     title: isNew ? `${q.newWord}…` : `${q.findWord} 👂`,
     speak: isNew ? [q.newWord, item.w, { pause: 200 }, q.tapIt] : [q.findWord, { pause: 150 }, item.w],
     visual: '', optClass: 'word',
     options: opts.map(x => ({ html: esc(x.w), val: x.w })), answer: item.w,
-    correctSpeak: [item.w], grade: f => gradeItem('sight', item.id, f),
+    correctSpeak: [item.w], grade: f => gradeItem('sight', item.id, f), hintNew: isNew,
   };
 }
 function unitsHTML(units, cls = '') {
@@ -562,14 +569,16 @@ function unitsHTML(units, cls = '') {
 function mkBlend() {
   const d = DATA[S.lang], q = L().q;
   const { item, isNew } = chooseItem('blend', wordsNow());
-  const others = shuffle(wordsNow().filter(x => x.e !== item.e)).slice(0, 2);
-  const opts = isNew ? [item] : shuffle([item, ...others]);
+  // two other words with different pictures from each other and from the answer (e.g. tub & bath share 🛁)
+  const others = [];
+  for (const x of shuffle(wordsNow())) if (x.e !== item.e && !others.some(o => o.e === x.e)) { others.push(x); if (others.length === 2) break; }
+  const opts = shuffle([item, ...others]);
   return {
     title: q.blend, speak: [q.blend], gate: true,
     visual: `<div style="display:flex;flex-direction:column;align-items:center;gap:18px">${unitsHTML(item.units)}
       <button class="btn sun blendbtn" disabled style="opacity:.4">🔗 ${q.blendBtn}</button></div>`,
     options: opts.map(x => ({ html: x.e, val: x.w })), answer: item.w,
-    correctSpeak: [item.w], grade: f => gradeItem('blend', item.id, f),
+    correctSpeak: [item.w], grade: f => gradeItem('blend', item.id, f), hintNew: isNew,
     setup(root, unlock) {
       const tiles = $$('.unit', root), btn = $('.blendbtn', root), need = new Set();
       tiles.forEach((t, i) => { if (!item.units[i].startsWith('_')) need.add(i); });
@@ -588,12 +597,12 @@ function mkBlend() {
 async function speakQuick(u) { if (u.startsWith('_')) return sleep(150); await playUnit(u, S.lang, 1.15); }
 function mkSpell() {
   const d = DATA[S.lang], q = L().q;
-  const { item } = chooseItem('spell', wordsNow());
+  const { item, isNew } = chooseItem('spell', wordsNow());
   const known = new Set(item.units.map(unitText));
   const pool = shuffle(d.words.flatMap(w => w.units.map(unitText))).filter(u => !known.has(u));
   const extra = [...new Set(pool)].slice(0, item.units.length <= 3 ? 2 : 1);
   return { kind: 'build', item, title: `${q.spell} ${item.e}`, speak: [q.spell, { pause: 100 }, item.w], tiles: shuffle([...item.units.map(unitText), ...extra]),
-    grade: f => gradeItem('spell', item.id, f) };
+    grade: f => gradeItem('spell', item.id, f, isNew) };
 }
 function mkCount() {
   const max = [5, 10, 20][lvl('count') - 1], n = 1 + rand(max), e = pick(OBJECTS), q = L().q;
@@ -976,7 +985,10 @@ function askChoice(q, meta, container) {
         else { const c = btns.find(x => String(q.options[+x.dataset.i].val) === String(q.answer)); c.classList.add('hint'); speak(L().itsThis, ...(q.correctSpeak || [])); }
       }
     }));
-    if (q.setup) q.setup(root, () => { box.hidden = false; });
+    // brand-new item: all choices shown, the right one glows (errorless first meeting)
+    const glowNew = () => { if (!q.hintNew) return; const c = btns.find(x => String(q.options[+x.dataset.i].val) === String(q.answer)); if (c) c.classList.add('hint'); };
+    if (q.setup) q.setup(root, () => { box.hidden = false; glowNew(); });
+    if (!q.gate) glowNew();
     if (!container) speak(...q.speak);
   });
 }
@@ -1075,21 +1087,32 @@ function askTrace(q, meta) {
     mc.font = font; mc.textAlign = 'center'; mc.textBaseline = 'middle'; mc.fillText(q.glyph, size / 2, size / 2 + size * .04);
     const data = mc.getImageData(0, 0, size, size).data, pts = [], step = Math.max(6, Math.round(size / 60));
     for (let y = 0; y < size; y += step) for (let x = 0; x < size; x += step) if (data[(y * size + x) * 4 + 3] > 128) pts.push({ x, y, c: false });
-    let covered = 0, drawing = false, last = null, hue = 0, success = false;
-    const R = size * .07, meter = $('.meter i');
+    // Forgiving check for little hands: a wide band around the finger counts, and half the letter is enough.
+    // Plus a safety net: after ~20 s of real effort (or pressing Again twice) it's accepted anyway.
+    const GOAL = .5;
+    let covered = 0, drawing = false, last = null, hue = 0, success = false, inkTime = 0, lastMove = 0, resets = 0;
+    const R = size * .12, meter = $('.meter i');
     const reset = () => { ink.clearRect(0, 0, size, size); pts.forEach(p => p.c = false); covered = 0; meter.style.width = '0%'; };
     const pos = e => { const r = iC.getBoundingClientRect(); return { x: (e.clientX - r.left) * size / r.width, y: (e.clientY - r.top) * size / r.height }; };
-    const mark = p => { for (const t of pts) if (!t.c && (t.x - p.x) ** 2 + (t.y - p.y) ** 2 < R * R) { t.c = true; covered++; } meter.style.width = Math.min(100, covered / pts.length / .65 * 100) + '%'; };
+    const mark = p => {
+      for (const t of pts) if (!t.c && (t.x - p.x) ** 2 + (t.y - p.y) ** 2 < R * R) { t.c = true; covered++; }
+      meter.style.width = Math.min(100, covered / pts.length / GOAL * 100) + '%';
+    };
+    const enough = () => covered / pts.length >= GOAL || inkTime > 20000 || resets >= 2;
     iC.addEventListener('pointerdown', e => { if (success) return; drawing = true; last = pos(e); try { iC.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } mark(last); });
     iC.addEventListener('pointermove', e => {
       if (!drawing) return; const p = pos(e);
-      ink.strokeStyle = `hsl(${hue = (hue + 4) % 360} 85% 60%)`; ink.lineWidth = size * .065; ink.lineCap = 'round'; ink.lineJoin = 'round';
-      ink.beginPath(); ink.moveTo(last.x, last.y); ink.lineTo(p.x, p.y); ink.stroke(); last = p; mark(p);
+      // also mark points in between fast finger moves so quick strokes still count
+      const steps = Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / (R / 2)));
+      for (let s = 1; s <= steps; s++) mark({ x: last.x + (p.x - last.x) * s / steps, y: last.y + (p.y - last.y) * s / steps });
+      ink.strokeStyle = `hsl(${hue = (hue + 4) % 360} 85% 60%)`; ink.lineWidth = size * .07; ink.lineCap = 'round'; ink.lineJoin = 'round';
+      ink.beginPath(); ink.moveTo(last.x, last.y); ink.lineTo(p.x, p.y); ink.stroke(); last = p;
+      const now = performance.now(); if (now - lastMove < 200) inkTime += now - lastMove; lastMove = now;
       if (Math.random() < .08) sfx('tap');
     });
     const up = async () => {
       if (!drawing) return; drawing = false;
-      if (!success && covered / pts.length >= .65) {
+      if (!success && enough()) {
         success = true; sfx('win'); burstAt(box, 80); owlReact('happy'); flyStar(box); tally('traces'); logDay(true); save();
         await speak(...praiseParts(), ...q.say);
         await askPaperStep(P.nowPaper, `<div class="wordbig">${esc(q.glyph)}</div>`);
@@ -1097,7 +1120,7 @@ function askTrace(q, meta) {
       }
     };
     iC.addEventListener('pointerup', up); iC.addEventListener('pointercancel', up);
-    $('.again').onclick = () => { sfx('tap'); reset(); };
+    $('.again').onclick = () => { sfx('tap'); resets++; reset(); };
     speak(P.trace, ...q.say);
   });
 }
