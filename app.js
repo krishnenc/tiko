@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 21;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 22;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -34,6 +34,8 @@ function load() {
 if (S.settings.pitch === 1.35) S.settings.pitch = 1.5;
 // v17: the voice had gone flat on her tablet — lift anything below the bubbly range back up (once)
 if (!S.settings.pitchV17) { if (S.settings.pitch < 1.6) S.settings.pitch = 1.6; S.settings.pitchV17 = true; }
+// v22: "known once = never again". Anything she has already got right (box 2+) becomes known for ever.
+if (!S.knownV22) { for (const k of Object.keys(S.boxes || {})) if (S.boxes[k] >= 2) { S.boxes[k] = 5; S.due[k] = 'never'; } S.knownV22 = true; }
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
 function applySettings() { document.body.classList.toggle('calm', !!S.settings.calm); document.documentElement.lang = S.lang; }
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* ignore */ }
@@ -353,39 +355,41 @@ function chooseItem(set, items) {
   // Items she missed (box 1–2) come back for practice once a few others have gone by (the "recent" window);
   // a new item comes in when there's nothing ready to practise, or half the time while fewer than 5 are being learned.
   const ready = avail.filter(i => !rec.includes(i.id));
-  if (fresh && (!ready.length || (learning < 5 && Math.random() < 0.5))) {
-    item = fresh; isNew = true; S.boxes[bkey(set, item.id)] = 1;
-  } else {
-    let pool = avail.filter(i => !rec.includes(i.id));
-    if (!pool.length) pool = avail.filter(i => i.id !== rec[0]);   // never the same item twice in a row
-    if (!pool.length) pool = avail;
-    if (!pool.length) {                                           // everything learned and resting: review the one due soonest
-      const byDue = intro.filter(i => i.id !== rec[0]).sort((a, b) => (S.due[bkey(set, a.id)] || '').localeCompare(S.due[bkey(set, b.id)] || ''));
-      pool = byDue.slice(0, 1).length ? byDue.slice(0, 1) : intro;
-    }
-    const W = [0, 10, 6, 3, 2, 1];
-    item = weighted(pool, i => W[boxOf(set, i.id)]);
-  }
-  recent[set] = [item.id, ...rec].slice(0, Math.max(1, Math.min(4, intro.length - 1)));
+  void ready; void learning; void fresh; void avail;   // (replaced by the simpler rule below)
+  // THE RULE (parent's wish): right first time = known for ever, never shown again. Only items she got WRONG
+  // come back, at random, until she gets them right. Everything else is new.
+  const missed = items.filter(i => { const b = boxOf(set, i.id); return b > 0 && b < 5 && !isKnown(set, i.id); });
+  const newOnes = items.filter(i => boxOf(set, i.id) === 0 && !isKnown(set, i.id));
+  const practise = missed.filter(i => !rec.includes(i.id));
+  if (practise.length && (!newOnes.length || Math.random() < 0.4)) item = pick(practise);
+  else if (newOnes.length) { item = newOnes[0]; isNew = true; S.boxes[bkey(set, item.id)] = 1; }
+  else if (missed.length) { const notLast = missed.filter(i => i.id !== rec[0]); item = pick(notLast.length ? notLast : missed); }
+  else { const notLast = items.filter(i => i.id !== rec[0]); item = pick(notLast.length ? notLast : items); }   // she knows every one at this level
+  recent[set] = [item.id, ...rec].slice(0, Math.max(1, Math.min(3, missed.length - 1)));
   return { item, isNew };
 }
+// a word counts as known if she got it right in ANY word activity (blending, robot talk, build a word, families)
+const WORD_SETS = ['blend', 'oral', 'spell', 'fam'];
+function isKnown(set, id) { return boxOf(set, id) >= 5 || (WORD_SETS.includes(set) && WORD_SETS.some(s => boxOf(s, id) >= 5)); }
 // Right first time = she knows it: it moves to box 3+ and rests until its review date (3 days, then 7, then 21),
 // so a known word is never repeated the same day. A miss puts it back in box 1 and it stays in today's practice.
 const REVIEW_DAYS = [0, 0, 1, 3, 7, 21];
 const dayPlus = n => ymd(new Date(Date.now() + n * 864e5));
 const isDue = (set, id) => { const d = S.due[bkey(set, id)]; return !d || d <= today(); };
 // a brand-new item right first time might be a lucky guess: it rests until tomorrow (box 2), then one more right = known
-function gradeItem(set, id, first, isNew) {
+// right first time → known for ever (box 5, never due again); a mistake → box 1, it will come back to practise
+function gradeItem(set, id, first) {
   const k = bkey(set, id);
-  const box = !first ? 1 : isNew ? 2 : Math.min(5, Math.max(3, (S.boxes[k] || 1) + 1));
-  S.boxes[k] = box;
-  S.due[k] = dayPlus(REVIEW_DAYS[box]);
+  S.boxes[k] = first ? 5 : 1;
+  S.due[k] = first ? 'never' : today();
 }
 function introduced(set, items) { const l = items.filter(i => boxOf(set, i.id) > 0); return l.length ? l : items.slice(0, 3); }
 
 // ================= the literacy journey =================
 // Six places. Each unlocks when the skill before it is genuinely remembered (spaced-repetition box >= 3).
-const frac = (lg, set, items) => items.length ? items.filter(i => (S.boxes[`${lg}:${set}:${i.id}`] || 0) >= 3).length / items.length : 1;
+// share of items she knows (a word known through ANY word activity counts)
+const frac = (lg, set, items) => items.length ? items.filter(i => (S.boxes[`${lg}:${set}:${i.id}`] || 0) >= 3 ||
+  (['blend', 'oral', 'spell', 'fam'].includes(set) && ['blend', 'oral', 'spell', 'fam'].some(s => (S.boxes[`${lg}:${s}:${i.id}`] || 0) >= 5))).length / items.length : 1;
 const cnt = (lg, k) => ((S.counts[lg] || {})[k]) || 0;
 function bumpCount(k) { const c = S.counts[S.lang] = S.counts[S.lang] || {}; c[k] = (c[k] || 0) + 1; }
 // word difficulty levels: tier(lg, 1) = simple words, 2 = digraphs/blends (FR: ou/on/ch…), 3 = long vowels (FR: complex
@@ -408,7 +412,7 @@ function stageOf(lg = S.lang) { for (let i = 0; i < STAGES.length; i++) if (stag
 // so she starts at the chosen place. Forward only — it never erases progress.
 function startJourneyAt(lg, target) {
   let n = 0;
-  const know = (set, items) => items.forEach(i => { const k = `${lg}:${set}:${i.id}`; if ((S.boxes[k] || 0) < 3) { S.boxes[k] = 3; S.due[k] = dayPlus(REVIEW_DAYS[3]); n++; } });
+  const know = (set, items) => items.forEach(i => { const k = `${lg}:${set}:${i.id}`; if ((S.boxes[k] || 0) < 5) { S.boxes[k] = 5; S.due[k] = 'never'; n++; } });
   const c = S.counts[lg] = S.counts[lg] || {};
   const steps = [() => know('letter', DATA[lg].letters), () => know('blend', tier(lg, 1)), () => know('sight', DATA[lg].sight.slice(0, 20)),
     () => know('blend', tier(lg, 2)), () => { c.sentence = Math.max(c.sentence || 0, 15); }, () => know('blend', tier(lg, 3)),
@@ -418,8 +422,26 @@ function startJourneyAt(lg, target) {
   return n;
 }
 // words she meets now grow with the journey: level 1 → +2 at Tricky Sound Mountain → +3 at the Lagoon → +4 at the Summit
-function wordLevel(lg = S.lang) { const st = stageOf(lg); return st < 3 ? 1 : st < 5 ? 2 : st < 7 ? 3 : 4; }
+function wordLevel(lg = S.lang) {
+  const st = stageOf(lg); let lv = st < 3 ? 1 : st < 5 ? 2 : st < 7 ? 3 : 4;
+  // never run out of new words: if she already knows every word at this level, open up the next one
+  const known = w => WORD_SETS.some(s => (S.boxes[`${lg}:${s}:${w.id}`] || 0) >= 5);
+  const maxLv = DATA[lg].tiers.filter((t, i, a) => i === 0 || t > a[i - 1]).length;
+  while (lv < maxLv && DATA[lg].words.slice(0, DATA[lg].tiers[lv - 1]).every(known)) lv++;
+  return lv;
+}
 function wordsNow() { const d = DATA[S.lang]; return d.words.slice(0, d.tiers[wordLevel() - 1]); }
+// A fresh pick: something not used yet TODAY by this activity (same language). Only once every item has had a turn
+// does the list start over — so the same word (e.g. "vélo") doesn't keep coming back.
+function pickFresh(key, list) {
+  // remembered across days: each item is used once before any repeats
+  S.used = S.used || {}; delete S.used.day;
+  const k = S.lang + ':' + key, used = S.used[k] = S.used[k] || [];
+  let pool = list.filter(x => !used.includes(x.id)); if (!pool.length) { used.length = 0; pool = list; }
+  const it = pick(pool); used.push(it.id); save(); return it;
+}
+// words she hasn't yet shown she knows (falls back to all of them if she knows every word at this level)
+const notKnown = list => { const l = list.filter(w => !isKnown('blend', w.id)); return l.length ? l : list; };
 function knownWords() {
   const k = DATA[S.lang].words.filter(w => boxOf('blend', w.id) > 0);
   return new Set(k.map(w => w.e)).size >= 3 ? k : DATA[S.lang].words.slice(0, 8);
@@ -646,7 +668,7 @@ T.en.acts.sentence = 'Read a sentence'; T.fr.acts.sentence = 'Lire une phrase';
 T.en.acts.story = 'Little stories'; T.fr.acts.story = 'Petites histoires';
 
 function mkSentence() {
-  const R = L().read, known = knownWords(), w = pick(known);
+  const R = L().read, known = knownWords(), w = pickFresh('sentence', known);
   // from Long Vowel Lagoon on, half the sentences have two things to read; the answer is a PAIR of pictures,
   // and the wrong pairs share one picture, so both words really have to be read
   if (stageOf() >= 5 && Math.random() < .5) {
@@ -665,7 +687,7 @@ function mkSentence() {
     grade: f => { if (f) bumpCount('sentence'); } };
 }
 function mkStory() {
-  const R = L().read, ws = shuffle(knownWords()), A = ws[0], B = ws.find(x => x.e !== A.e);
+  const R = L().read, ws = shuffle(knownWords()), A = pickFresh('story', ws), B = ws.find(x => x.e !== A.e);
   const st = pick(STORIES[S.lang])(A.w, B.w), ans = st.answer === 'A' ? A : B;
   const C = shuffle(DATA[S.lang].words.filter(x => x.e !== A.e && x.e !== B.e))[0];
   return { kind: 'story', title: R.story, speak: [R.story], lines: st.lines, q: st.q, optClass: '',
@@ -1159,7 +1181,7 @@ function mkMathStory() {
 }
 
 function mkTrace() {
-  const d = DATA[S.lang], l = pick(introduced('letter', d.letters));
+  const d = DATA[S.lang], l = pickFresh('trace', introduced('letter', d.letters));
   return { kind: 'trace', glyph: l.l, say: [{ unit: l.l }, L().q.like, l.k], hint: l.e };
 }
 function mkTraceNum() {
@@ -1169,10 +1191,10 @@ function mkTraceNum() {
 function mkPaperRead() {
   const d = DATA[S.lang], P = L().paper, kind = rand(3);
   if (kind === 0) {
-    const l = pick(introduced('letter', d.letters));
+    const l = pickFresh('paperLetter', introduced('letter', d.letters));
     return { kind: 'paper', text: P.writeLetter(l.l), speak: [P.writeLetter(l.l)], visual: `<div class="wordbig">${esc(l.l)}</div><div class="pic">${l.e}</div>` };
   }
-  const w = pick(introduced('blend', d.words));
+  const w = pickFresh('paperWord', notKnown(wordsNow()));
   if (kind === 1) return { kind: 'paper', text: P.writeWord(w.w), speak: [P.writeWord(w.w)], visual: `<div class="wordbig">${esc(w.w)}</div><div class="pic">${w.e}</div>` };
   return { kind: 'paper', text: P.drawWord, speak: [P.drawWord], visual: `<div class="wordbig">${esc(w.w)}</div>`,
     reveal: { html: `<div class="pic bob">${w.e}</div>`, speak: [P.wasIt, w.w] } };
@@ -1392,7 +1414,7 @@ async function saveArt(blob, label) {
 function paintStudio(opts = {}) {
   return new Promise(resolve => {
     clearIdle(); stopSpeech();
-    const word = opts.word ? pick(knownWords()) : null;
+    const word = opts.word ? pickFresh('readDraw', knownWords()) : null;
     const title = word ? `<span class="wordchip">${esc(word.w)}</span>` : esc(opts.mirror ? A().mirrorTitle : A().paintTitle);
     app.innerHTML = studioFrame(title) + `
       <div class="paintwrap ${opts.mirror ? 'mirror' : ''}"><canvas class="paint"></canvas></div>
@@ -1840,10 +1862,9 @@ function askTrace(q, meta) {
     mc.font = font; mc.textAlign = 'center'; mc.textBaseline = 'middle'; mc.fillText(q.glyph, size / 2, size / 2 + size * .04);
     const data = mc.getImageData(0, 0, size, size).data, pts = [], step = Math.max(6, Math.round(size / 60));
     for (let y = 0; y < size; y += step) for (let x = 0; x < size; x += step) if (data[(y * size + x) * 4 + 3] > 128) pts.push({ x, y, c: false });
-    // Forgiving check for little hands: a wide band around the finger counts, and half the letter is enough.
-    // Safety nets: after ~12 s of real tracing (or pressing Again twice) it's accepted, and once she has traced
-    // a fair amount a "Done!" button appears so she can never get stuck.
-    const GOAL = .5;
+    // She must trace (nearly) the WHOLE letter: ~70% of its shape. Nothing finishes it early by time.
+    // A "Done!" button appears only once she has traced at least half, as a backup if she can't quite finish.
+    const GOAL = .7;
     let covered = 0, drawing = false, last = null, hue = 0, success = false, inkTime = 0, lastMove = 0, resets = 0;
     const R = size * .12, meter = $('.meter i');
     const reset = () => { ink.clearRect(0, 0, size, size); pts.forEach(p => p.c = false); covered = 0; meter.style.width = '0%'; };
@@ -1851,9 +1872,9 @@ function askTrace(q, meta) {
     const mark = p => {
       for (const t of pts) if (!t.c && (t.x - p.x) ** 2 + (t.y - p.y) ** 2 < R * R) { t.c = true; covered++; }
       meter.style.width = Math.min(100, covered / pts.length / GOAL * 100) + '%';
-      if (covered / pts.length >= .25 || inkTime > 5000) $('.tracedone').hidden = false;
+      if (covered / pts.length >= .6) $('.tracedone').hidden = false;   // backup only when she's nearly there
     };
-    const enough = () => covered / pts.length >= GOAL || inkTime > 12000 || resets >= 2;
+    const enough = () => covered / pts.length >= GOAL;
     iC.addEventListener('pointerdown', e => { if (success) return; drawing = true; last = pos(e); try { iC.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } mark(last); });
     iC.addEventListener('pointermove', e => {
       if (!drawing) return; const p = pos(e);
@@ -1881,11 +1902,11 @@ function askTrace(q, meta) {
 
 // ---------- listen & trace: words (sound by sound) and sentences (word by word) ----------
 function mkTraceWord() {
-  const w = pick(knownWords()), T2 = L().tr;
+  const w = pickFresh('traceWord', notKnown(wordsNow())), T2 = L().tr;   // any word at her level, a different one each time
   return { kind: 'traceText', intro: T2.word, items: [{ text: w.w, units: w.units, say: w.w }], full: w.w, pic: w.e, paper: T2.nowWord };
 }
 function mkTraceSentence() {
-  const w = pick(knownWords()), s = pick(SENTENCES[S.lang])(w.w), T2 = L().tr;
+  const w = pickFresh('traceSentence', knownWords()), s = pick(SENTENCES[S.lang])(w.w), T2 = L().tr;
   const words = s.split(' ').filter(t => /\p{L}/u.test(t));
   return { kind: 'traceText', intro: T2.sentence, items: words.map(t => ({ text: t, units: null, say: t.replace(/[.,!?;:]/g, '') })),
     full: s, pic: w.e, paper: T2.nowSentence };
@@ -1933,7 +1954,7 @@ function askTraceText(q, meta) {
       const d = mc.getImageData(0, 0, m.width, m.height).data, step = Math.max(5, Math.round(fs / 22));
       pts = [];
       for (let yy = 0; yy < m.height; yy += step) for (let xx = 0; xx < m.width; xx += step) if (d[(yy * m.width + xx) * 4 + 3] > 128) {
-        const si = segs.findIndex(s => xx >= s.a && xx < s.b); if (si < 0) continue;
+        const si = segs.findIndex(s => xx >= s.a && xx < s.b); if (si < 0 || !/\p{L}/u.test(segs[si].text)) continue;   // full stops, ! and ? don't need tracing
         pts.push({ x: xx, y: yy, c: false, s: si }); segs[si].n++;
       }
       covered = 0; inkTime = 0; resets = 0; meter.style.width = '0%'; $('.tracedone').hidden = true;
@@ -1943,14 +1964,14 @@ function askTraceText(q, meta) {
     const pos = e => { const r = iC.getBoundingClientRect(); return { x: (e.clientX - r.left) * Wd / r.width, y: (e.clientY - r.top) * Ht / r.height }; };
     const mark = p => {
       for (const t of pts) if (!t.c && (t.x - p.x) ** 2 + (t.y - p.y) ** 2 < R * R) { t.c = true; covered++; segs[t.s].c++; }
-      meter.style.width = Math.min(100, covered / Math.max(1, pts.length) / .45 * 100) + '%';
-      if (covered / Math.max(1, pts.length) >= .25 || inkTime > 5000) $('.tracedone').hidden = false;
-      // sounds play strictly in reading order: a part counts once she has traced about a third of it
+      meter.style.width = Math.min(100, covered / Math.max(1, pts.length) / .65 * 100) + '%';
+      if (covered / Math.max(1, pts.length) >= .55) $('.tracedone').hidden = false;   // backup only when she's nearly there
+      // sounds play strictly in reading order: a part counts once she has traced about half of it
       // AND every part before it is done (so "cat" is always c… a… t, never t first)
       const queue = [];
       for (const [i, s] of segs.entries()) {
         if (s.done || !s.n) continue;
-        if (s.c / s.n < .35) break;
+        if (s.c / s.n < .5) break;
         s.done = true; queue.push(i);
       }
       playParts(queue);
@@ -1965,10 +1986,10 @@ function askTraceText(q, meta) {
         });
       }
     };
-    // Forgiving: about half the word overall with every part at least touched; or ~12 s of real tracing; or Again twice
+    // She must trace the whole word: ~65% overall AND every letter at least half traced. Nothing finishes it by time.
     const complete = () => {
       const all = covered / Math.max(1, pts.length);
-      return (all >= .45 && segs.every(s => !s.n || s.c / s.n >= .2)) || inkTime > 12000 || resets >= 2;
+      return all >= .65 && segs.every(s => !s.n || s.c / s.n >= .5);
     };
     iC.addEventListener('pointerdown', e => { if (busy) return; drawing = true; last = pos(e); try { iC.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } mark(last); });
     iC.addEventListener('pointermove', e => {
