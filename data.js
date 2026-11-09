@@ -19,7 +19,8 @@ const DATA = {
       ['y', 'yuh', 'yo-yo', '🪀'], ['z', 'zzz', 'zebra', '🦓'],
     ],
     // extra sound units (digraphs) – used in words and in the parent recording list
-    extraSounds: { sh: 'shh', ch: 'ch', th: 'th', ck: 'kuh', ll: 'lll', ng: 'ng', ee: 'ee', oo: 'oo', ar: 'ar' },
+    extraSounds: { sh: 'shh', ch: 'ch', th: 'th', ck: 'kuh', ll: 'lll', ng: 'ng', ee: 'ee', oo: 'oo', ar: 'ar',
+      ay: 'ay', igh: 'eye', oa: 'oh', ue: 'you', or: 'or', ow: 'ow', oi: 'oy', er: 'er' },
     // words in teaching order: simple CVC first, then digraphs/blends
     words: [
       ['cat', 'c a t', '🐱'], ['sun', 's u n', '☀️'], ['dog', 'd o g', '🐶'], ['pig', 'p i g', '🐷'],
@@ -35,7 +36,20 @@ const DATA = {
       ['moon', 'm oo n', '🌙'], ['book', 'b oo k', '📖'], ['frog', 'f r o g', '🐸'], ['crab', 'c r a b', '🦀'],
       ['drum', 'd r u m', '🥁'], ['flag', 'f l a g', '🚩'], ['hand', 'h a n d', '✋'], ['milk', 'm i l k', '🥛'],
       ['tent', 't e n t', '⛺'], ['bath', 'b a th', '🛁'], ['car', 'c ar', '🚗'], ['star', 's t ar', '⭐'],
+      // level 3: long vowels & vowel teams ("text:sound" — the tile shows the letters, plays the sound; _e = silent e)
+      ['cake', 'c a:ay k _e', '🎂'], ['kite', 'k i:igh t _e', '🪁'], ['bike', 'b i:igh k _e', '🚲'], ['snake', 's n a:ay k _e', '🐍'],
+      ['cube', 'c u:ue b _e', '🧊'], ['bone', 'b o:oa n _e', '🦴'], ['rain', 'r ai:ay n', '🌧️'], ['snail', 's n ai:ay l', '🐌'],
+      ['train', 't r ai:ay n', '🚂'], ['boat', 'b oa t', '⛵'], ['goat', 'g oa t', '🐐'], ['coat', 'c oa t', '🧥'],
+      ['queen', 'qu:q ee n', '👸'], ['corn', 'c or n', '🌽'], ['fork', 'f or k', '🍴'], ['horse', 'h or s _e', '🐴'],
+      ['cow', 'c ow', '🐄'], ['owl', 'ow l', '🦉'], ['coin', 'c oi n', '🪙'], ['night', 'n igh t', '🌃'], ['light', 'l igh t', '💡'],
+      // level 4: two-syllable words
+      ['rabbit', 'r a bb:b i t', '🐰'], ['robot', 'r o:oa b o t', '🤖'], ['lemon', 'l e m o:u n', '🍋'], ['pencil', 'p e n c:s i l', '✏️'],
+      ['rocket', 'r o ck e t', '🚀'], ['carrot', 'c a rr:r o:u t', '🥕'], ['picnic', 'p i c n i c', '🧺'], ['hotdog', 'h o t d o g', '🌭'],
+      ['laptop', 'l a p t o p', '💻'], ['pumpkin', 'p u m p k i n', '🎃'], ['sandwich', 's a n d w i ch', '🥪'], ['muffin', 'm u ff:f i n', '🧁'],
+      ['tiger', 't i:igh g er', '🐯'], ['spider', 's p i:igh d er', '🕷️'], ['monster', 'm o n s t er', '👾'], ['button', 'b u tt:t o:u n', '🔘'],
+      ['sunflower', 's u n f l ow er', '🌻'], ['rainbow', 'r ai:ay n b ow:oa', '🌈'], ['snowman', 's n ow:oa m a n', '⛄'],
     ],
+    tiers: [26, 50, 71, 90],   // end of each difficulty level in the list above
     sight: ['I', 'a', 'the', 'and', 'is', 'it', 'in', 'to', 'you', 'my', 'we', 'see', 'go', 'he', 'she',
       'me', 'can', 'like', 'look', 'up', 'no', 'yes', 'said', 'was', 'are', 'for', 'on', 'at', 'big',
       'little', 'here', 'come', 'play', 'this', 'they', 'have', 'do', 'of', 'all', 'with'],
@@ -67,7 +81,15 @@ const DATA = {
       ['souris', 'sou ri _s', '🐭'], ['bateau', 'ba teau', '🚢'], ['gâteau', 'gâ teau', '🎂'], ['cadeau', 'ca deau', '🎁'],
       ['citron', 'ci tron', '🍋'], ['avion', 'a vion', '✈️'], ['maison', 'mai son', '🏠'], ['poisson', 'poi sson', '🐟'],
       ['fourmi', 'four mi', '🐜'], ['oiseau', 'oi seau', '🐦'], ['chocolat', 'cho co la _t', '🍫'], ['chien', 'chien', '🐶'],
+      // niveau 3 : sons complexes et mots longs
+      ['papillon', 'pa pi llon', '🦋'], ['grenouille', 'gre nouille', '🐸'], ['fraise', 'frai se', '🍓'], ['montagne', 'mon ta gne', '⛰️'],
+      ['étoile', 'é toi le', '⭐'], ['pingouin', 'pin gouin', '🐧'], ['crocodile', 'cro co di le', '🐊'], ['citrouille', 'ci trouille', '🎃'],
+      ['tortue', 'tor tue', '🐢'], ['fromage', 'fro ma ge', '🧀'], ['voiture', 'voi tu re', '🚗'], ['girafe', 'gi ra fe', '🦒'],
+      ['baleine', 'ba lei ne', '🐋'], ['dauphin', 'dau phin', '🐬'], ['requin', 're quin', '🦈'], ['camion', 'ca mion', '🚚'],
+      ['chameau', 'cha meau', '🐫'], ['abeille', 'a beille', '🐝'], ['soleil', 'so leil', '☀️'], ['parapluie', 'pa ra pluie', '☂️'],
+      ['éléphant', 'é lé phant', '🐘'], ['escargot', 'es car go _t', '🐌'],
     ],
+    tiers: [18, 42, 64, 64],
     sight: ['je', 'tu', 'il', 'elle', 'on', 'un', 'une', 'le', 'la', 'les', 'et', 'est', 'a', 'de', 'des',
       'mon', 'ma', 'dans', 'sur', 'avec', 'oui', 'non', "c'est", 'pas', 'petit', 'grand', 'voici', 'moi',
       'papa', 'maman'],
@@ -78,7 +100,9 @@ const DATA = {
 DATA.en.simpleWords = 26;
 DATA.fr.simpleWords = 18;
 // French grammatical gender (feminine words); everything else is masculine
-const FR_FEM = new Set(['lune', 'moto', 'tomate', 'salade', 'tulipe', 'robe', 'vache', 'poule', 'banane', 'pomme', 'souris', 'maison', 'fourmi']);
+const FR_FEM = new Set(['lune', 'moto', 'tomate', 'salade', 'tulipe', 'robe', 'vache', 'poule', 'banane', 'pomme', 'souris', 'maison', 'fourmi',
+  'grenouille', 'fraise', 'montagne', 'étoile', 'citrouille', 'tortue', 'voiture', 'girafe', 'baleine', 'abeille']);
+const aan = w => /^[aeiou]/.test(w) ? 'an' : 'a';   // a cat, an owl
 const frUn = w => FR_FEM.has(w) ? 'une' : 'un';
 const frLe = w => /^[aeiouéèêh]/.test(w) ? "l'" : FR_FEM.has(w) ? 'la ' : 'le ';
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -86,17 +110,24 @@ const frCol = c => /^[aeiou]/.test(c) ? "l'" + c : 'le ' + c;   // le rouge, l'o
 
 // Sentences & tiny stories, built from words she has already met.
 const SENTENCES = {
-  en: [w => `I see a ${w}.`, w => `The ${w} is big.`, w => `I like the ${w}.`, w => `Look at the ${w}!`,
-    w => `Here is my ${w}.`, w => `Can you see the ${w}?`, w => `It is a ${w}.`],
+  en: [w => `I see ${aan(w)} ${w}.`, w => `The ${w} is big.`, w => `I like the ${w}.`, w => `Look at the ${w}!`,
+    w => `Here is my ${w}.`, w => `Can you see the ${w}?`, w => `It is ${aan(w)} ${w}.`],
   fr: [w => `Je vois ${frUn(w)} ${w}.`, w => `Voici ${frUn(w)} ${w}.`, w => `J'aime ${frLe(w)}${w}.`,
     w => `Il y a ${frUn(w)} ${w}.`, w => `Regarde ${frLe(w)}${w} !`, w => `C'est ${frUn(w)} ${w}.`],
+};
+// harder sentences (later on the journey): two things to read — answered with a pair of pictures
+const SENTENCES2 = {
+  en: [(a, b) => `I can see ${aan(a)} ${a} and ${aan(b)} ${b}.`, (a, b) => `The ${a} is next to the ${b}.`,
+    (a, b) => `Look at the ${a} and the ${b}!`, (a, b) => `My ${a} is bigger than my ${b}.`],
+  fr: [(a, b) => `Je vois ${frUn(a)} ${a} et ${frUn(b)} ${b}.`, (a, b) => `Il y a ${frUn(a)} ${a} et ${frUn(b)} ${b}.`,
+    (a, b) => `Regarde ${frLe(a)}${a} et ${frLe(b)}${b} !`, (a, b) => `J'aime ${frLe(a)}${a} et ${frLe(b)}${b}.`],
 };
 // each story: (A, B) => { lines, q, answer: 'A'|'B' }
 const STORIES = {
   en: [
-    (A, B) => ({ lines: [`I see a ${A}.`, `The ${A} can see a ${B}.`, `The ${B} is big.`, `Look at the ${A} and the ${B}!`], q: `What can the ${A} see?`, answer: 'B' }),
-    (A, B) => ({ lines: [`I have a ${A}.`, `I have a ${B} too.`, `The ${A} is little.`, `I like my ${B}!`], q: 'What is little?', answer: 'A' }),
-    (A, B) => ({ lines: [`Here is a ${A}.`, `The ${A} is on a ${B}.`, `Is it a big ${B}?`, `Yes! It is big.`], q: `The ${A} is on a…?`, answer: 'B' }),
+    (A, B) => ({ lines: [`I see ${aan(A)} ${A}.`, `The ${A} can see ${aan(B)} ${B}.`, `The ${B} is big.`, `Look at the ${A} and the ${B}!`], q: `What can the ${A} see?`, answer: 'B' }),
+    (A, B) => ({ lines: [`I have ${aan(A)} ${A}.`, `I have ${aan(B)} ${B} too.`, `The ${A} is little.`, `I like my ${B}!`], q: 'What is little?', answer: 'A' }),
+    (A, B) => ({ lines: [`Here is ${aan(A)} ${A}.`, `The ${A} is on ${aan(B)} ${B}.`, `Is it a big ${B}?`, `Yes! It is big.`], q: `The ${A} is on a…?`, answer: 'B' }),
   ],
   fr: [
     (A, B) => ({ lines: [`Je vois ${frUn(A)} ${A}.`, `${cap(frLe(A))}${A} voit ${frUn(B)} ${B}.`, `Regarde ${frLe(A)}${A} et ${frLe(B)}${B} !`], q: `Qu'est-ce que ${frLe(A)}${A} voit ?`, answer: 'B' }),
@@ -120,9 +151,12 @@ for (const lang of Object.keys(DATA)) {
 // French vowels and syllables are read well by the French voice, so only consonants have clips.
 const SOUND_CLIPS = {
   en: ['a', 'ar', 'b', 'c', 'ch', 'ck', 'd', 'e', 'ee', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'll', 'm', 'n', 'ng', 'o', 'oo',
-    'p', 'q', 'r', 's', 'sh', 't', 'th', 'u', 'v', 'w', 'x', 'y', 'z'],
+    'p', 'q', 'r', 's', 'sh', 't', 'th', 'u', 'v', 'w', 'x', 'y', 'z', 'ay', 'igh', 'oa', 'ue', 'or', 'ow', 'oi', 'er'],
   fr: ['b', 'c', 'ch', 'd', 'f', 'g', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 's', 't', 'v', 'z'],
 };
+// a word part is "text" or "text:sound" (tile shows text, plays sound); "_x" = silent letter
+const unitText = u => u.replace(/^_/, '').split(':')[0];
+const unitSound = u => u.includes(':') ? u.split(':')[1] : u;
 
 const OBJECTS = ['🍎', '🍓', '⭐', '🐟', '🎈', '🐞', '🍪', '🚗', '🌸', '⚽', '🦆', '🍌'];
 const STICKERS = ['🦄', '🐶', '🐱', '🦊', '🐼', '🐨', '🐯', '🦁', '🐸', '🐵', '🐧', '🐢', '🐙', '🦋', '🐞', '🐝',
@@ -191,7 +225,9 @@ const T = {
     c: { addSay: (a, b) => `${a}, and ${b} more. Put them together!`, together: 'Put together', countAll: 'Now count them all. Tick each one!',
       subSay: (a, b) => `There are ${a}. Take ${b} away! Tap ${b} to take them away.`, takeLeft: 'Take away', countLeft: 'Now count what is left. Tick each one!',
       watch: 'Watch me first!', myTurn: 'My turn!', addRule: (a, b, s) => `${a}, and ${b} more, makes ${s}!`, subRule: (a, b, r) => `${a}, take away ${b}, leaves ${r}!`,
-      tooMany: 'That is enough! Now count what is left.' },
+      tooMany: 'That is enough! Now count what is left.',
+      hopAdd: (a, b) => `The frog starts on ${a}. Tap the frog to hop ${b} times forward!`,
+      hopSub: (a, b) => `The frog starts on ${a}. Tap the frog to hop ${b} times back!`, landed: 'Where did the frog land?' },
     bl: { robot: 'Robot Tiko talks in sounds. Listen! Which picture is it?', sayFast: 'Listen again, faster!',
       family: 'Word family!', familyIntro: 'This word family ends in', slideNow: 'Now slide to blend!', findSyl: 'Find' },
     tr: { word: 'Listen. Then trace the word!', sentence: 'Listen. Then trace the sentence, one word at a time!',
@@ -210,8 +246,9 @@ const T = {
     },
     hi: { letsPlay: "Let's play!", morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening',
       happy: "I'm so happy to see you! Let's have fun!", tapStart: 'Tap the big Start button!', streak: n => `That's ${n} days in a row!`, combo: n => `${n} in a row!`, there: 'there' },
+    lvl: { up: 'Level up!', now: (name, n) => `${name}: level ${n}!` },
     aw: { newBadge: 'New badge!', badges: 'Badges', goalReached: 'You did it! You earned:', tellGrownUp: 'Show a grown-up!' },
-    journey: ['Sound Island', 'Blending Bridge', 'Magic Word Forest', 'Tricky Sound Mountain', 'Sentence River', 'Story Castle'],
+    journey: ['Sound Island', 'Blending Bridge', 'Magic Word Forest', 'Tricky Sound Mountain', 'Sentence River', 'Long Vowel Lagoon', 'Story Castle', 'Big Word Peak'],
     sheet: { title: 'My worksheet', name: 'Name', date: 'Date', trace: 'Trace and write', read: 'Read and draw',
       sums: 'Work it out', line: 'Fill in the numbers' },
     moves: ['Jump 5 times!', 'Touch your toes!', 'Stretch up high like a tree!', 'Spin around slowly!',
@@ -280,7 +317,9 @@ const T = {
     c: { addSay: (a, b) => `${a}, et encore ${b}. Mets-les ensemble !`, together: 'Mettre ensemble', countAll: 'Maintenant, compte-les tous. Coche chacun !',
       subSay: (a, b) => `Il y en a ${a}. Enlèves-en ${b} ! Touche-en ${b} pour les enlever.`, takeLeft: 'Enlève', countLeft: 'Maintenant, compte ce qui reste. Coche chacun !',
       watch: "Regarde-moi d'abord !", myTurn: 'À moi !', addRule: (a, b, s) => `${a}, et encore ${b}, ça fait ${s} !`, subRule: (a, b, r) => `${a}, moins ${b}, il en reste ${r} !`,
-      tooMany: "C'est assez ! Maintenant, compte ce qui reste." },
+      tooMany: "C'est assez ! Maintenant, compte ce qui reste.",
+      hopAdd: (a, b) => `La grenouille part du ${a}. Touche-la pour sauter ${b} fois en avant !`,
+      hopSub: (a, b) => `La grenouille part du ${a}. Touche-la pour sauter ${b} fois en arrière !`, landed: 'Où est arrivée la grenouille ?' },
     bl: { robot: 'Robot Tiko parle en sons. Écoute ! Quelle image est-ce ?', sayFast: 'Écoute encore, plus vite !',
       family: 'Les syllabes !', familyIntro: 'Cette famille finit par', slideNow: 'Maintenant, glisse pour assembler !', findSyl: 'Trouve' },
     tr: { word: 'Écoute. Puis suis le mot avec ton doigt !', sentence: 'Écoute. Puis suis la phrase, un mot à la fois !',
@@ -300,9 +339,10 @@ const T = {
     },
     hi: { letsPlay: 'On joue !', morning: 'Bonjour', afternoon: 'Bonjour', evening: 'Bonsoir',
       happy: 'Je suis trop content de te voir ! On va bien s\'amuser !', tapStart: 'Appuie sur le gros bouton Commencer !', streak: n => `${n} jours de suite, bravo !`, combo: n => `${n} d'affilée !`, there: '' },
+    lvl: { up: 'Niveau supérieur !', now: (name, n) => `${name} : niveau ${n} !` },
     aw: { newBadge: 'Nouveau badge !', badges: 'Badges', goalReached: 'Bravo ! Tu as gagné :', tellGrownUp: 'Montre à un adulte !' },
     journey: ["L'île des sons", 'Le pont des syllabes', 'La forêt des mots magiques', 'La montagne des sons difficiles',
-      'La rivière des phrases', 'Le château des histoires'],
+      'La rivière des phrases', 'Le lagon des grands mots', 'Le château des histoires', 'Le sommet des champions'],
     sheet: { title: 'Ma fiche', name: 'Prénom', date: 'Date', trace: 'Repasse et écris', read: 'Lis et dessine',
       sums: 'Calcule', line: 'Complète les nombres' },
     moves: ['Saute 5 fois !', 'Touche tes pieds !', 'Étire-toi comme un arbre !', 'Tourne doucement sur toi-même !',

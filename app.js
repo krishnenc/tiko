@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 15;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 16;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -11,7 +11,6 @@ const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { cons
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const unitText = u => u.replace(/^_/, '');
 const L = () => T[S.lang];
 const app = $('#app');
 
@@ -132,14 +131,15 @@ function say(text, lang = S.lang, rate = S.settings.rate, pitch = S.settings.pit
 // A sound unit plays, in order of preference: the parent's own recording → the built-in phonics clip → the voice
 async function playUnit(unit, lang = S.lang, rate) {
   if (unit.startsWith('_')) return;
-  const key = `${lang}:${unit}`;
+  const snd = unitSound(unit);                     // "ai:ay" plays the "ay" sound
+  const key = `${lang}:${snd}`;
   if (recKeys.has(key)) {
     const blob = await idb.get('rec', key);
     if (blob) return playBlob(blob);
   }
-  if ((SOUND_CLIPS[lang] || []).includes(unit)) return playUrl(`sounds/${lang}-${unit}.wav`, rate && rate > 1 ? 1.15 : 1);
+  if ((SOUND_CLIPS[lang] || []).includes(snd)) return playUrl(`sounds/${lang}-${snd}.wav`, rate && rate > 1 ? 1.15 : 1);
   // letter sounds stay close to natural pitch so they remain clear
-  return say(DATA[lang].sounds[unit] || unit, lang, (rate || S.settings.rate) * 0.9, Math.min(S.settings.pitch, 1.15));
+  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(S.settings.pitch, 1.15));
 }
 function playUrl(url, rate = 1) {
   return new Promise(res => {
@@ -356,18 +356,38 @@ function introduced(set, items) { const l = items.filter(i => boxOf(set, i.id) >
 const frac = (lg, set, items) => items.length ? items.filter(i => (S.boxes[`${lg}:${set}:${i.id}`] || 0) >= 3).length / items.length : 1;
 const cnt = (lg, k) => ((S.counts[lg] || {})[k]) || 0;
 function bumpCount(k) { const c = S.counts[S.lang] = S.counts[S.lang] || {}; c[k] = (c[k] || 0) + 1; }
+// word difficulty levels: tier(lg, 1) = simple words, 2 = digraphs/blends (FR: ou/on/ch…), 3 = long vowels (FR: complex
+// sounds, long words), 4 = two-syllable words (EN)
+const tier = (lg, n) => { const t = DATA[lg].tiers; return DATA[lg].words.slice(n > 1 ? t[n - 2] : 0, t[n - 1]); };
 const STAGES = [
   { icon: '🏝️', goal: .8, prog: lg => frac(lg, 'letter', DATA[lg].letters) },
-  { icon: '🌉', goal: .8, prog: lg => frac(lg, 'blend', DATA[lg].words.slice(0, DATA[lg].simpleWords)) },
+  { icon: '🌉', goal: .8, prog: lg => frac(lg, 'blend', tier(lg, 1)) },
   { icon: '🌲', goal: .8, prog: lg => frac(lg, 'sight', DATA[lg].sight.slice(0, 20)) },
-  { icon: '⛰️', goal: .7, prog: lg => frac(lg, 'blend', DATA[lg].words.slice(DATA[lg].simpleWords)) },
+  { icon: '⛰️', goal: .7, prog: lg => frac(lg, 'blend', tier(lg, 2)) },
   { icon: '🛶', goal: 1, prog: lg => Math.min(1, cnt(lg, 'sentence') / 15) },
+  { icon: '🌊', goal: .7, prog: lg => frac(lg, 'blend', tier(lg, 3)) },
   { icon: '🏰', goal: 1, prog: lg => Math.min(1, cnt(lg, 'story') / 10) },
+  // the summit: English two-syllable words; French has no level 4 words, so all the magic words instead
+  { icon: '🏔️', goal: .7, prog: lg => tier(lg, 4).length ? frac(lg, 'blend', tier(lg, 4)) : frac(lg, 'sight', DATA[lg].sight) },
 ];
 const stagePct = (i, lg = S.lang) => Math.min(1, STAGES[i].prog(lg) / STAGES[i].goal);
 function stageOf(lg = S.lang) { for (let i = 0; i < STAGES.length; i++) if (stagePct(i, lg) < 1) return i; return STAGES.length; }
-// words available right now: simple words until Tricky Sound Mountain
-function wordsNow() { const d = DATA[S.lang]; return stageOf() >= 3 ? d.words : d.words.slice(0, d.simpleWords); }
+// Parent "start the journey at…": mark everything belonging to the earlier places as known (box 3, resting),
+// so she starts at the chosen place. Forward only — it never erases progress.
+function startJourneyAt(lg, target) {
+  let n = 0;
+  const know = (set, items) => items.forEach(i => { const k = `${lg}:${set}:${i.id}`; if ((S.boxes[k] || 0) < 3) { S.boxes[k] = 3; S.due[k] = dayPlus(REVIEW_DAYS[3]); n++; } });
+  const c = S.counts[lg] = S.counts[lg] || {};
+  const steps = [() => know('letter', DATA[lg].letters), () => know('blend', tier(lg, 1)), () => know('sight', DATA[lg].sight.slice(0, 20)),
+    () => know('blend', tier(lg, 2)), () => { c.sentence = Math.max(c.sentence || 0, 15); }, () => know('blend', tier(lg, 3)),
+    () => { c.story = Math.max(c.story || 0, 10); }, () => (tier(lg, 4).length ? know('blend', tier(lg, 4)) : know('sight', DATA[lg].sight))];
+  for (let i = 0; i < target && i < steps.length; i++) steps[i]();
+  S.seenStage[lg] = Math.max(S.seenStage[lg] || 0, stageOf(lg)); save();
+  return n;
+}
+// words she meets now grow with the journey: level 1 → +2 at Tricky Sound Mountain → +3 at the Lagoon → +4 at the Summit
+function wordLevel(lg = S.lang) { const st = stageOf(lg); return st < 3 ? 1 : st < 5 ? 2 : st < 7 ? 3 : 4; }
+function wordsNow() { const d = DATA[S.lang]; return d.words.slice(0, d.tiers[wordLevel() - 1]); }
 function knownWords() {
   const k = DATA[S.lang].words.filter(w => boxOf('blend', w.id) > 0);
   return new Set(k.map(w => w.e)).size >= 3 ? k : DATA[S.lang].words.slice(0, 8);
@@ -437,6 +457,9 @@ async function celebrateAwards() {
   const badges = newBadges(), goals = newGoals(); save();
   for (const b of badges) await celebrate(`<div class="medal">${b.icon}</div>`, L().aw.newBadge, badgeName(b));
   for (const g of goals) await celebrate(`<div class="prize">${g.emoji}</div>`, L().aw.goalReached, g.text, L().aw.tellGrownUp);
+  // a skill got harder: celebrate it so the progress is visible
+  const ups = (S.levelUps || []).splice(0); save();
+  for (const [a, n] of ups.slice(-2)) if (ACTS[a]) await celebrate(`<div class="prize">${ACTS[a].icon}</div><div class="lvlstars">${'⭐'.repeat(n)}</div>`, L().lvl.up, L().lvl.now(actName(a), n));
 }
 function celebrate(art, title, name, extra = '') {
   return new Promise(res => {
@@ -476,7 +499,7 @@ function nudge(replayParts) {
 
 // ================= maths levels =================
 const lvl = a => S.levels[a] || 1;
-const MATH_MAX = { count: 3, add: 3, sub: 3, bonds: 2, next: 3, compare: 3, shapes: 3, patterns: 3, clock: 3, doubles: 2,
+const MATH_MAX = { count: 3, add: 4, sub: 4, bonds: 2, next: 3, compare: 3, shapes: 3, patterns: 3, clock: 3, doubles: 2,
   missing: 3, skip: 3, tens: 3, measure: 3, flash: 3, pop: 3, mathStory: 2 };
 function gradeMath(a, first, max = MATH_MAX[a] || 3) { if (first) tally('mathOk'); gradeLevel(a, first, max); }
 const THINK_MAX = { memory: 3, simon: 3, kim: 3, odd: 2, jigsaw: 3 };
@@ -484,7 +507,7 @@ const THINK_MAX = { memory: 3, simon: 3, kim: 3, odd: 2, jigsaw: 3 };
 function gradeLevel(a, first, max = THINK_MAX[a] || MATH_MAX[a] || 3) {
   const st = S.streak[a] = S.streak[a] || { ok: 0, bad: 0 };
   if (first) { st.ok++; st.bad = Math.max(0, st.bad - 1); } else { st.bad++; st.ok = 0; }
-  if (st.ok >= 5 && lvl(a) < max) { S.levels[a] = lvl(a) + 1; st.ok = 0; st.bad = 0; }
+  if (st.ok >= 5 && lvl(a) < max) { S.levels[a] = lvl(a) + 1; st.ok = 0; st.bad = 0; (S.levelUps = S.levelUps || []).push([a, S.levels[a]]); }
   if (st.bad >= 3 && lvl(a) > 1) { S.levels[a] = lvl(a) - 1; st.ok = 0; st.bad = 0; }
 }
 function numOpts(ans, min, max, n = 3) {
@@ -587,10 +610,22 @@ T.en.acts.sentence = 'Read a sentence'; T.fr.acts.sentence = 'Lire une phrase';
 T.en.acts.story = 'Little stories'; T.fr.acts.story = 'Petites histoires';
 
 function mkSentence() {
-  const R = L().read, w = pick(knownWords()), s = pick(SENTENCES[S.lang])(w.w);
-  const others = shuffle(DATA[S.lang].words.filter(x => x.e !== w.e)).slice(0, 2);
+  const R = L().read, known = knownWords(), w = pick(known);
+  // from Long Vowel Lagoon on, half the sentences have two things to read; the answer is a PAIR of pictures,
+  // and the wrong pairs share one picture, so both words really have to be read
+  if (stageOf() >= 5 && Math.random() < .5) {
+    const pool = shuffle(known.filter(x => x.e !== w.e)), b = pool[0];
+    const c = pool.find(x => x.e !== b.e) || DATA[S.lang].words.find(x => x.e !== w.e && x.e !== b.e);
+    const d = DATA[S.lang].words.find(x => ![w.e, b.e, c.e].includes(x.e));
+    const s = pick(SENTENCES2[S.lang])(w.w, b.w);
+    const pair = (p, q2) => ({ html: `<span class="pair">${p.e}${q2.e}</span>`, val: p.w + '+' + q2.w });
+    return { kind: 'sentence', title: R.find, speak: [R.find], lines: [s], optClass: '',
+      options: shuffle([pair(w, b), pair(w, c), pair(d, b)]), answer: w.w + '+' + b.w, correctSpeak: [s],
+      grade: f => { if (f) bumpCount('sentence'); } };
+  }
+  const s = pick(SENTENCES[S.lang])(w.w);
   return { kind: 'sentence', title: R.find, speak: [R.find], lines: [s], optClass: '',
-    options: shuffle([w, ...others]).map(x => ({ html: x.e, val: x.w })), answer: w.w, correctSpeak: [s],
+    options: pictureOptions(w, DATA[S.lang].words), answer: w.w, correctSpeak: [s],
     grade: f => { if (f) bumpCount('sentence'); } };
 }
 function mkStory() {
@@ -705,7 +740,7 @@ function mkFamily() {
   }
   const words = DATA.en.words, byW = w => words.find(x => x.w === w);
   const [, ws] = pick(Object.entries(FAMILIES).filter(([, list]) => list.length >= 2));
-  const item = byW(pick(ws)), onset = item.units[0], rimeUnits = item.units.slice(1), rime = item.w.slice(onset.length);
+  const item = byW(pick(ws)), onset = item.units[0], rimeUnits = item.units.slice(1), rime = item.w.slice(unitText(onset).length);
   // choices: other words from the same family first (cat vs hat vs bat — only the first sound tells them apart)
   const fam = shuffle(ws.filter(w => w !== item.w).map(byW)), others = [];
   for (const x of [...fam, ...shuffle(words)]) if (x.e !== item.e && !others.some(o => o.e === x.e)) { others.push(x); if (others.length === 2) break; }
@@ -713,7 +748,7 @@ function mkFamily() {
   return {
     title: `🏠 -${rime}`, speak: [L().bl.familyIntro, { seq: rimeUnits, gap: 280 }, { pause: 200 }, L().bl.slideNow], gate: true,
     visual: `<div class="blendbox"><div class="famhouse">🏠 <b>-${esc(rime)}</b></div>
-      <div class="units"><button class="unit onset">${esc(onset)}</button><button class="unit rime">${esc(rime)}</button></div>${sliderHTML()}</div>`,
+      <div class="units"><button class="unit onset">${esc(unitText(onset))}</button><button class="unit rime">${esc(rime)}</button></div>${sliderHTML()}</div>`,
     options: shuffle([item, ...others]).map(x => ({ html: x.e, val: x.w })), answer: item.w,
     retrySpeak: [L().bl.sayFast, { seq: [onset, ...rimeUnits], gap: 330 }],
     correctSpeak: [{ seq: [onset, ...rimeUnits], gap: 300 }, item.w], grade: f => gradeItem('fam', item.id, f), onCorrect: mergeTiles,
@@ -741,7 +776,39 @@ function mkCount() {
 }
 // ADDING = putting together. Two baskets; she presses "Put together" and the second group jumps into the
 // first basket. Then she ticks and counts the whole group herself.
+// Level 4 adding / taking away: bigger numbers (up to 30) on a number line. She taps the frog once per hop,
+// so she still does the "adding on" / "counting back" herself, then reads where it landed.
+function mkHop(op) {
+  const C = L().c, q = L().q;
+  let a, b;
+  if (op === '+') { a = 8 + rand(13); b = 2 + rand(Math.min(8, 30 - a - 1)); } else { a = 12 + rand(19); b = 2 + rand(8); }
+  const ans = op === '+' ? a + b : a - b, lo = Math.min(a, ans) - 2, hi = Math.max(a, ans) + 2;
+  return { title: `${a} ${op === '+' ? '+' : '−'} ${b} = ?`, speak: [op === '+' ? C.hopAdd(a, b) : C.hopSub(a, b)], optClass: 'num', gate: true,
+    visual: `<div class="addwrap"><div class="nline">${Array.from({ length: hi - lo + 1 }, (_, i) => `<span class="nl ${lo + i === a ? 'start' : ''}" data-n="${lo + i}">${lo + i}</span>`).join('')}
+      <button class="nfrog" aria-label="hop">🐸</button></div><div class="takeaway">${'<span class="tdots">' + '<i></i>'.repeat(b) + '</span>'}</div></div>`,
+    options: numOpts(ans, 0, 40), answer: ans, correctSpeak: [op === '+' ? C.addRule(a, b, ans) : C.subRule(a, b, ans)],
+    grade: f => gradeMath(op === '+' ? 'add' : 'sub', f),
+    setup(root, unlock) {
+      let at = a, hops = 0;
+      const frog = $('.nfrog', root), cellOf = n => $(`.nl[data-n="${n}"]`, root);
+      const place = () => { const c = cellOf(at), line = $('.nline', root); frog.style.left = (c.offsetLeft + c.offsetWidth / 2) + 'px'; void line; };
+      requestAnimationFrame(place);
+      // returns 'more' while hops remain, 'done' on the last hop, 'already' if she had finished
+      root.__hop = async () => {
+        if (hops >= b) return 'already';
+        at += op === '+' ? 1 : -1; hops++; cellOf(at).classList.add('hopped');
+        frog.classList.remove('jump'); void frog.offsetWidth; frog.classList.add('jump'); place(); sfx('pop');
+        const d = $$('.tdots i', root)[hops - 1]; if (d) d.classList.add('on');
+        if (hops === b) { await sleep(450); unlock(); $('.bubble').textContent = C.landed; return 'done'; }
+        return 'more';
+      };
+      frog.onclick = async () => { if (await root.__hop() === 'done') speak(C.landed); };
+    },
+    // Tiko hops the rest of the way, saying each number she lands on
+    explain: async r => { let s; do { s = await r.__hop(); if (s === 'more') await sleep(450); } while (s === 'more'); } };
+}
 function mkAdd(fixed) {
+  if (!fixed && lvl('add') >= 4) return mkHop('+');
   const l = lvl('add'), max = [5, 10, 20][l - 1], C = L().c;
   let s = 2 + rand(max - 1), a = 1 + rand(Math.min(s - 1, 10)), b = s - a;
   if (fixed) [a, b, s] = [fixed[0], fixed[1], fixed[0] + fixed[1]];
@@ -767,6 +834,7 @@ function mkAdd(fixed) {
 // TAKING AWAY = removing. She taps the right number of objects herself and they fly away, then she
 // ticks and counts what is left.
 function mkSub(fixed) {
+  if (!fixed && lvl('sub') >= 4) return mkHop('-');
   const l = lvl('sub'), max = [5, 10, 20][l - 1], C = L().c;
   let a = 2 + rand(max - 1), b = 1 + rand(a - 1);
   if (fixed) [a, b] = fixed;
@@ -2020,9 +2088,13 @@ function buildPath() {
     ['robot', 'family', 'A', 'blend', 'B', 'sight', 'traceWord', 'paper'],
     ['blend', 'family', 'A', odd ? 'traceWord' : 'traceSentence', 'B', 'spell', 'paper', 'sentence'],
     ['sentence', 'traceSentence', 'A', 'paper', 'B', 'blend', 'paperMath', 'spell'],
-    ['story', 'traceSentence', 'A', 'sentence', 'B', 'paper', 'paperMath', 'sight'],
+    // Long Vowel Lagoon: new harder words to blend and build
+    ['blend', 'sentence', 'A', odd ? 'traceWord' : 'spell', 'B', 'robot', 'paper', 'family'],
+    ['story', 'traceSentence', 'A', 'sentence', 'B', 'paper', 'blend', 'sight'],
+    // Big Word Peak: two-syllable words, longer sentences and stories
+    ['blend', 'story', 'A', odd ? 'spell' : 'traceSentence', 'B', 'sentence', 'paper', 'traceWord'],
   ];
-  const order = PLANS[Math.min(stageOf(), 5)].map(x => x === 'A' ? mathA : x === 'B' ? mathB : x);
+  const order = PLANS[Math.min(stageOf(), PLANS.length - 1)].map(x => x === 'A' ? mathA : x === 'B' ? mathB : x);
   const stops = order.slice(0, S.settings.stops);
   // a creative treat at the end of every path
   // a fun treat at the end of every path: art one day, a thinking game the next
@@ -2089,7 +2161,7 @@ function journey() {
   $('.back').onclick = home;
   $('.go').onclick = () => { sfx('pop'); startPath(); };
   // what each place practises when tapped after it's been reached
-  const PRACTICE = ['letters', 'blend', 'sight', 'spell', 'sentence', 'story'];
+  const PRACTICE = ['letters', 'blend', 'sight', 'spell', 'sentence', 'blend', 'story', 'blend'];
   let busy = false;
   $$('.isle').forEach(b => b.onclick = async () => {
     if (busy) return;
@@ -2203,7 +2275,7 @@ function parents() {
     let h = '';
     for (lg of ['en', 'fr']) {
       const d = DATA[lg], stg = stageOf(lg);
-      h += `<h4>${lg === 'en' ? '🇬🇧 English' : '🇫🇷 Français'}: journey stage ${Math.min(stg + 1, 6)}/6 (${stg >= 6 ? 'complete!' : esc(T.en.journey[stg])})</h4>
+      h += `<h4>${lg === 'en' ? '🇬🇧 English' : '🇫🇷 Français'}: journey stage ${Math.min(stg + 1, STAGES.length)}/${STAGES.length} (${stg >= STAGES.length ? 'complete!' : esc(T.en.journey[stg])}) · word level ${wordLevel(lg)}/${DATA[lg].tiers.filter((t, i, a) => i === 0 || t > a[i - 1]).length}</h4>
         <p>${STAGES.map((s, i) => `${s.icon} ${Math.round(stagePct(i, lg) * 100)}%`).join(' → ')} · sentences read: ${cnt(lg, 'sentence')}, stories: ${cnt(lg, 'story')}</p>${pr('Letter sounds', 'letter', d.letters)}${pr('Magic words', 'sight', d.sight)}${pr('Blending', 'blend', d.words)}${pr('Building words', 'spell', d.words)}`;
     }
     h += `<h4>🏅 Badges: ${Object.keys(S.badges).length}/${BADGES.length}</h4><p>${BADGES.map(b => `<span title="${esc(b.en)}" style="${S.badges[b.id] ? '' : 'opacity:.25;filter:grayscale(1)'}">${b.icon}</span>`).join(' ')}</p>
@@ -2245,6 +2317,17 @@ function parents() {
         <select class="g-cost">${[10, 20, 30, 50, 75, 100, 150, 200].map(n => `<option ${n === 30 ? 'selected' : ''}>${n}</option>`).join('')}</select> ⭐
         <button class="pbtn g-add">Add</button>
       </div></section>
+
+    <section><h3>🎚️ Difficulty</h3>
+      <p>Tiko makes things harder by itself as she succeeds (and easier if she struggles). If she is ready for harder work already, move her ahead here.
+      It keeps adjusting automatically afterwards.</p>
+      ${['en', 'fr'].map(lg => `<label class="set">${lg === 'en' ? '🇬🇧 English' : '🇫🇷 French'} reading — start the journey at
+        <select class="jstart" data-lg="${lg}">${STAGES.map((s, i) => `<option value="${i}" ${i === stageOf(lg) ? 'selected' : ''} ${i < stageOf(lg) ? 'disabled' : ''}>${s.icon} ${esc(T[lg].journey[i])}</option>`).join('')}</select></label>`).join('')}
+      <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:17px;flex-wrap:wrap">🔢 All maths to level
+        <span>${[1, 2, 3, 4].map(n => `<button class="pbtn alt mset" data-n="${n}">${n}</button>`).join('')}</span></div>
+      <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;font-size:17px;flex-wrap:wrap">🧠 All thinking games to level
+        <span>${[1, 2, 3].map(n => `<button class="pbtn alt tset" data-n="${n}">${n}</button>`).join('')}</span></div>
+      <p class="diffmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
     <section><h3>⚙️ Session</h3>
       <label class="set">Stops on the daily path <select data-s="stops">${[3, 4, 5, 6, 7, 8].map(n => `<option ${st.stops === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -2292,6 +2375,20 @@ function parents() {
     $('[data-s="pitch"]').value = st.pitch; $('[data-s="rate"]').value = st.rate; demo(S.lang);
   });
   $$('.ws').forEach(b => b.onclick = () => worksheet(b.dataset.l));
+  // difficulty controls
+  const diffMsg = t => { $('.diffmsg').textContent = t; };
+  $$('.jstart').forEach(sel => sel.onchange = () => {
+    const lg = sel.dataset.lg, target = +sel.value, n = startJourneyAt(lg, target);
+    diffMsg(`${lg === 'en' ? 'English' : 'French'}: journey now starts at ${T.en.journey[target]} (${n} earlier items marked as known).`);
+  });
+  $$('.mset').forEach(b => b.onclick = () => {
+    const n = +b.dataset.n; Object.keys(MATH_MAX).forEach(k => { S.levels[k] = Math.min(n, MATH_MAX[k]); S.streak[k] = { ok: 0, bad: 0 }; }); save();
+    diffMsg(`All maths activities set to level ${n} (or their highest level).`);
+  });
+  $$('.tset').forEach(b => b.onclick = () => {
+    const n = +b.dataset.n; Object.keys(THINK_MAX).forEach(k => { S.levels[k] = Math.min(n, THINK_MAX[k]); S.streak[k] = { ok: 0, bad: 0 }; }); save();
+    diffMsg(`All thinking games set to level ${n}.`);
+  });
   const drawGoals = () => {
     const box = $('.goals');
     box.innerHTML = S.goals.length ? S.goals.map((g, i) => `<div class="goalrow"><span style="font-size:28px">${g.emoji}</span>
@@ -2362,7 +2459,7 @@ function worksheet(lang) {
   if (letters.length < 4) letters = [...letters, ...d.letters.filter(x => !letters.includes(x))].slice(0, 4);
   let words = shuffle(d.words.filter(x => wb(x.id) > 0)).slice(0, 3);
   if (words.length < 3) words = [...words, ...d.words.filter(x => !words.includes(x))].slice(0, 3);
-  const la = lvl('add'), ls = lvl('sub'), max = n => [5, 10, 20][n - 1];
+  const la = lvl('add'), ls = lvl('sub'), max = n => [5, 10, 20, 30][n - 1];
   const sums = [];
   for (let i = 0; i < 3; i++) { const s = 2 + rand(max(la) - 1), a = 1 + rand(Math.min(s - 1, 10)); sums.push([a, '+', s - a]); }
   for (let i = 0; i < 3; i++) { const a = 2 + rand(max(ls) - 1), b = 1 + rand(a - 1); sums.push([a, '−', b]); }

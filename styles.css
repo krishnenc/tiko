@@ -80,7 +80,9 @@ button:disabled { cursor: default; }
 @keyframes wave { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-14px) rotate(-4deg); } }
 .row { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
 .card { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 150px; font-size: 54px; padding: 18px 20px; }
-.card span { font-size: 21px; }
+.card span { font-size: 21px; white-space: normal; text-align: center; line-height: 1.15; overflow-wrap: anywhere; }
+.menu .card { min-width: 0; padding: 16px 12px; }
+.menu .card span { font-size: clamp(17px, 2.4vmin, 21px); }
 .starcount { font-size: 22px; font-weight: 700; background: #fff; padding: 6px 16px; border-radius: 30px; box-shadow: 0 4px 0 var(--line); }
 
 /* ---------- owl ---------- */
@@ -377,6 +379,16 @@ button:disabled { cursor: default; }
 /* trace */
 .tracebox { position: relative; background: #fff; border-radius: 30px; box-shadow: 0 10px 0 var(--line); touch-action: none; }
 .tracebox canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 30px; touch-action: none; }
+.pair { display: flex; gap: 6px; font-size: .8em; }
+.nline { position: relative; display: flex; gap: 4px; padding: 70px 10px 10px; background: #fff; border-radius: 22px; box-shadow: 0 6px 0 var(--line); max-width: 94vw; overflow-x: auto; }
+.nl { min-width: 52px; height: 52px; display: grid; place-items: center; font-size: 26px; font-weight: 700; border-bottom: 5px solid var(--grape); color: var(--ink); transition: background .3s; }
+.nl.start { background: #e3f6ff; border-radius: 12px 12px 0 0; }
+.nl.hopped { background: #fff3c4; border-radius: 12px 12px 0 0; }
+.nfrog { position: absolute; top: 10px; left: 0; transform: translateX(-50%); font-size: 54px; transition: left .35s cubic-bezier(.3,1.4,.5,1); animation: bob 1.4s ease-in-out infinite; }
+.nfrog.jump { animation: frogJump .4s ease-out; }
+@keyframes frogJump { 50% { margin-top: -34px; } }
+.lvlstars { font-size: 40px; letter-spacing: 6px; }
+
 /* thinking games */
 .memgrid { display: grid; grid-template-columns: repeat(var(--cols), clamp(84px, 13vmin, 120px)); gap: 12px; }
 .mcard { position: relative; aspect-ratio: 1; border-radius: 20px; font-size: clamp(44px, 7.5vmin, 66px); perspective: 600px;
