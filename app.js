@@ -1377,7 +1377,12 @@ function worksheet(lang) {
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeech(); });
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // register the offline worker; if an install attempt fails (flaky network, interfering extensions), retry a few times
+  const registerSW = (tries = 0) => navigator.serviceWorker.register('sw.js').then(reg => {
+    const w = reg.installing || reg.waiting;
+    if (w) w.addEventListener('statechange', () => { if (w.state === 'redundant' && !reg.active && tries < 4) setTimeout(() => registerSW(tries + 1), 4000); });
+  }).catch(() => { if (tries < 4) setTimeout(() => registerSW(tries + 1), 4000); });
+  registerSW();
   // Quietly fetch the phonics clips one at a time so they're cached for offline use
   // (the service worker caches each response). Skips ones already cached; retries next launch if offline.
   setTimeout(async () => {
