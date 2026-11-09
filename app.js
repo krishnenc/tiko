@@ -135,11 +135,12 @@ function playBlob(blob) {
 // speak(...parts): string | {unit} | {pause} | {text, lang}
 async function speak(...parts) {
   stopSpeech(); const t = speakToken;
-  await sleep(80);
+  await sleep(150);
   for (const p of parts.flat()) {
     if (t !== speakToken) return;
     if (!p) continue;
-    if (typeof p === 'string') await say(p);
+    // one sentence per utterance: Android's voice tends to drop the end of long ones
+    if (typeof p === 'string') { for (const s of p.split(/(?<=[.!?])\s+/)) { if (t !== speakToken) return; await say(s); } }
     else if (p.pause) await sleep(p.pause);
     else if (p.unit !== undefined) await playUnit(p.unit, p.lang || S.lang, p.rate);
     else if (p.name) await sayName(p.bang);
@@ -915,14 +916,18 @@ function intro() {
     <h1 class="hello" hidden>${esc(greet)}${name ? ', ' + esc(name) : (H.there ? ' ' + H.there : '')}! 👋</h1>
     <button class="btn primary huge pulse playb">▶ ${L().hi.letsPlay}</button></div>`;
   let leaving = false;
-  const leave = () => { if (leaving) return; leaving = true; home(); };
+  const leave = () => { if (leaving) return; leaving = true; home(true); };
   $('.playb').onclick = async () => {
     const btn = $('.playb'); btn.remove();
     $('.hello').hidden = false; $('.owl').classList.add('dance');
     const ms = jingle(); burst(innerWidth / 2, innerHeight * .35, 70); setTimeout(rain, 400);
     setTimeout(() => { const i = $('.intro'); if (i) i.addEventListener('click', leave); }, 400); // tap anywhere to skip (not this same tap)
+    setTimeout(leave, Math.min(ms, 3600) + 20000);          // safety net: never get stuck on the intro
     await sleep(Math.min(ms, 3600) + 200);
     if (leaving) return;
+    // release the speaker from the music so the voice isn't clipped (sfx() resumes it later)
+    try { if (actx) await actx.suspend(); } catch (e) { /* ignore */ }
+    await sleep(350);
     const st = streakDays();
     await speak(greet, ...(name ? [{ name: true, bang: true }] : []), H.happy, ...(st >= 2 ? [H.streak(st)] : []));
     await sleep(500); leave();
@@ -930,8 +935,9 @@ function intro() {
 }
 
 // ================= screens =================
-function home() {
+function home(fromIntro) {
   stopSpeech(); clearIdle(); applySettings();
+  if (fromIntro) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
   app.innerHTML = `<div class="screen home">
     <button class="ic corner" aria-label="parents">⚙️</button>
