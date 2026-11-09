@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 19;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 20;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -1751,12 +1751,13 @@ function askTrace(q, meta) {
   return new Promise(async resolve => {
     let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
     const P = L().paper;
-    const size = Math.min(innerWidth * 0.8, innerHeight * 0.52, 520);
+    // whole pixels! a fractional size (e.g. 480.8 on a 601-px-wide tablet) scrambled the letter-shape check below
+    const size = Math.floor(Math.min(innerWidth * 0.8, innerHeight * 0.52, 520));
     app.innerHTML = actFrame(meta, `${promptHTML(P.trace)}
       <div style="display:flex;align-items:center;gap:20px">${q.hint ? `<div class="pic bob" style="font-size:80px">${q.hint}</div>` : ''}
       <div class="tracebox" style="width:${size}px;height:${size}px"><canvas class="guide"></canvas><canvas class="ink"></canvas></div></div>
       <div class="meter"><i></i></div>
-      <div class="btnrow"><button class="btn again">🔄 ${P.clear}</button></div>`);
+      <div class="btnrow"><button class="btn again">🔄 ${P.clear}</button><button class="btn teal tracedone" hidden>✅ ${esc(P.done)}</button></div>`);
     wire(meta, finish, () => speak(P.trace, ...q.say), [P.trace]);
     try { await document.fonts.load(`700 ${Math.round(size * .8)}px Andika`); } catch (e) { /* fallback font */ }
     const box = $('.tracebox'), gC = $('.guide'), iC = $('.ink'), dpr = devicePixelRatio || 1;
@@ -1772,7 +1773,8 @@ function askTrace(q, meta) {
     const data = mc.getImageData(0, 0, size, size).data, pts = [], step = Math.max(6, Math.round(size / 60));
     for (let y = 0; y < size; y += step) for (let x = 0; x < size; x += step) if (data[(y * size + x) * 4 + 3] > 128) pts.push({ x, y, c: false });
     // Forgiving check for little hands: a wide band around the finger counts, and half the letter is enough.
-    // Plus a safety net: after ~20 s of real effort (or pressing Again twice) it's accepted anyway.
+    // Safety nets: after ~12 s of real tracing (or pressing Again twice) it's accepted, and once she has traced
+    // a fair amount a "Done!" button appears so she can never get stuck.
     const GOAL = .5;
     let covered = 0, drawing = false, last = null, hue = 0, success = false, inkTime = 0, lastMove = 0, resets = 0;
     const R = size * .12, meter = $('.meter i');
@@ -1781,8 +1783,9 @@ function askTrace(q, meta) {
     const mark = p => {
       for (const t of pts) if (!t.c && (t.x - p.x) ** 2 + (t.y - p.y) ** 2 < R * R) { t.c = true; covered++; }
       meter.style.width = Math.min(100, covered / pts.length / GOAL * 100) + '%';
+      if (covered / pts.length >= .25 || inkTime > 5000) $('.tracedone').hidden = false;
     };
-    const enough = () => covered / pts.length >= GOAL || inkTime > 20000 || resets >= 2;
+    const enough = () => covered / pts.length >= GOAL || inkTime > 12000 || resets >= 2;
     iC.addEventListener('pointerdown', e => { if (success) return; drawing = true; last = pos(e); try { iC.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } mark(last); });
     iC.addEventListener('pointermove', e => {
       if (!drawing) return; const p = pos(e);
@@ -1794,17 +1797,17 @@ function askTrace(q, meta) {
       const now = performance.now(); if (now - lastMove < 200) inkTime += now - lastMove; lastMove = now;
       if (Math.random() < .08) sfx('tap');
     });
-    const up = async () => {
-      if (!drawing) return; drawing = false;
-      if (!success && enough()) {
-        success = true; sfx('win'); burstAt(box, 80); owlReact('happy'); flyStar(box); tally('traces'); logDay(true); save();
-        await speak(...praiseParts(), ...q.say);
-        await askPaperStep(P.nowPaper, `<div class="wordbig">${esc(q.glyph)}</div>`);
-        finish(true);
-      }
+    const succeed = async () => {
+      if (success) return;
+      success = true; $('.tracedone').hidden = true; sfx('win'); burstAt(box, 80); owlReact('happy'); flyStar(box); tally('traces'); logDay(true); save();
+      await speak(...praiseParts(), ...q.say);
+      await askPaperStep(P.nowPaper, `<div class="wordbig">${esc(q.glyph)}</div>`);
+      finish(true);
     };
+    const up = () => { if (!drawing) return; drawing = false; if (!success && enough()) succeed(); };
     iC.addEventListener('pointerup', up); iC.addEventListener('pointercancel', up);
     $('.again').onclick = () => { sfx('tap'); resets++; reset(); };
+    $('.tracedone').onclick = () => { sfx('tap'); succeed(); };
     speak(P.trace, ...q.say);
   });
 }
@@ -1829,12 +1832,12 @@ function askTraceText(q, meta) {
       ${multi ? `<div class="strip">${q.items.map((it, i) => `<span class="sw-${i}">${esc(it.text)}</span>`).join(' ')}</div>` : ''}
       <div class="tracebox wide"><canvas class="guide"></canvas><canvas class="ink"></canvas></div>
       <div class="chips"></div><div class="meter"><i></i></div>
-      <div class="btnrow"><button class="btn again">🔄 ${L().paper.clear}</button></div>`);
+      <div class="btnrow"><button class="btn again">🔄 ${L().paper.clear}</button><button class="btn teal tracedone" hidden>✅ ${esc(L().paper.done)}</button></div>`);
     const curSay = () => q.items[idx].say;
     wire(meta, finish, () => speak(curSay()), [curSay()]);
     try { await document.fonts.load('700 100px Andika'); } catch (e) { /* fallback font */ }
     const box = $('.tracebox'), gC = $('.guide'), iC = $('.ink'), dpr = devicePixelRatio || 1;
-    const Wd = Math.min(innerWidth * .92, 1000), Ht = Math.min(innerHeight * (multi ? .32 : .36), 300);
+    const Wd = Math.floor(Math.min(innerWidth * .92, 1000)), Ht = Math.floor(Math.min(innerHeight * (multi ? .32 : .36), 300));
     box.style.width = Wd + 'px'; box.style.height = Ht + 'px';
     [gC, iC].forEach(c => { c.width = Wd * dpr; c.height = Ht * dpr; c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0); });
     const g = gC.getContext('2d'), ink = iC.getContext('2d');
@@ -1866,24 +1869,28 @@ function askTraceText(q, meta) {
         const si = segs.findIndex(s => xx >= s.a && xx < s.b); if (si < 0) continue;
         pts.push({ x: xx, y: yy, c: false, s: si }); segs[si].n++;
       }
-      covered = 0; inkTime = 0; resets = 0; meter.style.width = '0%';
+      covered = 0; inkTime = 0; resets = 0; meter.style.width = '0%'; $('.tracedone').hidden = true;
       $('.chips').innerHTML = it.units ? segs.map((s, i) => `<span class="chip ${s.unit.startsWith('_') ? 'silent' : ''}" data-i="${i}">${esc(s.text)}</span>`).join('') : '';
       if (multi) $$('.strip span').forEach((sp, i) => { sp.classList.toggle('now', i === idx); sp.classList.toggle('did', i < idx); });
     };
     const pos = e => { const r = iC.getBoundingClientRect(); return { x: (e.clientX - r.left) * Wd / r.width, y: (e.clientY - r.top) * Ht / r.height }; };
     const mark = p => {
       for (const t of pts) if (!t.c && (t.x - p.x) ** 2 + (t.y - p.y) ** 2 < R * R) { t.c = true; covered++; segs[t.s].c++; }
-      meter.style.width = Math.min(100, covered / Math.max(1, pts.length) / .5 * 100) + '%';
-      // sounds play strictly in reading order: a part counts once she has traced about half of it
+      meter.style.width = Math.min(100, covered / Math.max(1, pts.length) / .45 * 100) + '%';
+      if (covered / Math.max(1, pts.length) >= .25 || inkTime > 5000) $('.tracedone').hidden = false;
+      // sounds play strictly in reading order: a part counts once she has traced about a third of it
       // AND every part before it is done (so "cat" is always c… a… t, never t first)
       const queue = [];
       for (const [i, s] of segs.entries()) {
         if (s.done || !s.n) continue;
-        if (s.c / s.n < .45) break;
+        if (s.c / s.n < .35) break;
         s.done = true; queue.push(i);
       }
-      // one shared queue, so sounds from separate finger moves can never overlap or jump the order
-      for (const i of queue) {
+      playParts(queue);
+    };
+    // one shared queue, so sounds from separate finger moves can never overlap or jump the order
+    const playParts = list => {
+      for (const i of list) {
         const s = segs[i], it = q.items[idx];
         soundChain = soundChain.then(async () => {
           const chip = $(`.chip[data-i="${i}"]`); if (chip) chip.classList.add('lit');
@@ -1891,7 +1898,11 @@ function askTraceText(q, meta) {
         });
       }
     };
-    const complete = () => segs.every(s => s.done || !s.n) || inkTime > 20000 || resets >= 2;
+    // Forgiving: about half the word overall with every part at least touched; or ~12 s of real tracing; or Again twice
+    const complete = () => {
+      const all = covered / Math.max(1, pts.length);
+      return (all >= .45 && segs.every(s => !s.n || s.c / s.n >= .2)) || inkTime > 12000 || resets >= 2;
+    };
     iC.addEventListener('pointerdown', e => { if (busy) return; drawing = true; last = pos(e); try { iC.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } mark(last); });
     iC.addEventListener('pointermove', e => {
       if (!drawing) return; const p = pos(e);
@@ -1901,10 +1912,13 @@ function askTraceText(q, meta) {
       ink.beginPath(); ink.moveTo(last.x, last.y); ink.lineTo(p.x, p.y); ink.stroke(); last = p;
       const now = performance.now(); if (now - lastMove < 200) inkTime += now - lastMove; lastMove = now;
     });
-    const up = async () => {
-      if (!drawing) return; drawing = false;
-      if (busy || !complete()) return;
-      busy = true; await soundChain; sfx('good'); burstAt(box, 40); owlReact('happy');
+    const up = () => { if (!drawing) return; drawing = false; if (!busy && complete()) advance(); };
+    const advance = async () => {
+      if (busy) return;
+      busy = true; $('.tracedone').hidden = true;
+      // any parts not sounded yet are played now, in order, so she always hears the whole word built up
+      const rest = segs.map((s, i) => i).filter(i => segs[i].n && !segs[i].done); rest.forEach(i => { segs[i].done = true; }); playParts(rest);
+      await soundChain; sfx('good'); burstAt(box, 40); owlReact('happy');
       await sleep(250); await speak(curSay());
       idx++;
       if (idx < q.items.length) { setup(); busy = false; return; }
@@ -1917,6 +1931,7 @@ function askTraceText(q, meta) {
     };
     iC.addEventListener('pointerup', up); iC.addEventListener('pointercancel', up);
     $('.again').onclick = () => { sfx('tap'); const r = resets + 1; setup(); resets = r; };
+    $('.tracedone').onclick = () => { sfx('tap'); advance(); };
     setup();
     speak(q.intro, { pause: 200 }, multi ? q.full : curSay());
   });
