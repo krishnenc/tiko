@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 20;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 21;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -99,11 +99,16 @@ function voiceFor(lang) {
     list.find(v => bright.test(v.name)) ||
     list.find(v => v.lang.replace('_', '-') === DATA[lang].voiceLang) || list[0] || null;
 }
+// ONE sound at a time. Every clip that is playing is tracked so stopSpeech can silence all of them (not just the
+// latest) and release anything waiting on them; letter sounds go through a single queue so they never overlap.
 let speakToken = 0, curAudio = null;
+const liveAudio = new Set();
+let unitChain = Promise.resolve();
 function stopSpeech() {
   speakToken++;
   try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
-  if (curAudio) { curAudio.pause(); curAudio = null; }
+  for (const a of [...liveAudio]) { try { a.pause(); } catch (e) { /* ignore */ } if (a.__fin) a.__fin(); }
+  liveAudio.clear(); curAudio = null;
 }
 // Bubbly voice: raised pitch overall, and an extra lift for anything exclaimed ("Bravo !", "Great job!")
 // French device voices distort when pitched very high, so French has its own, gentler pitch
@@ -136,7 +141,13 @@ function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang
   });
 }
 // A sound unit plays, in order of preference: the parent's own recording → the built-in phonics clip → the voice
-async function playUnit(unit, lang = S.lang, rate) {
+// queued: a new letter sound waits for the previous one to finish (and is dropped if Tiko has moved on meanwhile)
+function playUnit(unit, lang = S.lang, rate) {
+  const tok = speakToken;
+  unitChain = unitChain.catch(() => {}).then(() => (tok === speakToken ? playUnitNow(unit, lang, rate) : null));
+  return unitChain;
+}
+async function playUnitNow(unit, lang = S.lang, rate) {
   if (unit.startsWith('_')) return;
   const snd = unitSound(unit);                     // "ai:ay" plays the "ay" sound
   const key = `${lang}:${snd}`;
@@ -144,26 +155,29 @@ async function playUnit(unit, lang = S.lang, rate) {
     const blob = await idb.get('rec', key);
     if (blob) return playBlob(blob);
   }
-  if ((SOUND_CLIPS[lang] || []).includes(snd)) return playUrl(`sounds/${lang}-${snd}.wav`, rate && rate > 1 ? 1.15 : 1, lang === 'en');
+  // the clip; if it can't load (e.g. offline right after an update) fall back to the voice rather than silence
+  if ((SOUND_CLIPS[lang] || []).includes(snd) && await playUrl(`sounds/${lang}-${snd}.wav`, rate && rate > 1 ? 1.15 : 1, lang === 'en') !== false) return;
   // letter sounds stay close to natural pitch so they remain clear
   return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(langPitch(lang), 1.4));
 }
 function playUrl(url, rate = 1, bright = false) {
   return new Promise(res => {
     // English clips: a little faster WITHOUT pitch correction, so they come out brighter; French clips play as recorded
-    const a = new Audio(url); curAudio = a;
+    const a = new Audio(url); curAudio = a; liveAudio.add(a);
     if (bright) { a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; }
     a.playbackRate = rate * (bright ? 1.08 : 1);
-    let done = false; const fin = () => { if (!done) { done = true; res(); } };
-    a.onended = fin; a.onerror = fin; a.play().catch(fin);
-    setTimeout(fin, 4000);
+    // resolves true when it played, false when the file couldn't be played (so the caller can fall back)
+    let done = false; const fin = a.__fin = (ok = true) => { if (!done) { done = true; liveAudio.delete(a); res(ok); } };
+    a.onended = () => fin(true); a.onerror = () => fin(false); a.play().catch(err => fin(err && err.name === 'AbortError'));
+    setTimeout(() => fin(true), 4000);
   });
 }
 function playBlob(blob) {
   return new Promise(res => {
-    const url = URL.createObjectURL(blob), a = new Audio(url); curAudio = a;
-    const fin = () => { URL.revokeObjectURL(url); res(); };
+    const url = URL.createObjectURL(blob), a = new Audio(url); curAudio = a; liveAudio.add(a);
+    let done = false; const fin = a.__fin = () => { if (!done) { done = true; liveAudio.delete(a); URL.revokeObjectURL(url); res(); } };
     a.onended = fin; a.onerror = fin; a.play().catch(fin);
+    setTimeout(fin, 6000);
   });
 }
 // speak(...parts): string | {unit} | {pause} | {text, lang}
@@ -178,10 +192,16 @@ async function speak(...parts) {
     else if (p.pause) await sleep(p.pause);
     else if (p.unit !== undefined) await playUnit(p.unit, p.lang || S.lang, p.rate);
     else if (p.name) await sayName(p.bang);
-    // a run of sound units: slow (gap ~700 ms, "robot talk") or fast (gap ~330 ms, the sounds run together)
+    // a run of sound units, each one finishing before the next starts (never on top of each other):
+    // fast (gap < 450) = back-to-back, slightly quicker, so they run together; slow = "robot talk" with a pause between
     else if (p.seq) {
-      for (const u of p.seq) { if (t !== speakToken) return; if (u.startsWith('_')) continue; playUnit(u, p.lang || S.lang, p.gap < 450 ? 1.15 : 1); await sleep(p.gap || 650); }
-      await sleep(300);
+      const fast = (p.gap || 650) < 450;
+      for (const u of p.seq) {
+        if (t !== speakToken) return; if (u.startsWith('_')) continue;
+        await playUnit(u, p.lang || S.lang, fast ? 1.15 : 1);
+        if (!fast) await sleep(Math.max(150, (p.gap || 650) - 450));
+      }
+      await sleep(250);
     }
     else if (p.text) await say(p.text, p.lang || S.lang, p.rate || S.settings.rate);
   }
@@ -286,7 +306,7 @@ function flyStar(fromEl) {
 function addStar() {
   S.stars++; save();
   const el = $('.stars'); if (!el) return;
-  el.querySelector('b').textContent = S.stars; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); sfx('pop');
+  el.querySelector('b').textContent = S.stars; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
 
 // ================= mascot =================
@@ -354,9 +374,10 @@ function chooseItem(set, items) {
 const REVIEW_DAYS = [0, 0, 1, 3, 7, 21];
 const dayPlus = n => ymd(new Date(Date.now() + n * 864e5));
 const isDue = (set, id) => { const d = S.due[bkey(set, id)]; return !d || d <= today(); };
-function gradeItem(set, id, first) {
+// a brand-new item right first time might be a lucky guess: it rests until tomorrow (box 2), then one more right = known
+function gradeItem(set, id, first, isNew) {
   const k = bkey(set, id);
-  const box = first ? Math.min(5, Math.max(3, (S.boxes[k] || 1) + 1)) : 1;
+  const box = !first ? 1 : isNew ? 2 : Math.min(5, Math.max(3, (S.boxes[k] || 1) + 1));
   S.boxes[k] = box;
   S.due[k] = dayPlus(REVIEW_DAYS[box]);
 }
@@ -441,7 +462,7 @@ const BADGES = [
   { id: 'lettersAll', icon: '🅰️', en: 'Knows all letter sounds', fr: 'Connaît tous les sons', ok: () => ['en', 'fr'].some(lg => frac(lg, 'letter', DATA[lg].letters) >= .9) },
   { id: 'stars200', icon: '💫', en: '200 stars', fr: '200 étoiles', ok: () => S.stars >= 200 },
   { id: 'story10', icon: '🏰', en: 'Read 10 stories', fr: 'Lu 10 histoires', ok: () => bothCnt('story') >= 10 },
-  { id: 'castle', icon: '👑', en: 'Reached Story Castle', fr: 'Arrivée au château', ok: () => ['en', 'fr'].some(lg => stageOf(lg) >= 5) },
+  { id: 'castle', icon: '👑', en: 'Reached Story Castle', fr: 'Arrivée au château', ok: () => ['en', 'fr'].some(lg => stageOf(lg) >= 6) },
   { id: 'think5', icon: '🧠', en: '5 thinking games', fr: '5 jeux de réflexion', ok: () => tot('think') >= 5 },
   { id: 'simon5', icon: '🎶', en: 'Copied 5 in a row', fr: 'Imité 5 à la suite', ok: () => tot('simon5') >= 1 },
   { id: 'puzzle3', icon: '🧩', en: '3 jigsaws done', fr: '3 puzzles finis', ok: () => tot('puzzles') >= 3 },
@@ -549,8 +570,12 @@ function tapToCount(root) {
 }
 // Tiko models counting: ticks each object in turn and says the number (used for demos and after two misses)
 async function autoCount(objs) {
+  const tok = speakToken;   // stops if she leaves or Tiko moves on
   objs.forEach(o => o.classList.remove('ticked'));
-  for (const [i, o] of objs.entries()) { o.classList.add('ticked', 'pulse1'); sfx('tap'); await say(String(i + 1), S.lang, 1.05); o.classList.remove('pulse1'); }
+  for (const [i, o] of objs.entries()) {
+    if (tok !== speakToken) return;
+    o.classList.add('ticked', 'pulse1'); sfx('tap'); await say(String(i + 1), S.lang, 1.05); o.classList.remove('pulse1');
+  }
 }
 const liveObjs = r => $$('.obj', r).filter(o => !o.classList.contains('gone') && !o.classList.contains('away') && !o.classList.contains('x') && !o.classList.contains('ghost'));
 
@@ -603,7 +628,7 @@ const actName = id => L().acts[id] || (id === 'traceNum' ? L().paper.trace.repla
 // fill names that are not in T
 T.en.acts.trace = 'Trace letters'; T.fr.acts.trace = 'Tracer les lettres';
 T.en.acts.paper = 'Paper mission'; T.fr.acts.paper = 'Mission papier';
-T.en.acts.traceNum = 'Trace numbers'; T.fr.acts.traceNum = 'Tracer les chiffres';
+T.en.acts.traceNum = 'Trace numbers'; T.fr.acts.traceNum = 'Tracer les nombres';
 T.en.acts.paperMath = 'Paper maths'; T.fr.acts.paperMath = 'Maths sur papier';
 Object.assign(T.en.acts, { shapes: 'Shapes', patterns: 'Patterns', clock: 'Tell the time', doubles: 'Doubles', missing: 'Missing number',
   skip: 'Frog jumps', tens: 'Tens and ones', measure: 'Measuring', flash: 'Quick look', pop: 'Bubble pop', mathStory: 'Maths stories' });
@@ -651,14 +676,15 @@ function mkStory() {
 function mkLetters() {
   const d = DATA[S.lang], q = L().q;
   const { item, isNew } = chooseItem('letter', d.letters);
-  const opts = shuffle([item, ...shuffle(d.letters.filter(x => x.l !== item.l)).slice(0, 2)]);
+  // never two letters that make the same sound (c/k, or c/k/q in French) in one question
+  const opts = shuffle([item, ...shuffle(d.letters.filter(x => x.l !== item.l && x.s !== item.s)).slice(0, 2)]);
   return {
     title: isNew ? `${L().newLetter}…` : `${q.letter}…?`,
-    speak: isNew ? [L().newLetter, { unit: item.l }, q.like, item.k, { pause: 200 }, q.tapIt] : [q.letter, { unit: item.l }, q.like, item.k],
+    speak: isNew ? [L().newLetter, { unit: item.l }, q.like, item.k, { pause: 200 }, q.tapItL] : [q.letter, { unit: item.l }, q.like, item.k],
     visual: `<div class="pic bob">${item.e}</div>`,
     options: opts.map(x => ({ html: `<span class="glyph">${esc(x.l)}</span>`, val: x.l })), answer: item.l,
     correctSpeak: [{ unit: item.l }, item.k],
-    grade: f => gradeItem('letter', item.id, f),
+    grade: f => gradeItem('letter', item.id, f, isNew),
   };
 }
 function mkSight() {
@@ -670,7 +696,7 @@ function mkSight() {
     speak: isNew ? [q.newWord, item.w, { pause: 200 }, q.tapIt] : [q.findWord, { pause: 150 }, item.w],
     visual: '', optClass: 'word',
     options: opts.map(x => ({ html: esc(x.w), val: x.w })), answer: item.w,
-    correctSpeak: [item.w], grade: f => gradeItem('sight', item.id, f),
+    correctSpeak: [item.w], grade: f => gradeItem('sight', item.id, f, isNew),
   };
 }
 function unitsHTML(units, cls = '') {
@@ -686,33 +712,55 @@ function pictureOptions(item, pool) {
 // so a quick slide runs the sounds together — the physical feeling of blending.
 function blendSlider(root, units, onDone, players = []) {
   const playTile = i => players[i] ? players[i]() : (!units[i].startsWith('_') && playUnit(units[i], S.lang, 1.1));
-  const tiles = $$('.units .unit', root), sl = $('.slider', root), knob = $('.knob', sl);
-  const played = new Set(); let dragging = false, finished = false;
-  const move = clientX => {
-    const r = sl.getBoundingClientRect(), x = Math.max(0, Math.min(r.width, clientX - r.left));
-    knob.style.left = x + 'px';
-    tiles.forEach((t, i) => {
-      const tr = t.getBoundingClientRect(), cx = tr.left + tr.width / 2;
-      if (!played.has(i) && clientX >= cx - 4) { played.add(i); t.classList.add('lit'); playTile(i); }
-    });
-    if (!finished && x >= r.width * .94 && played.size === tiles.length) { finished = true; sl.classList.add('done'); onDone(); }
+  // Child-friendly: she can slide anywhere along the word (over the tiles OR the big arrow); lifting her finger
+  // keeps her progress; simply TAPPING the arrow slides it for her. Sounds always play in order (they're queued).
+  const tiles = $$('.units .unit', root), sl = $('.slider', root), knob = $('.knob', sl), area = $('.blendbox', root) || sl;
+  const played = new Set(); let dragging = false, finished = false, startX = 0, moved = 0, onTile = -1, maxX = 0;
+  const tileX = i => { const tr = tiles[i].getBoundingClientRect(); return tr.left + tr.width / 2; };
+  const reach = clientX => {
+    const r = sl.getBoundingClientRect();
+    maxX = Math.max(maxX, Math.max(0, Math.min(r.width, clientX - r.left)));
+    knob.style.left = maxX + 'px';
+    // tiles play strictly left to right, however fast or messy the slide is
+    for (let i = 0; i < tiles.length; i++) {
+      if (played.has(i)) continue;
+      if (clientX < tileX(i) - 6) break;
+      played.add(i); tiles[i].classList.add('lit'); playTile(i);
+    }
+    if (!finished && played.size === tiles.length && maxX >= r.width * .75) finish();
   };
-  sl.addEventListener('pointerdown', e => { dragging = true; try { sl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } move(e.clientX); });
-  sl.addEventListener('pointermove', e => { if (dragging) move(e.clientX); });
-  const up = () => {
-    dragging = false;
-    if (!finished) { played.clear(); tiles.forEach(t => t.classList.remove('lit')); knob.style.left = '0px'; } // try again from the start
+  const finish = () => { finished = true; knob.style.left = sl.getBoundingClientRect().width + 'px'; sl.classList.add('done'); onDone(); };
+  // tap on the arrow (no real slide) = Tiko slides it for her, sound by sound
+  const autoSlide = async () => {
+    const r = sl.getBoundingClientRect();
+    for (let i = 0; i < tiles.length && !finished; i++) { reach(tileX(i) + 1); await sleep(380); }
+    if (!finished) reach(r.right);
   };
-  sl.addEventListener('pointerup', up); sl.addEventListener('pointercancel', up);
-  // tapping a tile on its own still plays its sound
-  tiles.forEach((t, i) => t.addEventListener('click', () => { sfx('tap'); stopSpeech(); playTile(i); t.classList.add('lit'); setTimeout(() => !finished && t.classList.remove('lit'), 600); }));
+  area.addEventListener('pointerdown', e => {
+    if (finished) return;
+    onTile = tiles.findIndex(t => t.contains(e.target));
+    dragging = true; startX = e.clientX; moved = 0;
+    try { area.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  });
+  area.addEventListener('pointermove', e => {
+    if (!dragging || finished) return;
+    moved = Math.max(moved, Math.abs(e.clientX - startX));
+    if (moved > 14) reach(e.clientX);
+  });
+  const up = e => {
+    if (!dragging) return; dragging = false;
+    if (finished || moved > 14) return;
+    if (onTile >= 0) { stopSpeech(); playTile(onTile); tiles[onTile].classList.add('lit'); const k = onTile; setTimeout(() => !finished && !played.has(k) && tiles[k].classList.remove('lit'), 600); }
+    else if (sl.contains(e.target) || e.clientY >= sl.getBoundingClientRect().top - 20) autoSlide();
+  };
+  area.addEventListener('pointerup', up); area.addEventListener('pointercancel', () => { dragging = false; });
 }
 const sliderHTML = () => `<div class="slider"><div class="arrow"></div><span class="knob">👉</span></div>`;
 // on a correct answer the tiles glide together into one word
 const mergeTiles = r => { const u = $('.units', r); if (u) u.classList.add('merged'); };
 function mkBlend() {
   const q = L().q;
-  const { item } = chooseItem('blend', wordsNow());
+  const { item, isNew } = chooseItem('blend', wordsNow());
   const sounds = item.units.filter(u => !u.startsWith('_'));
   return {
     title: q.blend, speak: [q.blend], gate: true,
@@ -720,20 +768,20 @@ function mkBlend() {
     options: pictureOptions(item, wordsNow()), answer: item.w,
     // first miss: hear the sounds again, fast, so they run together
     retrySpeak: [L().bl.sayFast, { seq: sounds, gap: 330 }],
-    correctSpeak: [{ seq: sounds, gap: 300 }, item.w], grade: f => gradeItem('blend', item.id, f), onCorrect: mergeTiles,
-    setup(root, unlock) { blendSlider(root, item.units, () => { unlock(); speak(q.whichPic); }); },
+    correctSpeak: [{ seq: sounds, gap: 300 }, item.w], grade: f => gradeItem('blend', item.id, f, isNew), onCorrect: mergeTiles,
+    setup(root, unlock) { blendSlider(root, item.units, async () => { unlock(); await unitChain; speak(q.whichPic); }); },   // let every sound finish first
   };
 }
 // 🤖 Robot talk: oral blending — no letters at all, just listen to the sounds and find the picture
 function mkRobot() {
-  const { item } = chooseItem('oral', wordsNow());
+  const { item, isNew } = chooseItem('oral', wordsNow());
   const sounds = item.units.filter(u => !u.startsWith('_'));
   return {
     title: '🤖 ' + L().bl.robot, speak: [L().bl.robot, { pause: 250 }, { seq: sounds, gap: 700 }],
     visual: `<div class="robot"><span>🤖</span><div class="waves"><i></i><i></i><i></i></div></div>`,
     options: pictureOptions(item, wordsNow()), answer: item.w,
     retrySpeak: [L().bl.sayFast, { seq: sounds, gap: 380 }],
-    correctSpeak: [{ seq: sounds, gap: 300 }, item.w], grade: f => gradeItem('oral', item.id, f),
+    correctSpeak: [{ seq: sounds, gap: 300 }, item.w], grade: f => gradeItem('oral', item.id, f, isNew),
   };
 }
 // 🏠 Word families (English): only the first sound changes — cat, hat, bat, rat.
@@ -764,11 +812,11 @@ function mkFamily() {
     retrySpeak: [L().bl.sayFast, { seq: [onset, ...rimeUnits], gap: 330 }],
     correctSpeak: [{ seq: [onset, ...rimeUnits], gap: 300 }, item.w], grade: f => gradeItem('fam', item.id, f), onCorrect: mergeTiles,
     // the "-at" tile plays its sounds run together, as one chunk
-    setup(root, unlock) { blendSlider(root, [onset, rimeUnits[0]], () => { unlock(); speak(L().q.whichPic); }, [null, runRime]); },
+    setup(root, unlock) { blendSlider(root, [onset, rimeUnits[0]], async () => { unlock(); await unitChain; speak(L().q.whichPic); }, [null, runRime]); },
   };
 }
 // play sound units one after another without interrupting other speech (used while sliding)
-async function playRun(units, gap) { for (const u of units) { if (!u.startsWith('_')) playUnit(u, S.lang, 1.15); await sleep(gap); } }
+async function playRun(units) { for (const u of units) if (!u.startsWith('_')) await playUnit(u, S.lang, 1.15); }   // queued: back-to-back, never overlapping
 async function speakQuick(u) { if (u.startsWith('_')) return sleep(150); await playUnit(u, S.lang, 1.15); }
 function mkSpell() {
   const d = DATA[S.lang], q = L().q;
@@ -777,7 +825,7 @@ function mkSpell() {
   const pool = shuffle(d.words.flatMap(w => w.units.map(unitText))).filter(u => !known.has(u));
   const extra = [...new Set(pool)].slice(0, item.units.length <= 3 ? 2 : 1);
   return { kind: 'build', item, title: `${q.spell} ${item.e}`, speak: [q.spell, { pause: 100 }, item.w], tiles: shuffle([...item.units.map(unitText), ...extra]),
-    grade: f => gradeItem('spell', item.id, f) };
+    grade: f => gradeItem('spell', item.id, f, isNew) };
 }
 function mkCount() {
   const max = [5, 10, 20][lvl('count') - 1], n = 1 + rand(max), e = pick(OBJECTS), q = L().q;
@@ -802,7 +850,7 @@ function mkHop(op) {
     setup(root, unlock) {
       let at = a, hops = 0;
       const frog = $('.nfrog', root), cellOf = n => $(`.nl[data-n="${n}"]`, root);
-      const place = () => { const c = cellOf(at), line = $('.nline', root); frog.style.left = (c.offsetLeft + c.offsetWidth / 2) + 'px'; void line; };
+      const place = () => { const c = cellOf(at); frog.style.left = (c.offsetLeft + c.offsetWidth / 2) + 'px'; try { c.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (e) { /* ignore */ } };
       requestAnimationFrame(place);
       // returns 'more' while hops remain, 'done' on the last hop, 'already' if she had finished
       root.__hop = async () => {
@@ -875,17 +923,17 @@ async function conceptDemo(act) {
   const q = act === 'add' ? mkAdd([2, 1]) : mkSub([4, 1]), C = L().c;
   app.innerHTML = actFrame({ index: 0, count: 1 }, `${promptHTML('👀 ' + C.watch)}<div class="visual">${q.visual}</div>
     <div class="btnrow"><button class="btn primary huge myturn" hidden>✋ ${esc(C.myTurn)}</button></div>`);
-  let go; const pr = new Promise(r => { go = r; });
-  $('.home').onclick = () => { stopSpeech(); go(false); };
+  let go, left = false; const pr = new Promise(r => { go = r; });
+  $('.home').onclick = () => { left = true; stopSpeech(); go(false); };   // leaving stops the demo completely
   $('.replay').onclick = () => {};
   const root = $('.stage');
   q.setup(root, () => {});
   $$('.together', root).forEach(b => { b.classList.remove('pulse'); b.disabled = true; });
   (async () => {
-    await speak(C.watch); await speak(...q.speak);
-    await sleep(400); await q.explain(root);
+    await speak(C.watch); if (left) return; await speak(...q.speak); if (left) return;
+    await sleep(400); if (left) return; await q.explain(root); if (left) return;
     owlReact('happy'); sfx('good');
-    await speak(...q.correctSpeak);
+    await speak(...q.correctSpeak); if (left) return;
     const btn = $('.myturn'); if (btn) { btn.hidden = false; btn.classList.add('pulse'); btn.onclick = () => { sfx('pop'); go(true); }; }
   })();
   return pr;
@@ -985,14 +1033,15 @@ function mkClock() {
   const set = new Map([[dig(h, mi), [h, mi]]]);
   while (set.size < 3) { const hh = 1 + rand(12), mm = l === 1 ? 0 : pick(mins.length > 1 && Math.random() < .5 ? mins : [mi]); set.set(dig(hh, mm), [hh, mm]); }
   return { title: m.whatTime, speak: [m.whatTime], visual: clockSVG(h, mi), optClass: 'word',
-    options: shuffle([...set.keys()]).map(k => ({ html: `<span class="digital">${k}</span>`, val: k })), answer: dig(h, mi),
+    // French children read "3 h 00" rather than "3:00"
+    options: shuffle([...set.keys()]).map(k => ({ html: `<span class="digital">${S.lang === 'fr' ? k.replace(':', ' h ') : k}</span>`, val: k })), answer: dig(h, mi),
     correctSpeak: [say(h, mi)], grade: f => gradeMath('clock', f) };
 }
 function mkDoubles() {
   const m = M(), n = 1 + rand(lvl('doubles') >= 2 ? 10 : 5), spots = Array.from({ length: n }, (_, i) => `<span class="obj spot" style="--i:${i}">●</span>`).join('');
   return { title: `${n} + ${n} = ?`, speak: [m.double(n)], optClass: 'num',
     visual: `<div class="fly"><div class="wing l">${spots}</div><div class="fbody"></div><div class="wing r">${spots}</div></div>`,
-    options: numOpts(2 * n, 2, 22), answer: 2 * n, correctSpeak: [m.doubleAns(n)], setup: r => tapToCount(r), grade: f => gradeMath('doubles', f),
+    options: numOpts(2 * n, 2, 22), answer: 2 * n, correctSpeak: [m.doubleAns(n)], setup: r => { tapToCount(r); $('.fly', r).classList.add('ticking'); }, grade: f => gradeMath('doubles', f),
     explain: r => autoCount(liveObjs(r)) };
 }
 function mkMissing() {
@@ -1097,12 +1146,13 @@ function mkPop() {
 function mkMathStory() {
   const l = lvl('mathStory'), m = M(), max = l >= 2 ? 10 : 5;
   if (Math.random() < .5) {
-    const [name, e] = pick(m.things), a = 1 + rand(max - 2), b = 1 + rand(max - a), lines = m.storyAdd(name, a, b);
+    // at least 2 of everything, so the story never says "1 apples"
+    const [name, e] = pick(m.things), a = 2 + rand(max - 3), b = 2 + rand(Math.max(1, max - a - 1)), lines = m.storyAdd(name, a, b);
     return { title: lines[2], speak: lines, optClass: 'num', answer: a + b, correctSpeak: [String(a + b)], setup: r => tapToCount(r),
       visual: `${objsHTML(a, e)}<span class="sign late">+</span><div class="late">${objsHTML(b, e, { offset: 0 })}</div>`,
       options: numOpts(a + b, 0, max + 2), grade: f => gradeMath('mathStory', f, 2), explain: r => autoCount(liveObjs(r)) };
   }
-  const [name, e, verb] = pick(m.away), a = 2 + rand(max - 1), b = 1 + rand(a - 1), lines = m.storySub(name, a, b, verb);
+  const [name, e, verb] = pick(m.away), a = 3 + rand(max - 2), b = 2 + rand(a - 2), lines = m.storySub(name, a, b, verb);
   return { title: lines[2], speak: lines, optClass: 'num', answer: a - b, correctSpeak: [String(a - b)],
     visual: objsHTML(a, e, { away: b }), setup: r => tapToCount(r),
     options: numOpts(a - b, 0, max), grade: f => gradeMath('mathStory', f, 2), explain: r => autoCount(liveObjs(r)) };
@@ -1141,12 +1191,12 @@ function mkPaperMath() {
     return { kind: 'paper', text: P.drawPattern, speak: [P.drawPattern], visual: `<div class="wordbig" style="letter-spacing:8px">${seq} …</div>` };
   }
   if (kind === 0) {
-    const a = 1 + rand(5), b = 1 + rand(4);
+    const a = 2 + rand(4), b = 2 + rand(3);   // never "Draw 1 circles"
     return { kind: 'paper', text: P.drawAdd(a, b), speak: [P.drawAdd(a, b)], visual: `<div class="eq">${a} + ${b} = <span class="q">?</span></div>`,
       answer: a + b, options: numOpts(a + b, 0, 12), grade: f => gradeMath('add', f) };
   }
   if (kind === 1) {
-    const a = 3 + rand(6), b = 1 + rand(a - 1);
+    const a = 3 + rand(6), b = 2 + rand(a - 2);
     return { kind: 'paper', text: P.drawSub(a, b), speak: [P.drawSub(a, b)], visual: `<div class="eq">${a} − ${b} = <span class="q">?</span></div>`,
       answer: a - b, options: numOpts(a - b, 0, 10), grade: f => gradeMath('sub', f) };
   }
@@ -1158,8 +1208,8 @@ function mkPaperMath() {
 // ================= thinking games (memory, sequences, attention, categories, puzzles) =================
 const TH = () => L().th;
 const CARD_EMOJI = ['🐶', '🐱', '🦊', '🐸', '🐵', '🐼', '🦁', '🐷', '🍎', '🍌', '🍓', '⭐', '🌈', '🚗', '🎈', '⚽', '🦋', '🐢', '🍦', '🌻'];
-const ODD_CATS = { animals: ['🐶', '🐱', '🐰', '🐻', '🐸', '🐵', '🐷', '🐮'], fruit: ['🍎', '🍌', '🍇', '🍓', '🍐', '🍊', '🍒'],
-  vehicles: ['🚗', '🚌', '🚲', '✈️', '🚂', '🚀', '🚜'], clothes: ['👕', '👖', '👗', '🧦', '🧢', '👟'], weather: ['☀️', '🌧️', '⛄', '🌈', '⚡', '☁️'],
+const ODD_CATS = { animals: ['🐶', '🐱', '🐰', '🐻', '🐸', '🐵', '🐷', '🐮', '🐥'], fruit: ['🍎', '🍌', '🍇', '🍓', '🍐', '🍊', '🍒'],
+  vehicles: ['🚗', '🚌', '🚲', '✈️', '🚂', '🚀', '🚜', '🚒'], clothes: ['👕', '👖', '👗', '🧦', '🧢', '👟'], weather: ['☀️', '🌧️', '⛄', '🌈', '⚡', '☁️'],
   red: ['🍎', '🍓', '🚒', '❤️', '🌹', '🍒'], yellow: ['🍌', '🌻', '⭐', '🐥', '🧀', '🌽'] };
 
 // 🃏 Memory pairs — a short peek at every card first (friendly for a poor short-term memory)
@@ -1223,13 +1273,14 @@ function askSimon(q, meta) {
       await sleep(ms); pads[i].classList.remove('lit'); await sleep(140);
     };
     const playSeq = async () => {
+      if (done) return;   // she left the game
       accepting = false; $('.againb').hidden = true; $('.bubble').textContent = TH().simonWatch; await sleep(300);
       for (const i of seq) { if (done) return; await light(i); }
       $('.bubble').textContent = TH().simonYou; pos = 0; accepting = true; $('.againb').hidden = false; speak(TH().simonYou);
     };
     // watch the sequence again as many times as she likes — never counts as a mistake
     $('.againb').onclick = () => { if (accepting) { sfx('tap'); playSeq(); } };
-    const newRound = async () => { seq = Array.from({ length: len }, () => rand(4)); $('.slen').innerHTML = '●'.repeat(len); await speak(TH().simonWatch); await playSeq(); };
+    const newRound = async () => { if (done) return; seq = Array.from({ length: len }, () => rand(4)); $('.slen').innerHTML = '●'.repeat(len); await speak(TH().simonWatch); await playSeq(); };
     pads.forEach((p, i) => p.addEventListener('pointerdown', async () => {
       if (!accepting) return;
       light(i, 280);
@@ -1308,6 +1359,7 @@ function askJigsaw(q, meta) {
       jig.innerHTML = order.map((p, slot) => { const px = p % q.cols, py = Math.floor(p / q.cols);
         return `<button class="piece ${p === slot ? 'ok' : ''}" data-s="${slot}" style="background-image:url(${img});background-size:${W}px ${H}px;background-position:${-px * W / q.cols}px ${-py * H / q.rows}px"></button>`; }).join('');
       $$('.piece', jig).forEach(b => b.onclick = async () => {
+        if (jig.classList.contains('solved')) return;   // solved: no more swaps during the praise
         const s = +b.dataset.s;
         if (sel === null) { sel = s; b.classList.add('sel'); sfx('tap'); return; }
         if (sel === s) { sel = null; b.classList.remove('sel'); return; }
@@ -1354,9 +1406,19 @@ function paintStudio(opts = {}) {
     let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
     $('.home').onclick = () => { sfx('tap'); finish(null); };
     const wrap = $('.paintwrap'), cv = $('.paint'), ctx = cv.getContext('2d'), dpr = devicePixelRatio || 1;
-    const W = wrap.clientWidth, H = wrap.clientHeight;
+    let W = wrap.clientWidth, H = wrap.clientHeight;
     cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
     ctx.scale(dpr, dpr); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    // tablet rotated: resize the canvas and keep her picture (the mirror line follows the new middle)
+    const onResize = () => {
+      if (!cv.isConnected) return removeEventListener('resize', onResize);
+      const nW = wrap.clientWidth, nH = wrap.clientHeight; if (nW === W && nH === H) return;
+      const old = document.createElement('canvas'); old.width = cv.width; old.height = cv.height; old.getContext('2d').drawImage(cv, 0, 0);
+      W = nW; H = nH; cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.drawImage(old, 0, 0, old.width / dpr, old.height / dpr);
+      undo.length = 0;
+    };
+    addEventListener('resize', onResize);
     let color = PAINT_COLORS[0], size = 2, mode = 'brush', stampI = 0, mirror = !!opts.mirror, hue = 0, drawing = false, last = null, strokes = 0;
     const undo = [];
     const widths = [0, 8, 18, 38];
@@ -1373,7 +1435,7 @@ function paintStudio(opts = {}) {
     };
     cv.addEventListener('pointerdown', e => {
       try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-      undo.push(ctx.getImageData(0, 0, cv.width, cv.height)); if (undo.length > 12) undo.shift();
+      undo.push(ctx.getImageData(0, 0, cv.width, cv.height)); if (undo.length > 6) undo.shift();   // 6 steps back is plenty and kinder to tablet memory
       const p = pos(e); strokes++;
       if (mode === 'stamp') { stamp(p); sfx('pop'); burst(e.clientX, e.clientY, 10); return; }
       drawing = true; last = p; line(p, { x: p.x + .1, y: p.y + .1 });
@@ -1401,8 +1463,9 @@ function paintStudio(opts = {}) {
     });
     $('.donebtn').onclick = async () => {
       $('.donebtn').disabled = true; sfx('win'); rain();
-      const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', .85));
-      await saveArt(blob, word ? word.w : 'art'); tally('art'); save();
+      // saving to the gallery must never leave her stuck on this screen
+      try { const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', .85)); await saveArt(blob, word ? word.w : 'art'); } catch (e) { /* gallery copy is optional */ }
+      tally('art'); save();
       if (word) {
         const rv = document.createElement('div'); rv.className = 'reveal'; rv.innerHTML = `<div class="prize">${word.e}</div>`; wrap.appendChild(rv);
         await speak(A().itWas, word.w, ...praiseParts());
@@ -1605,7 +1668,7 @@ function wireReader(root) {
     for (const s of $$('.w', root)) {
       if (t !== speakToken) break;
       $$('.w.on', root).forEach(x => x.classList.remove('on')); s.classList.add('on');
-      if (s.dataset.w) await say(s.dataset.w, S.lang, S.settings.rate * 1.05);
+      if (s.dataset.w) { resetIdle(); await say(s.dataset.w, S.lang, S.settings.rate * 1.05); }   // reading along counts as busy
     }
     $$('.w.on', root).forEach(x => x.classList.remove('on'));
   };
@@ -1627,7 +1690,9 @@ function askReading(q, meta) {
       $('.readdone').onclick = () => {
         sfx('good'); owlReact('happy'); $('.readdone').remove(); $('.helpbtn').remove();
         $('.bubble').textContent = q.q; $('.reader').classList.add('small');
-        $('.options').hidden = false; speak(q.q); setIdle(() => nudge([q.q])); run();
+        $('.options').hidden = false; speak(q.q); setIdle(() => nudge([q.q]));
+        q.retrySpeak = [q.q]; $('.replay').onclick = () => { sfx('tap'); speak(q.q); };   // now the question is what to repeat
+        run();
       };
     } else run();
     speak(...q.speak);
@@ -1653,14 +1718,17 @@ function askChoice(q, meta, container) {
         busy = true; b.classList.add('correct'); btns.forEach(x => { if (x !== b) x.disabled = true; });
         if (q.onCorrect) q.onCorrect(root);
         const first = attempts === 0;
-        sfx('good'); burstAt(b, first ? 50 : 20); owlReact('happy');
+        stopSpeech(); sfx('good'); burstAt(b, first ? 50 : 20); owlReact('happy');
         if (first) flyStar(b); else tally('retryOk');
         q.grade && q.grade(first); logDay(first); save();
         const cb = comboHit(first);
+        await sleep(300);   // let the chime finish before Tiko talks
         await speak(...(q.correctSpeak || []), ...(first ? (cb ? [cb] : praiseParts()) : []));
         await sleep(350); finish(first);
       } else {
-        attempts++; b.classList.add('wrong'); b.disabled = true; sfx('oops'); owlReact('think');
+        attempts++; const mine = attempts; b.classList.add('wrong'); b.disabled = true; stopSpeech(); sfx('oops'); owlReact('think');
+        await sleep(350);   // the soft "oops" first, then Tiko
+        if (mine !== attempts || busy || done) return;   // she already tapped again (or got it right) — that tap takes over
         if (attempts === 1 && btns.length > 2) speak(L().retry, { pause: 150 }, ...(q.retrySpeak || q.speak));
         else {
           // second miss: Tiko shows HOW (puts together / takes away / counts with ticks), then the answer glows
@@ -1694,14 +1762,14 @@ function askBuild(q, meta) {
         t.classList.add('used'); slots[pos].textContent = want; slots[pos].classList.add('filled');
         if (units[pos].startsWith('_')) slots[pos].classList.add('silent');
         $$('.hint').forEach(h => h.classList.remove('hint'));
-        sfx('tap'); speak({ unit: units[pos] }); pos++;
+        speak({ unit: units[pos] }); pos++;   // just the letter sound — no click on top of it
         if (pos === units.length) {
           const first = misses === 0;
           sfx('good'); burstAt($('.slots'), 60); owlReact('happy'); if (first) flyStar($('.slots'));
           tally('built'); if (!first) tally('retryOk');
           q.grade(first); logDay(first); save();
           const cb = comboHit(first);
-          await sleep(500); await speak(q.item.w, ...(first ? (cb ? [cb] : praiseParts()) : []));
+          await unitChain; await sleep(300); await speak(q.item.w, ...(first ? (cb ? [cb] : praiseParts()) : []));
           await sleep(300); finish(first);
         }
       } else {
@@ -1752,7 +1820,7 @@ function askTrace(q, meta) {
     let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
     const P = L().paper;
     // whole pixels! a fractional size (e.g. 480.8 on a 601-px-wide tablet) scrambled the letter-shape check below
-    const size = Math.floor(Math.min(innerWidth * 0.8, innerHeight * 0.52, 520));
+    const size = Math.floor(Math.min(innerWidth * 0.8 - (q.hint ? 110 : 0), innerHeight * 0.52, 520));   // room for the picture beside it
     app.innerHTML = actFrame(meta, `${promptHTML(P.trace)}
       <div style="display:flex;align-items:center;gap:20px">${q.hint ? `<div class="pic bob" style="font-size:80px">${q.hint}</div>` : ''}
       <div class="tracebox" style="width:${size}px;height:${size}px"><canvas class="guide"></canvas><canvas class="ink"></canvas></div></div>
@@ -1795,7 +1863,6 @@ function askTrace(q, meta) {
       ink.strokeStyle = `hsl(${hue = (hue + 4) % 360} 85% 60%)`; ink.lineWidth = size * .07; ink.lineCap = 'round'; ink.lineJoin = 'round';
       ink.beginPath(); ink.moveTo(last.x, last.y); ink.lineTo(p.x, p.y); ink.stroke(); last = p;
       const now = performance.now(); if (now - lastMove < 200) inkTime += now - lastMove; lastMove = now;
-      if (Math.random() < .08) sfx('tap');
     });
     const succeed = async () => {
       if (success) return;
@@ -1967,6 +2034,7 @@ async function savePhoto(file, label) {
 // replaces the stage with a "now do it on paper" card; resolves on Done
 function askPaperStep(text, visual) {
   return new Promise(res => {
+    clearIdle();   // she's writing on paper — no "Your turn!" nudges
     $('.stage').innerHTML = promptHTML('✏️ 📄') + missionHTML(text, visual);
     wirePhoto(text);
     $('.donebtn').onclick = () => { sfx('good'); burstAt($('.donebtn'), 40); tally('papers'); save(); res(); };
@@ -1978,6 +2046,7 @@ function askPaper(q, meta) {
     let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
     app.innerHTML = actFrame(meta, promptHTML('✏️ 📄') + missionHTML(q.text, q.visual));
     wire(meta, finish, () => speak(...q.speak), q.speak);
+    clearIdle();   // paper work takes time — no "Your turn!" nudges while she writes
     wirePhoto(q.text);
     $('.donebtn').onclick = async () => {
       sfx('good'); burstAt($('.donebtn'), 50); owlReact('happy'); tally('papers'); save();
@@ -2047,7 +2116,7 @@ function intro() {
 // ================= screens =================
 function home(fromIntro) {
   stopSpeech(); clearIdle(); applySettings();
-  if (fromIntro) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);
+  if (fromIntro === true) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);   // (back buttons pass a click event — not 'from intro')
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
   app.innerHTML = `<div class="screen home">
     <button class="ic corner" aria-label="parents">⚙️</button>
@@ -2092,7 +2161,8 @@ function menu(area) {
   $$('[data-a]').forEach(b => b.onclick = async () => {
     sfx('pop'); const a = b.dataset.a;
     const r = await runAct(a);
-    if (r) { await reward(); await checkUnlock(); await celebrateAwards(); } menu(area);
+    if (!r) return home();   // 🏠 means home
+    await reward(); await checkUnlock(); await celebrateAwards(); menu(area);
   });
 }
 
@@ -2130,7 +2200,12 @@ function buildPath() {
   stops.forEach((s, i) => { seq.push(s); if (S.settings.breaks && i === 2 && stops.length > 3) seq.push('break'); });
   return seq.map(a => ({ a, done: false, sticker: null }));
 }
-function startPath() { path = buildPath(); showPath(); }
+// today's path is kept: pressing 🏠 by accident and coming back carries on where she was (with her stickers)
+let pathDay = null;
+function startPath() {
+  if (!(path && pathDay === today() && path.some(s => !s.done))) { path = buildPath(); pathDay = today(); }
+  showPath();
+}
 function showPath() {
   const cur = path.findIndex(s => !s.done);
   if (cur === -1) return finale();
@@ -2380,7 +2455,8 @@ function parents() {
 
     <section><h3>🎙️ Record letter sounds in your voice (recommended)</h3>
       <p>Tiko has built-in pure phonics sounds ("sss", "mmm", "t" not "tuh"). Tap ▶ to hear them. If you'd rather she hears your voice or your accent, record a sound (about 1 second) and Tiko will use your recording instead.</p>
-      <div class="tabs" style="margin-bottom:10px"><button class="rl on" data-l="en">🇬🇧</button><button class="rl" data-l="fr">🇫🇷</button></div>
+      <div class="tabs" style="margin-bottom:10px"><button class="rl on" data-l="en">🇬🇧 sounds</button><button class="rl" data-l="fr">🇫🇷 sons</button><button class="rl" data-l="fr" data-syl="1">🇫🇷 syllabes</button></div>
+      <p class="sylnote" hidden style="font-size:14px">The French syllables Tiko says while blending (pa, mo, teau…). Tap ▶ to check each one; if one sounds wrong, record it in your voice and Tiko will use that.</p>
       <div class="recgrid"></div></section>
 
     <section><h3>📊 Progress</h3><p>✓ = remembered well (reached box 4 of 5 in spaced repetition). New items come in slowly, a few at a time, and anything she misses comes back more often.</p>
@@ -2465,15 +2541,15 @@ function parents() {
   };
   $('.g-text').addEventListener('keydown', e => e.stopPropagation());
   const inst = $('.inst'); if (inst) inst.onclick = async () => { installEvt.prompt(); installEvt = null; inst.remove(); };
-  let recLang = 'en';
+  let recLang = 'en', recSyl = false;
   const drawRec = () => {
-    $('.recgrid').innerHTML = DATA[recLang].recordable.map(u => `<div><b class="${recKeys.has(recLang + ':' + u) ? 'has' : ''}">${esc(u)}</b>
+    $('.recgrid').innerHTML = (recSyl ? DATA[recLang].syllables : DATA[recLang].recordable).map(u => `<div><b class="${recKeys.has(recLang + ':' + u) ? 'has' : ''}">${esc(u)}</b>
       <button data-p="${esc(u)}">▶</button><button data-r="${esc(u)}">⏺</button>${recKeys.has(recLang + ':' + u) ? `<button data-d="${esc(u)}">🗑</button>` : ''}</div>`).join('');
     $$('[data-p]').forEach(b => b.onclick = () => { stopSpeech(); playUnit(b.dataset.p, recLang); });
     $$('[data-d]').forEach(b => b.onclick = async () => { await idb.del('rec', recLang + ':' + b.dataset.d); recKeys.delete(recLang + ':' + b.dataset.d); drawRec(); });
     $$('[data-r]').forEach(b => b.onclick = () => record(recLang + ':' + b.dataset.r, b, drawRec));
   };
-  $$('.rl').forEach(b => b.onclick = () => { $$('.rl').forEach(x => x.classList.toggle('on', x === b)); recLang = b.dataset.l; drawRec(); });
+  $$('.rl').forEach(b => b.onclick = () => { $$('.rl').forEach(x => x.classList.toggle('on', x === b)); recLang = b.dataset.l; recSyl = !!b.dataset.syl; $('.sylnote').hidden = !recSyl; drawRec(); });
   drawRec();
   let armed = false;
   $('.rst').onclick = e => {

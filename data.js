@@ -100,7 +100,7 @@ const DATA = {
 DATA.en.simpleWords = 26;
 DATA.fr.simpleWords = 18;
 // French grammatical gender (feminine words); everything else is masculine
-const FR_FEM = new Set(['lune', 'moto', 'tomate', 'salade', 'tulipe', 'robe', 'vache', 'poule', 'banane', 'pomme', 'souris', 'maison', 'fourmi',
+const FR_FEM = new Set(['radio', 'lune', 'moto', 'tomate', 'salade', 'tulipe', 'robe', 'vache', 'poule', 'banane', 'pomme', 'souris', 'maison', 'fourmi',
   'grenouille', 'fraise', 'montagne', 'étoile', 'citrouille', 'tortue', 'voiture', 'girafe', 'baleine', 'abeille']);
 const aan = w => /^[aeiou]/.test(w) ? 'an' : 'a';   // a cat, an owl
 const frUn = w => FR_FEM.has(w) ? 'une' : 'un';
@@ -145,6 +145,8 @@ for (const lang of Object.keys(DATA)) {
   d.sounds = Object.assign({}, d.extraSounds);
   for (const x of d.letters) d.sounds[x.l] = x.s;
   d.recordable = [...d.letters.map(x => x.l), ...Object.keys(d.extraSounds)];
+  // every syllable/part the words use (French: the syllables), so a parent can hear and re-record any of them
+  d.syllables = [...new Set(d.words.flatMap(w => w.units).filter(u => !u.startsWith('_')).map(u => u.includes(':') ? u.split(':')[1] : u))];
 }
 
 // Built-in pure phonics sound clips in sounds/<lang>-<unit>.wav (generated from IPA, see tools/).
@@ -154,6 +156,17 @@ const SOUND_CLIPS = {
     'p', 'q', 'r', 's', 'sh', 't', 'th', 'u', 'v', 'w', 'x', 'y', 'z', 'ay', 'igh', 'oa', 'ue', 'or', 'ow', 'oi', 'er'],
   fr: ['b', 'c', 'ch', 'd', 'f', 'g', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 's', 't', 'v', 'z'],
 };
+// How the French VOICE should say a syllable on its own. The child still SEES the normal spelling; this is only
+// what's spoken. Fixes syllables that voices misread alone (spelled out, wrong vowel, silent letters, "eau", "ill"...).
+const FR_SAY = {
+  be: 'beu', pe: 'peu', ge: 'jeu', re: 'reu', fe: 'feu', gre: 'greu', che: 'cheu', gne: 'gneu',
+  wi: 'oui', nas: 'nasse', gi: 'ji', es: 'esse', pom: 'pomme',
+  teau: 'tô', deau: 'dô', seau: 'sô', meau: 'mô', dau: 'dô',
+  sson: 'son', llon: 'lon', mai: 'mè', frai: 'frè', lei: 'lè', leil: 'lèye', beille: 'bèye', nouille: 'nouye', trouille: 'trouye',
+  poi: 'pwa', voi: 'vwa', oi: 'wa', quin: 'kin', phin: 'fin', phant: 'fan',
+};
+for (const [k, v] of Object.entries(FR_SAY)) if (!DATA.fr.sounds[k] || DATA.fr.sounds[k] === k) DATA.fr.sounds[k] = v;
+
 // a word part is "text" or "text:sound" (tile shows text, plays sound); "_x" = silent letter
 const unitText = u => u.replace(/^_/, '').split(':')[0];
 const unitSound = u => u.includes(':') ? u.split(':')[1] : u;
@@ -176,7 +189,7 @@ const T = {
       count: 'Count', add: 'Add', sub: 'Take away', bonds: 'Make 10', next: 'What comes next?', compare: 'More or less',
     },
     q: {
-      letter: 'Which letter says', like: 'like', findWord: 'Find the word', newWord: 'This word is', tapIt: 'Tap it!',
+      letter: 'Which letter says', like: 'like', findWord: 'Find the word', newWord: 'This word is', tapIt: 'Tap it!', tapItL: 'Tap it!',
       blend: 'Tap the sounds. Then slide your finger along the arrow!', blendBtn: 'Blend', whichPic: 'Which picture is it?',
       spell: 'Build the word', howMany: 'How many?', plus: 'plus', minus: 'take away', equals: 'is',
       makeTo: n => `How many more to make ${n}?`, after: n => `What comes after ${n}?`, before: n => `What comes before ${n}?`,
@@ -224,7 +237,7 @@ const T = {
       odd: 'Which one does not belong?', oddWhy: c => `The others are all ${c}.`, jigsaw: 'Tap two pieces to swap them. Make the picture!',
       cats: { animals: 'animals', fruit: 'fruit', vehicles: 'vehicles', clothes: 'clothes', weather: 'weather', red: 'red', yellow: 'yellow' } },
     c: { addSay: (a, b) => `${a}, and ${b} more. Put them together!`, together: 'Put together', countAll: 'Now count them all. Tick each one!',
-      subSay: (a, b) => `There are ${a}. Take ${b} away! Tap ${b} to take them away.`, takeLeft: 'Take away', countLeft: 'Now count what is left. Tick each one!',
+      subSay: (a, b) => b === 1 ? `There are ${a}. Take 1 away! Tap 1 to take it away.` : `There are ${a}. Take ${b} away! Tap ${b} to take them away.`, takeLeft: 'Take away', countLeft: 'Now count what is left. Tick each one!',
       watch: 'Watch me first!', myTurn: 'My turn!', addRule: (a, b, s) => `${a}, and ${b} more, makes ${s}!`, subRule: (a, b, r) => `${a}, take away ${b}, leaves ${r}!`,
       tooMany: 'That is enough! Now count what is left.',
       hopAdd: (a, b) => `The frog starts on ${a}. Tap the frog to hop ${b} times forward!`,
@@ -246,7 +259,7 @@ const T = {
       songs: { twinkle: 'Twinkle Twinkle', frere: 'Brother John', mary: 'Mary had a little lamb', lune: 'Au clair de la lune' },
     },
     hi: { letsPlay: "Let's play!", morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening',
-      happy: "I'm so happy to see you! Let's have fun!", tapStart: 'Tap the big Start button!', streak: n => `That's ${n} days in a row!`, combo: n => `${n} in a row!`, there: 'there' },
+      happy: "I'm so happy to see you! Let's have fun!", tapStart: 'Tap the big Start button!', streak: n => `That's ${n} days in a row!`, combo: n => `${n} in a row!`, there: '' },
     lvl: { up: 'Level up!', now: (name, n) => `${name}: level ${n}!` },
     aw: { newBadge: 'New badge!', badges: 'Badges', goalReached: 'You did it! You earned:', tellGrownUp: 'Show a grown-up!' },
     journey: ['Sound Island', 'Blending Bridge', 'Magic Word Forest', 'Tricky Sound Mountain', 'Sentence River', 'Long Vowel Lagoon', 'Story Castle', 'Big Word Peak'],
@@ -268,7 +281,7 @@ const T = {
       count: 'Compter', add: 'Additionner', sub: 'Enlever', bonds: 'Faire 10', next: 'Et après ?', compare: 'Plus ou moins',
     },
     q: {
-      letter: 'Quelle lettre fait', like: 'comme', findWord: 'Trouve le mot', newWord: 'Ce mot, c\'est', tapIt: 'Touche-le !',
+      letter: 'Quelle lettre fait', like: 'comme', findWord: 'Trouve le mot', newWord: 'Ce mot, c\'est', tapIt: 'Touche-le !', tapItL: 'Touche-la !',
       blend: 'Touche les sons. Puis glisse ton doigt sur la flèche !', blendBtn: 'Assemble', whichPic: "Quelle image est-ce ?",
       spell: 'Construis le mot', howMany: 'Combien ?', plus: 'plus', minus: 'moins', equals: 'égale',
       makeTo: n => `Combien il en manque pour faire ${n} ?`, after: n => `Qu'est-ce qui vient après ${n} ?`,
@@ -284,7 +297,7 @@ const T = {
       drawSub: (a, b) => `Dessine ${a} ronds. Barre-en ${b}. Combien en reste-t-il ?`,
       drawShapes: (a, b) => `Dessine ${a} et ${b} sur ta feuille. Colorie-les !`,
       drawPattern: 'Recopie ce motif sur ta feuille. Puis dessine la suite, deux fois !',
-      trace: 'Suis le tracé avec ton doigt !', nowPaper: 'Maintenant, à toi ! Recopie trois fois sur ta feuille.',
+      trace: 'Suis le tracé avec ton doigt !', nowPaper: 'Maintenant, à toi ! Recopie-le trois fois sur ta feuille.',
       done: 'Fini !', photo: 'Montre à Tiko', photoThanks: 'Waouh ! Tiko adore !', answer: "Qu'est-ce que tu as trouvé ?",
       myWork: 'Mon travail', clear: 'Encore',
     },
@@ -303,7 +316,7 @@ const T = {
       missingAdd: (a, s) => `${a} plus combien font ${s} ?`, missingSub: (a, r) => `${a} moins combien font ${r} ?`,
       frog: k => `La grenouille saute de ${k} en ${k}. Où arrive-t-elle ?`, frogBack: 'La grenouille recule de 1. Où arrive-t-elle ?',
       tens: 'Combien ? Compte les dizaines, puis les unités.',
-      longer: 'Lequel est le plus long ?', shorter: 'Lequel est le plus court ?', blocks: 'Combien de cubes de long ?',
+      longer: 'Lequel est le plus long ?', shorter: 'Lequel est le plus court ?', blocks: 'Ça mesure combien de cubes ?',
       flash: 'Regarde vite ! Combien de points ?', seeAgain: 'Revoir',
       pop: n => `Éclate tous les ${n} !`, popTen: 'Éclate les bulles qui font 10 !',
       storyAdd: (n, a, b) => [`Tiko a ${a} ${n}.`, `Il en trouve ${b} de plus.`, `Combien de ${n} a-t-il maintenant ?`],
@@ -314,10 +327,10 @@ const T = {
     thinkName: 'Réflexion',
     th: { ready: 'Je suis prête !', peek: 'Regarder', memoryGo: 'Maintenant, trouve les paires !', memory: 'Regarde bien ! Touche « Je suis prête » quand tu les as retenues.', simonWatch: 'Regarde et écoute !', simonYou: 'À toi ! Imite-moi.',
       simonAgain: 'Oups ! On regarde encore.', showAgain: 'Montre encore', kimLook: 'Regarde bien ! Retiens-les tous. Touche « Je suis prête » quand tu les connais.', kimQ: "Qu'est-ce qui manque ?",
-      odd: "Lequel n'est pas comme les autres ?", oddWhy: c => `Les autres sont tous ${c}.`, jigsaw: 'Touche deux pièces pour les échanger. Fais le dessin !',
-      cats: { animals: 'des animaux', fruit: 'des fruits', vehicles: 'des véhicules', clothes: 'des vêtements', weather: 'des choses de la météo', red: 'rouges', yellow: 'jaunes' } },
-    c: { addSay: (a, b) => `${a}, et encore ${b}. Mets-les ensemble !`, together: 'Mettre ensemble', countAll: 'Maintenant, compte-les tous. Coche chacun !',
-      subSay: (a, b) => `Il y en a ${a}. Enlèves-en ${b} ! Touche-en ${b} pour les enlever.`, takeLeft: 'Enlève', countLeft: 'Maintenant, compte ce qui reste. Coche chacun !',
+      odd: "Lequel n'est pas comme les autres ?", oddWhy: c => `Les autres, ce sont ${c}.`, jigsaw: 'Touche deux pièces pour les échanger. Fais le dessin !',
+      cats: { animals: 'des animaux', fruit: 'des fruits', vehicles: 'des véhicules', clothes: 'des vêtements', weather: 'des choses de la météo', red: 'des choses rouges', yellow: 'des choses jaunes' } },
+    c: { addSay: (a, b) => `${a}, et encore ${b}. Mets-les ensemble !`, together: 'Mettre ensemble', countAll: 'Maintenant, compte-les tous. Coche-les un par un !',
+      subSay: (a, b) => b === 1 ? `Il y en a ${a}. Enlèves-en 1 ! Touche-en 1 pour l'enlever.` : `Il y en a ${a}. Enlèves-en ${b} ! Touche-en ${b} pour les enlever.`, takeLeft: 'Enlève', countLeft: 'Maintenant, compte ce qui reste. Coche-les un par un !',
       watch: "Regarde-moi d'abord !", myTurn: 'À moi !', addRule: (a, b, s) => `${a}, et encore ${b}, ça fait ${s} !`, subRule: (a, b, r) => `${a}, moins ${b}, il en reste ${r} !`,
       tooMany: "C'est assez ! Maintenant, compte ce qui reste.",
       hopAdd: (a, b) => `La grenouille part du ${a}. Touche-la pour sauter ${b} fois en avant !`,
@@ -349,6 +362,6 @@ const T = {
       sums: 'Calcule', line: 'Complète les nombres' },
     moves: ['Saute 5 fois !', 'Touche tes pieds !', 'Étire-toi comme un arbre !', 'Tourne doucement sur toi-même !',
       'Tortille-toi comme un ver !', 'Tiens-toi sur un pied !', 'Tape 10 fois dans tes mains !', 'Marche sur place !',
-      'Respire 3 grandes fois.'],
+      'Prends 3 grandes inspirations.'],
   },
 };
