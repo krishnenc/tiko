@@ -19,7 +19,8 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [],
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.35, sfx: true, calm: false, breaks: true, nudge: true, voice_en: '', voice_fr: '' },
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.35, sfx: true, music: true, calm: false, breaks: true, nudge: true,
+    voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
 function load() {
@@ -99,7 +100,9 @@ function stopSpeech() {
 // Bubbly voice: raised pitch overall, and an extra lift for anything exclaimed ("Bravo !", "Great job!")
 function say(text, lang = S.lang, rate = S.settings.rate, pitch = S.settings.pitch) {
   return new Promise(res => {
-    if (!('speechSynthesis' in window) || !text) return res();
+    // never read punctuation aloud: "Combien ?" / "…?" would otherwise be spoken as "question mark"
+    text = String(text || '').replace(/…\s*\?/g, '?').replace(/…/g, ', ').replace(/\s+([?!.,;:])/g, '$1').replace(/^[\s?!.,;:]+/, '').trim();
+    if (!('speechSynthesis' in window) || !text || /^[?!.,;:\s]*$/.test(text)) return res();
     const u = new SpeechSynthesisUtterance(text), v = voiceFor(lang);
     if (v) u.voice = v;
     const excited = /!\s*$/.test(text);
@@ -139,7 +142,60 @@ async function speak(...parts) {
     if (typeof p === 'string') await say(p);
     else if (p.pause) await sleep(p.pause);
     else if (p.unit !== undefined) await playUnit(p.unit, p.lang || S.lang, p.rate);
+    else if (p.name) await sayName(p.bang);
     else if (p.text) await say(p.text, p.lang || S.lang, p.rate || S.settings.rate);
+  }
+}
+
+// ================= her name (kept only on this device, never in the code) =================
+const childName = () => (S.settings.name || '').trim();
+async function sayName(bang) {
+  if (recKeys.has('name')) { const b = await idb.get('rec', 'name'); if (b) return playBlob(b); }
+  const n = (S.settings.nameSay || '').trim() || childName();
+  if (n) return say(n + (bang ? '!' : ''));
+}
+// praise, sometimes with her name: "Great job, <name>!"
+function praiseParts() {
+  const p = pick(L().praise);
+  if (childName() && Math.random() < 0.35) return [p.replace(/\s*!\s*$/, ''), { name: true, bang: true }];
+  return [p];
+}
+
+// ================= intro jingle (synthesised, no files needed) =================
+function jingle() {
+  if (!S.settings.music) return 0;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    const t0 = actx.currentTime + 0.05, b = 0.19; // one beat
+    // bouncy melody (C major) – [note, beats]
+    const N = { C4: 262, D4: 294, E4: 330, F4: 349, G4: 392, A4: 440, B4: 494, C5: 523, D5: 587, E5: 659, G5: 784, C6: 1047 };
+    const mel = [['G4', 1], ['C5', 1], ['E5', 1], ['G5', 1], ['E5', 1], ['C5', 1], ['D5', 2],
+      ['A4', 1], ['D5', 1], ['F4', 1], ['A4', 1], ['G4', 1], ['B4', 1], ['C5', 1], ['E5', 1], ['G5', 2], ['C6', 4]];
+    let t = t0;
+    for (const [n, d] of mel) { tone(N[n], t, d * b * 0.95, 'triangle', 0.11); t += d * b; }
+    // soft bass + chord pad
+    [['C4', 0, 8], ['F4', 8, 4], ['G4', 12, 6], ['C4', 18, 6]].forEach(([n, s, d]) => {
+      tone(N[n] / 2, t0 + s * b, d * b, 'sine', 0.09); tone(N[n], t0 + s * b, d * b, 'sine', 0.035);
+    });
+    // sparkle at the end
+    [1568, 2093, 2637].forEach((f, i) => tone(f, t - 4 * b + i * 0.07, 0.5, 'sine', 0.04));
+    return (t - t0) * 1000;
+  } catch (e) { return 0; }
+}
+
+// ================= combos: Tiko dances on a run of first-try answers =================
+let combo = 0;
+function comboHit(first) {
+  if (!first) { combo = 0; return; }
+  combo++;
+  if (combo === 3 || combo === 6 || combo === 10 || (combo > 10 && combo % 5 === 0)) {
+    const el = document.createElement('div'); el.className = 'combo';
+    el.innerHTML = `<span>🔥</span> ${esc(L().hi.combo(combo))}`;
+    document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
+    const o = $('.owl'); if (o) { o.classList.remove('dance'); void o.offsetWidth; o.classList.add('dance'); setTimeout(() => o.classList.remove('dance'), 1800); }
+    sfx('win'); rain();
+    return L().hi.combo(combo);
   }
 }
 
@@ -440,7 +496,7 @@ function mkLetters() {
   const opts = isNew ? [item] : shuffle([item, ...shuffle(d.letters.filter(x => x.l !== item.l)).slice(0, 2)]);
   return {
     title: isNew ? `${L().newLetter}…` : `${q.letter}…?`,
-    speak: isNew ? [L().newLetter, { unit: item.l }, q.like, item.k, { pause: 200 }, q.tapIt] : [q.letter, { unit: item.l }, q.like, item.k, '?'],
+    speak: isNew ? [L().newLetter, { unit: item.l }, q.like, item.k, { pause: 200 }, q.tapIt] : [q.letter, { unit: item.l }, q.like, item.k],
     visual: `<div class="pic bob">${item.e}</div>`,
     options: opts.map(x => ({ html: `<span class="glyph">${esc(x.l)}</span>`, val: x.l })), answer: item.l,
     correctSpeak: [{ unit: item.l }, item.k],
@@ -673,7 +729,8 @@ function askChoice(q, meta, container) {
         sfx('good'); burstAt(b, first ? 50 : 20); owlReact('happy');
         if (first) flyStar(b); else tally('retryOk');
         q.grade && q.grade(first); logDay(first); save();
-        await speak(...(q.correctSpeak || []), first ? pick(L().praise) : '');
+        const cb = comboHit(first);
+        await speak(...(q.correctSpeak || []), ...(first ? (cb ? [cb] : praiseParts()) : []));
         await sleep(350); finish(first);
       } else {
         attempts++; b.classList.add('wrong'); b.disabled = true; sfx('oops'); owlReact('think');
@@ -709,7 +766,8 @@ function askBuild(q, meta) {
           sfx('good'); burstAt($('.slots'), 60); owlReact('happy'); if (first) flyStar($('.slots'));
           tally('built'); if (!first) tally('retryOk');
           q.grade(first); logDay(first); save();
-          await sleep(500); await speak(q.item.w, first ? pick(L().praise) : '');
+          const cb = comboHit(first);
+          await sleep(500); await speak(q.item.w, ...(first ? (cb ? [cb] : praiseParts()) : []));
           await sleep(300); finish(first);
         }
       } else {
@@ -762,7 +820,7 @@ function askTrace(q, meta) {
       if (!drawing) return; drawing = false;
       if (!success && covered / pts.length >= .65) {
         success = true; sfx('win'); burstAt(box, 80); owlReact('happy'); flyStar(box); tally('traces'); logDay(true); save();
-        await speak(pick(L().praise), ...q.say);
+        await speak(...praiseParts(), ...q.say);
         await askPaperStep(P.nowPaper, `<div class="wordbig">${esc(q.glyph)}</div>`);
         finish(true);
       }
@@ -819,7 +877,7 @@ function askPaper(q, meta) {
       sfx('good'); burstAt($('.donebtn'), 50); owlReact('happy'); tally('papers'); save();
       if (q.reveal) {
         $('.mission .visual').innerHTML += q.reveal.html; $('.btnrow').hidden = true; flyStar($('.mission'));
-        logDay(true); save(); await speak(...q.reveal.speak, pick(L().praise)); await sleep(500); return finish(true);
+        logDay(true); save(); await speak(...q.reveal.speak, ...praiseParts()); await sleep(500); return finish(true);
       }
       if (q.answer !== undefined) {
         $('.stage').innerHTML = `${promptHTML(L().paper.answer)}<div class="visual">${q.visual}</div><div class="options num"></div>`;
@@ -827,7 +885,7 @@ function askPaper(q, meta) {
         const r = await askChoice({ ...q, optClass: 'num', correctSpeak: [String(q.answer)] }, meta, $('.options'));
         return finish(r);
       }
-      flyStar($('.mission')); logDay(true); save(); await speak(pick(L().praise)); await sleep(400); finish(true);
+      flyStar($('.mission')); logDay(true); save(); await speak(...praiseParts()); await sleep(400); finish(true);
     };
     speak(...q.speak);
   });
@@ -843,6 +901,32 @@ async function runStop(act, count) {
   }
   clearIdle(); save();
   return { first, count };
+}
+
+// ================= intro: music + personal welcome =================
+function intro() {
+  applySettings();
+  const H = L().hi, name = childName(), h = new Date().getHours();
+  const greet = h < 12 ? H.morning : h < 18 ? H.afternoon : H.evening;
+  const bubbles = Array.from({ length: 14 }, (_, i) =>
+    `<i style="left:${rand(96)}%;--s:${30 + rand(60)}px;--d:${6 + rand(7)}s;--w:${-rand(12)}s;--h:${rand(360)}"></i>`).join('');
+  app.innerHTML = `<div class="screen center intro"><div class="bubbles">${bubbles}</div>
+    ${owl('big wave')}<h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1>
+    <h1 class="hello" hidden>${esc(greet)}${name ? ', ' + esc(name) : (H.there ? ' ' + H.there : '')}! 👋</h1>
+    <button class="btn primary huge pulse playb">▶ ${L().hi.letsPlay}</button></div>`;
+  let leaving = false;
+  const leave = () => { if (leaving) return; leaving = true; home(); };
+  $('.playb').onclick = async () => {
+    const btn = $('.playb'); btn.remove();
+    $('.hello').hidden = false; $('.owl').classList.add('dance');
+    const ms = jingle(); burst(innerWidth / 2, innerHeight * .35, 70); setTimeout(rain, 400);
+    setTimeout(() => { const i = $('.intro'); if (i) i.addEventListener('click', leave); }, 400); // tap anywhere to skip (not this same tap)
+    await sleep(Math.min(ms, 3600) + 200);
+    if (leaving) return;
+    const st = streakDays();
+    await speak(greet, ...(name ? [{ name: true, bang: true }] : []), H.happy, ...(st >= 2 ? [H.streak(st)] : []));
+    await sleep(500); leave();
+  };
 }
 
 // ================= screens =================
@@ -866,9 +950,16 @@ function home() {
   </div>`;
   $$('.lang').forEach(b => b.onclick = () => {
     S.lang = b.dataset.l; save(); sfx('pop'); home(); owlReact('happy');
-    speak(S.lang === 'fr' ? 'Bonjour ! Je suis Tiko.' : "Hello! I'm Tiko.");
+    speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, S.lang === 'fr' ? 'On parle français !' : "Let's speak English!");
   });
-  $('.owl').onclick = () => { owlReact('happy'); sfx('pop'); speak(S.lang === 'fr' ? 'Hou hou ! On joue ?' : "Hoo hoo! Let's play!"); };
+  // tapping Tiko gives a random silly reaction
+  const silly = S.lang === 'fr' ? ['Hou hou !', 'Ça chatouille !', 'Hi hi hi !', 'On joue ?', 'Tu es super !']
+    : ['Hoo hoo!', 'That tickles!', 'Hee hee hee!', "Let's play!", "You're awesome!"];
+  $('.owl').onclick = () => {
+    const o = $('.owl'), k = pick(['happy', 'dance', 'spin']);
+    o.classList.remove('happy', 'dance', 'spin'); void o.offsetWidth; o.classList.add(k); setTimeout(() => o.classList.remove(k), 1600);
+    sfx('pop'); burstAt(o, 20); speak(pick(silly));
+  };
   $('.go').onclick = () => { sfx('pop'); startPath(); };
   $$('[data-m]').forEach(b => b.onclick = () => { sfx('tap'); const m = b.dataset.m; m === 'stickers' ? stickerBook() : m === 'journey' ? journey() : menu(m); });
   $('.corner').onclick = () => parentGate();
@@ -1088,6 +1179,14 @@ function parents() {
       Print it or save it as a PDF. Every daily path also includes a <b>paper mission</b>. She works on paper, then taps ✅ or uses 📷 to show Tiko her work.</p>
       <button class="pbtn ws" data-l="en">🇬🇧 English worksheet</button><button class="pbtn ws" data-l="fr">🇫🇷 Fiche en français</button></section>
 
+    <section><h3>👧 Her name</h3>
+      <p>Tiko welcomes her by name and sometimes uses it in praise. It's stored only on this tablet, never online.
+      If the robot voice says it wrong, type how it sounds (e.g. "Koo-zha-lee"), or better, record it in your voice.</p>
+      <label class="set">Name <input class="nm-in" data-s="name" type="text" maxlength="30" value="${esc(st.name)}" placeholder="Her name"></label>
+      <label class="set">Spoken as (optional) <input class="nm-in" data-s="nameSay" type="text" maxlength="40" value="${esc(st.nameSay)}" placeholder="How it sounds"></label>
+      <button class="pbtn alt nm-test">▶ Hear it</button><button class="pbtn nm-rec">⏺ Record her name</button>
+      <button class="pbtn alt nm-del" ${recKeys.has('name') ? '' : 'hidden'}>🗑 Delete recording</button></section>
+
     <section><h3>🎁 Rewards she's working towards</h3>
       <p>Set a real-world reward and a star price. Stars count from the moment you add it. Her progress bar shows on the home screen, and Tiko celebrates when she gets there.
       Small, quick rewards (10–30 stars) work best at first. Stars only come from first-try answers, so a typical path earns about 15–25.</p>
@@ -1105,6 +1204,7 @@ function parents() {
       <label class="set">Movement break mid-path <input type="checkbox" data-s="breaks" ${st.breaks ? 'checked' : ''}></label>
       <label class="set">Focus nudges (Tiko says "Your turn!" after 15 s with no taps) <input type="checkbox" data-s="nudge" ${st.nudge ? 'checked' : ''}></label>
       <label class="set">Sound effects <input type="checkbox" data-s="sfx" ${st.sfx ? 'checked' : ''}></label>
+      <label class="set">Intro music <input type="checkbox" data-s="music" ${st.music ? 'checked' : ''}></label>
       <label class="set">Calm mode (less motion and confetti) <input type="checkbox" data-s="calm" ${st.calm ? 'checked' : ''}></label>
       <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:17px">Voice style
         <span><button class="pbtn alt vs" data-p="1.4" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-r="0.8">🌙 Calm</button></span></div>
@@ -1134,6 +1234,10 @@ function parents() {
   });
   const demo = async l => { stopSpeech(); await sleep(80); await say(l === 'fr' ? "Coucou ! Je suis Tiko. On lit ensemble ?" : "Hi there! I'm Tiko. Shall we read together?", l); await say(l === 'fr' ? 'Bravo, super !' : 'Great job, superstar!', l); };
   $$('.tv').forEach(b => b.onclick = () => demo(b.dataset.l));
+  $$('.nm-in').forEach(i => i.addEventListener('keydown', e => e.stopPropagation()));
+  $('.nm-test').onclick = () => speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, ...praiseParts());
+  $('.nm-del').onclick = async () => { await idb.del('rec', 'name'); recKeys.delete('name'); $('.nm-del').hidden = true; };
+  $('.nm-rec').onclick = () => record('name', $('.nm-rec'), () => { $('.nm-del').hidden = false; $('.nm-rec').className = 'pbtn nm-rec'; $('.nm-rec').textContent = '⏺ Record again'; });
   $$('.vs').forEach(b => b.onclick = () => {
     st.pitch = +b.dataset.p; st.rate = +b.dataset.r; save();
     $('[data-s="pitch"]').value = st.pitch; $('[data-s="rate"]').value = st.rate; demo(S.lang);
@@ -1232,4 +1336,4 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeech(); });
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 applySettings();
-home();
+intro();
