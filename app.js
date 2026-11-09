@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 17;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 18;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, sfx: true, music: true, calm: false, breaks: true, nudge: true, artInPath: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, calm: false, breaks: true, nudge: true, artInPath: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -106,7 +106,9 @@ function stopSpeech() {
   if (curAudio) { curAudio.pause(); curAudio = null; }
 }
 // Bubbly voice: raised pitch overall, and an extra lift for anything exclaimed ("Bravo !", "Great job!")
-function say(text, lang = S.lang, rate = S.settings.rate, pitch = S.settings.pitch) {
+// French device voices distort when pitched very high, so French has its own, gentler pitch
+const langPitch = lang => lang === 'fr' ? (S.settings.pitch_fr || 1.25) : S.settings.pitch;
+function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang)) {
   return new Promise(res => {
     // never read punctuation aloud: "Combien ?" / "…?" would otherwise be spoken as "question mark"
     text = String(text || '').replace(/…\s*\?/g, '?').replace(/…/g, ', ').replace(/\s+([?!.,;:])/g, '$1').replace(/^[\s?!.,;:]+/, '').trim();
@@ -116,7 +118,7 @@ function say(text, lang = S.lang, rate = S.settings.rate, pitch = S.settings.pit
     const excited = /!\s*$/.test(text);
     u.lang = v ? v.lang : DATA[lang].voiceLang;
     u.rate = Math.min(1.5, excited ? rate * 1.06 : rate);
-    u.pitch = Math.min(2, excited ? pitch + 0.15 : pitch);
+    u.pitch = Math.min(2, excited ? pitch + (lang === 'fr' ? 0.08 : 0.15) : pitch);
     // Safety timers, in case the engine never reports "end" (happens on Android):
     // allow a long wait for speech to START (online voices can take seconds), and only once it has
     // started, a length-based limit. Giving up early made the app move on and cut Tiko off mid-sentence.
@@ -139,14 +141,16 @@ async function playUnit(unit, lang = S.lang, rate) {
     const blob = await idb.get('rec', key);
     if (blob) return playBlob(blob);
   }
-  if ((SOUND_CLIPS[lang] || []).includes(snd)) return playUrl(`sounds/${lang}-${snd}.wav`, rate && rate > 1 ? 1.15 : 1);
+  if ((SOUND_CLIPS[lang] || []).includes(snd)) return playUrl(`sounds/${lang}-${snd}.wav`, rate && rate > 1 ? 1.15 : 1, lang === 'en');
   // letter sounds stay close to natural pitch so they remain clear
-  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(S.settings.pitch, 1.4));
+  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(langPitch(lang), 1.4));
 }
-function playUrl(url, rate = 1) {
+function playUrl(url, rate = 1, bright = false) {
   return new Promise(res => {
-    // played a little faster WITHOUT pitch correction, so the clips come out brighter and bouncier
-    const a = new Audio(url); curAudio = a; a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; a.playbackRate = rate * 1.08;
+    // English clips: a little faster WITHOUT pitch correction, so they come out brighter; French clips play as recorded
+    const a = new Audio(url); curAudio = a;
+    if (bright) { a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; }
+    a.playbackRate = rate * (bright ? 1.08 : 1);
     let done = false; const fin = () => { if (!done) { done = true; res(); } };
     a.onended = fin; a.onerror = fin; a.play().catch(fin);
     setTimeout(fin, 4000);
@@ -166,8 +170,8 @@ async function speak(...parts) {
   for (const p of parts.flat()) {
     if (t !== speakToken) return;
     if (!p) continue;
-    // one sentence per utterance: Android's voice tends to drop the end of long ones
-    if (typeof p === 'string') { for (const s of p.split(/(?<=[.!?])\s+/)) { if (t !== speakToken) return; await say(s); } }
+    // normal-length speech goes out as one smooth piece; only very long text is split into sentences
+    if (typeof p === 'string') { for (const s of (p.length > 160 ? p.split(/(?<=[.!?])\s+/) : [p])) { if (t !== speakToken) return; await say(s); } }
     else if (p.pause) await sleep(p.pause);
     else if (p.unit !== undefined) await playUnit(p.unit, p.lang || S.lang, p.rate);
     else if (p.name) await sayName(p.bang);
@@ -2342,8 +2346,9 @@ function parents() {
       <label class="set">Intro music <input type="checkbox" data-s="music" ${st.music ? 'checked' : ''}></label>
       <label class="set">Calm mode (less motion and confetti) <input type="checkbox" data-s="calm" ${st.calm ? 'checked' : ''}></label>
       <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:17px">Voice style
-        <span><button class="pbtn alt vs" data-p="1.7" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-r="0.8">🌙 Calm</button></span></div>
-      <label class="set">Voice pitch (higher = more bubbly) <input type="range" min="0.8" max="2" step="0.05" value="${st.pitch}" data-s="pitch"></label>
+        <span><button class="pbtn alt vs" data-p="1.7" data-pf="1.3" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-pf="1.0" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-pf="0.9" data-r="0.8">🌙 Calm</button></span></div>
+      <label class="set">🇬🇧 English voice pitch (higher = more bubbly) <input type="range" min="0.8" max="2" step="0.05" value="${st.pitch}" data-s="pitch"></label>
+      <label class="set">🇫🇷 French voice pitch (French voices sound strange if too high) <input type="range" min="0.8" max="1.6" step="0.05" value="${st.pitch_fr || 1.25}" data-s="pitch_fr"></label>
       <p class="voiceinfo" style="font-size:14px;color:#666"></p>
       <label class="set">Voice speed <input type="range" min="0.5" max="1.1" step="0.05" value="${st.rate}" data-s="rate"></label>
       <label class="set">English voice <select data-s="voice_en">${voiceOpts('en')}</select></label>
@@ -2371,7 +2376,8 @@ function parents() {
   // show which device voice is really in use (helps if the voice ever sounds wrong)
   const vinfo = () => {
     const d = l => { const v = voiceFor(l); return v ? `${v.name} (${v.lang}${v.localService ? ', on this tablet' : ', online'})` : 'tablet default'; };
-    $('.voiceinfo').textContent = `Voices in use — English: ${d('en')} · French: ${d('fr')} · pitch ${st.pitch}`;
+    $('.voiceinfo').textContent = `Voices in use — English: ${d('en')}, pitch ${st.pitch} · French: ${d('fr')}, pitch ${st.pitch_fr || 1.25}. ` +
+      (voiceFor('fr') && !voiceFor('fr').localService ? 'The French voice is online-only: download French voice data (see below) for smoother speech.' : '');
   };
   vinfo(); $$('[data-s]').forEach(el => el.addEventListener('change', vinfo));
   const demo = async l => { stopSpeech(); await sleep(80); await say(l === 'fr' ? "Coucou ! Je suis Tiko. On lit ensemble ?" : "Hi there! I'm Tiko. Shall we read together?", l); await say(l === 'fr' ? 'Bravo, super !' : 'Great job, superstar!', l); };
@@ -2381,8 +2387,8 @@ function parents() {
   $('.nm-del').onclick = async () => { await idb.del('rec', 'name'); recKeys.delete('name'); $('.nm-del').hidden = true; };
   $('.nm-rec').onclick = () => record('name', $('.nm-rec'), () => { $('.nm-del').hidden = false; $('.nm-rec').className = 'pbtn nm-rec'; $('.nm-rec').textContent = '⏺ Record again'; });
   $$('.vs').forEach(b => b.onclick = () => {
-    st.pitch = +b.dataset.p; st.rate = +b.dataset.r; save();
-    $('[data-s="pitch"]').value = st.pitch; $('[data-s="rate"]').value = st.rate; demo(S.lang);
+    st.pitch = +b.dataset.p; st.pitch_fr = +b.dataset.pf; st.rate = +b.dataset.r; save();
+    $('[data-s="pitch"]').value = st.pitch; $('[data-s="pitch_fr"]').value = st.pitch_fr; $('[data-s="rate"]').value = st.rate; vinfo(); demo(S.lang);
   });
   $$('.ws').forEach(b => b.onclick = () => worksheet(b.dataset.l));
   // difficulty controls
