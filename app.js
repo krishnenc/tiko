@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 16;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 17;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.5, sfx: true, music: true, calm: false, breaks: true, nudge: true, artInPath: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, sfx: true, music: true, calm: false, breaks: true, nudge: true, artInPath: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -32,6 +32,8 @@ function load() {
 }
 // lift tablets still on the old default pitch to the new bubblier one (custom choices are left alone)
 if (S.settings.pitch === 1.35) S.settings.pitch = 1.5;
+// v17: the voice had gone flat on her tablet — lift anything below the bubbly range back up (once)
+if (!S.settings.pitchV17) { if (S.settings.pitch < 1.6) S.settings.pitch = 1.6; S.settings.pitchV17 = true; }
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
 function applySettings() { document.body.classList.toggle('calm', !!S.settings.calm); document.documentElement.lang = S.lang; }
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* ignore */ }
@@ -139,11 +141,12 @@ async function playUnit(unit, lang = S.lang, rate) {
   }
   if ((SOUND_CLIPS[lang] || []).includes(snd)) return playUrl(`sounds/${lang}-${snd}.wav`, rate && rate > 1 ? 1.15 : 1);
   // letter sounds stay close to natural pitch so they remain clear
-  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(S.settings.pitch, 1.15));
+  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(S.settings.pitch, 1.4));
 }
 function playUrl(url, rate = 1) {
   return new Promise(res => {
-    const a = new Audio(url); curAudio = a; a.playbackRate = rate;
+    // played a little faster WITHOUT pitch correction, so the clips come out brighter and bouncier
+    const a = new Audio(url); curAudio = a; a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; a.playbackRate = rate * 1.08;
     let done = false; const fin = () => { if (!done) { done = true; res(); } };
     a.onended = fin; a.onerror = fin; a.play().catch(fin);
     setTimeout(fin, 4000);
@@ -2339,8 +2342,9 @@ function parents() {
       <label class="set">Intro music <input type="checkbox" data-s="music" ${st.music ? 'checked' : ''}></label>
       <label class="set">Calm mode (less motion and confetti) <input type="checkbox" data-s="calm" ${st.calm ? 'checked' : ''}></label>
       <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:17px">Voice style
-        <span><button class="pbtn alt vs" data-p="1.6" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-r="0.8">🌙 Calm</button></span></div>
-      <label class="set">Voice pitch (higher = more bubbly) <input type="range" min="0.8" max="1.7" step="0.05" value="${st.pitch}" data-s="pitch"></label>
+        <span><button class="pbtn alt vs" data-p="1.7" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-r="0.8">🌙 Calm</button></span></div>
+      <label class="set">Voice pitch (higher = more bubbly) <input type="range" min="0.8" max="2" step="0.05" value="${st.pitch}" data-s="pitch"></label>
+      <p class="voiceinfo" style="font-size:14px;color:#666"></p>
       <label class="set">Voice speed <input type="range" min="0.5" max="1.1" step="0.05" value="${st.rate}" data-s="rate"></label>
       <label class="set">English voice <select data-s="voice_en">${voiceOpts('en')}</select></label>
       <label class="set">French voice <select data-s="voice_fr">${voiceOpts('fr')}</select></label>
@@ -2364,6 +2368,12 @@ function parents() {
     const k = el.dataset.s; st[k] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : /^\d+$/.test(el.value) ? +el.value : el.value;
     save(); applySettings();
   });
+  // show which device voice is really in use (helps if the voice ever sounds wrong)
+  const vinfo = () => {
+    const d = l => { const v = voiceFor(l); return v ? `${v.name} (${v.lang}${v.localService ? ', on this tablet' : ', online'})` : 'tablet default'; };
+    $('.voiceinfo').textContent = `Voices in use — English: ${d('en')} · French: ${d('fr')} · pitch ${st.pitch}`;
+  };
+  vinfo(); $$('[data-s]').forEach(el => el.addEventListener('change', vinfo));
   const demo = async l => { stopSpeech(); await sleep(80); await say(l === 'fr' ? "Coucou ! Je suis Tiko. On lit ensemble ?" : "Hi there! I'm Tiko. Shall we read together?", l); await say(l === 'fr' ? 'Bravo, super !' : 'Great job, superstar!', l); };
   $$('.tv').forEach(b => b.onclick = () => demo(b.dataset.l));
   $$('.nm-in').forEach(i => i.addEventListener('keydown', e => e.stopPropagation()));
