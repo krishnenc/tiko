@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 27;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 28;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, voiceChat: false, calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, voiceChat: false, sessionMin: 0, calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -656,7 +656,7 @@ function nudge(replayParts) {
 
 // ================= maths levels =================
 const lvl = a => S.levels[a] || 1;
-const MATH_MAX = { count: 3, add: 4, sub: 4, bonds: 2, next: 3, compare: 3, shapes: 3, patterns: 3, clock: 3, doubles: 2,
+const MATH_MAX = { count: 3, add: 5, sub: 5, money: 3, groups: 3, bonds: 2, next: 3, compare: 3, shapes: 3, patterns: 3, clock: 3, doubles: 2,
   missing: 3, skip: 3, tens: 3, measure: 3, flash: 3, pop: 3, mathStory: 2 };
 function gradeMath(a, first, max = MATH_MAX[a] || 3) { if (first) tally('mathOk'); gradeLevel(a, first, max); }
 const THINK_MAX = { memory: 6, simon: 3, kim: 3, odd: 2, jigsaw: 3 };
@@ -733,6 +733,8 @@ const ACTS = {
   missing: { icon: '❓', area: 'math', make: mkMissing },
   skip: { icon: '🐸', area: 'math', make: mkSkip },
   tens: { icon: '🧱', area: 'math', make: mkTens },
+  money: { icon: '🪙', area: 'math', make: mkMoney },
+  groups: { icon: '🧺', area: 'math', make: mkGroups },
   measure: { icon: '📏', area: 'math', make: mkMeasure },
   flash: { icon: '⚡', area: 'math', make: mkFlash },
   pop: { icon: '🫧', area: 'math', make: mkPop, per: 3 },
@@ -1058,6 +1060,7 @@ function mkHop(op) {
     explain: async r => { let s; do { s = await r.__hop(); if (s === 'more') await sleep(450); } while (s === 'more'); } };
 }
 function mkAdd(fixed) {
+  if (!fixed && lvl('add') >= 5) return mkBig('+');
   if (!fixed && lvl('add') >= 4) return mkHop('+');
   const l = lvl('add'), max = [5, 10, 20][l - 1], C = L().c;
   let s = 2 + rand(max - 1), a = 1 + rand(Math.min(s - 1, 10)), b = s - a;
@@ -1084,6 +1087,7 @@ function mkAdd(fixed) {
 // TAKING AWAY = removing. She taps the right number of objects herself and they fly away, then she
 // ticks and counts what is left.
 function mkSub(fixed) {
+  if (!fixed && lvl('sub') >= 5) return mkBig('-');
   if (!fixed && lvl('sub') >= 4) return mkHop('-');
   const l = lvl('sub'), max = [5, 10, 20][l - 1], C = L().c;
   let a = 2 + rand(max - 1), b = 1 + rand(a - 1);
@@ -1281,6 +1285,57 @@ function mkTens() {
         c += b.classList.contains('rod') ? 10 : 1; b.classList.add('counted'); b.dataset.n = c; sfx('tap'); say(String(c), S.lang, 1);
       }));
     } };
+}
+// ---------- bigger maths: numbers to 99 with tens and ones, coins, and "groups of" ----------
+T.en.m2 = { bigAdd: (a, b) => `${a} plus ${b}. Count the tens, then the ones!`, bigSub: (a, b) => `${a} take away ${b}. Count what is left: the tens, then the ones!`,
+  money: 'How much money? Tap each coin to count.', groups: (g, k) => `${g} groups of ${k}. How many in all?`, groupsRule: (g, k, n) => `${g} groups of ${k} make ${n}.` };
+T.fr.m2 = { bigAdd: (a, b) => `${a} plus ${b}. Compte les dizaines, puis les unités !`, bigSub: (a, b) => `${a} moins ${b}. Compte ce qui reste : les dizaines, puis les unités !`,
+  money: 'Ça fait combien ? Touche chaque pièce pour compter.', groups: (g, k) => `${g} groupes de ${k}. Combien en tout ?`, groupsRule: (g, k, n) => `${g} groupes de ${k}, ça fait ${n}.` };
+Object.assign(T.en.acts, { money: 'Coins', groups: 'Groups of' }); Object.assign(T.fr.acts, { money: 'Les pièces', groups: 'Les groupes' });
+const pvHTML = (n, { goneT = 0, goneO = 0, off = 0 } = {}) => {
+  const t = Math.floor(n / 10), o = n % 10;
+  return `<div class="pv"><div class="rods">${Array.from({ length: t }, (_, i) => `<button class="rod ${i >= t - goneT ? 'gone' : ''}" style="--i:${off + i}">${'<i></i>'.repeat(10)}</button>`).join('')}</div>
+    <div class="cubes">${Array.from({ length: o }, (_, i) => `<button class="cube ${i >= o - goneO ? 'gone' : ''}" style="--i:${off + t + i}"></button>`).join('')}</div></div>`;
+};
+// tapping a rod adds 10, a cube adds 1 (or a coin its value): Tiko says the running total, so she counts on by herself
+function tapTotal(root, sel, valueOf) {
+  let c = 0;
+  $$(sel, root).forEach(b => b.addEventListener('click', () => {
+    if (b.classList.contains('counted') || b.classList.contains('gone')) return;
+    c += valueOf(b); b.classList.add('counted'); b.dataset.n = c; sfx('tap'); say(String(c), S.lang, 1);
+  }));
+}
+const nearOpts = (ans, max = 99) => { const s = new Set([ans]); for (const x of shuffle([ans + 10, ans - 10, ans + 1, ans - 1, ans + 2])) { if (s.size >= 3) break; if (x > 0 && x <= max) s.add(x); } return shuffle([...s]).map(v => ({ html: v, val: v })); };
+// Level 5 adding / taking away: two-digit numbers, adding or removing whole tens OR a few ones (no carrying yet)
+function mkBig(op) {
+  const C = L().c, m = L().m2, tens = Math.random() < .5; let a, b;
+  if (op === '+') {
+    if (tens) { a = 11 + rand(60); b = 10 * (1 + rand(Math.min(3, Math.floor((99 - a) / 10)))); }
+    else { a = 10 * (1 + rand(8)) + 1 + rand(7); b = 1 + rand(9 - a % 10); }
+  } else if (tens) { a = 31 + rand(68); b = 10 * (1 + rand(Math.min(3, Math.floor(a / 10) - 1))); }
+  else { a = 10 * (1 + rand(9)) + 2 + rand(8); b = 1 + rand(a % 10); }
+  const ans = op === '+' ? a + b : a - b;
+  return { title: `${a} ${op === '+' ? '+' : '−'} ${b} = ?`, speak: [op === '+' ? m.bigAdd(a, b) : m.bigSub(a, b)], optClass: 'num',
+    visual: op === '+' ? `<div class="bigsum">${pvHTML(a)}<span class="sign">+</span>${pvHTML(b, { off: 10 })}</div>` : `<div class="bigsum">${pvHTML(a, tens ? { goneT: b / 10 } : { goneO: b })}</div>`,
+    options: nearOpts(ans), answer: ans, correctSpeak: [op === '+' ? C.addRule(a, b, ans) : C.subRule(a, b, ans)],
+    grade: f => gradeMath(op === '+' ? 'add' : 'sub', f), setup(root) { tapTotal(root, '.rod, .cube', b2 => (b2.classList.contains('rod') ? 10 : 1)); } };
+}
+// 🪙 Coins: 1s and 2s first, then 5s, then 10s
+function mkMoney() {
+  const l = lvl('money'), kinds = [[1, 1, 2], [1, 2, 5, 5], [10, 10, 5, 2, 1]][l - 1], n = 3 + rand(l === 1 ? 4 : 3);
+  const coins = Array.from({ length: n }, () => pick(kinds)).sort((x, y) => y - x), total = coins.reduce((s, x) => s + x, 0);
+  return { title: `🪙 ${L().m2.money.split('?')[0]}?`, speak: [L().m2.money], optClass: 'num',
+    visual: `<div class="coins">${coins.map((v, i) => `<button class="coin ${v >= 5 ? 'big' : ''}" data-v="${v}" style="--i:${i}">${v}</button>`).join('')}</div>`,
+    options: numOpts(total, 1, 99), answer: total, correctSpeak: [String(total)], grade: f => gradeMath('money', f),
+    setup(root) { tapTotal(root, '.coin', b => +b.dataset.v); } };
+}
+// 🧺 Groups of: the first step towards multiplying — equal groups, counted all together
+function mkGroups() {
+  const l = lvl('groups'), k = l === 1 ? 2 : l === 2 ? pick([2, 5]) : pick([3, 4]), g = 2 + rand(l === 1 ? 3 : 4), n = g * k, e = pick(OBJECTS), m = L().m2;
+  return { title: `${g} × ${k} = ?`, speak: [m.groups(g, k)], optClass: 'num',
+    visual: `<div class="groups">${Array.from({ length: g }, (_, i) => `<div class="grp">${objsHTML(k, e, { offset: i * k })}</div>`).join('')}</div>`,
+    options: numOpts(n, 1, 60), answer: n, correctSpeak: [m.groupsRule(g, k, n)], grade: f => gradeMath('groups', f),
+    setup: r => tapToCount(r), explain: r => autoCount(liveObjs(r)) };
 }
 function ribbon(len, color, unit) { return `<span class="ribbon" style="width:${len * unit}px;background:${color}"><i>🐛</i></span>`; }
 function mkMeasure() {
@@ -2692,6 +2747,40 @@ function restoreBackup(text) {
   return d.date;
 }
 
+// ================= session shape: a clear plan, a length set by a parent, a calm ending =================
+// When the day's play time is used up, Tiko never cuts an activity short: the goodbye comes at the next natural
+// stop (home, a menu, the path). First time: breathing together, what she won, goodbye. After that: Tiko rests.
+T.en.end = { title: 'All done for today!', breathe: "Let's breathe together.", in: 'Breathe in…', out: 'And breathe out…', did: n => `Today you won ${n} stars!`,
+  bye: 'See you tomorrow! Sweet dreams!', rest: 'Tiko is resting. See you tomorrow!', now: 'Now', then: 'Then', fin: 'Finished!' };
+T.fr.end = { title: "C'est fini pour aujourd'hui !", breathe: 'Respirons ensemble.', in: 'Inspire…', out: 'Et souffle…', did: n => `Aujourd'hui, tu as gagné ${n} étoiles !`,
+  bye: 'À demain ! Fais de beaux rêves !', rest: 'Tiko se repose. À demain !', now: 'Maintenant', then: 'Après', fin: 'Fini !' };
+const playedSecs = () => (S.days[today()] || {}).t || 0;
+const extraMin = () => (S.extra && S.extra.day === today() ? S.extra.min : 0);
+function sessionOver() { const m = S.settings.sessionMin; return m > 0 && playedSecs() >= (m + extraMin()) * 60; }
+// stars won today (for the goodbye): remember how many she had when the day started
+function dayStars() { if (!S.dayStart || S.dayStart.day !== today()) { S.dayStart = { day: today(), stars: S.stars }; save(); } return S.stars - S.dayStart.stars; }
+let endToken = 0;
+async function calmEnding() {
+  stopSpeech(); clearIdle(); zone('think'); musicMode('calm');
+  const my = ++endToken, alive = () => my === endToken && !!$('.ending'), E = L().end, first = S.endedDay !== today();
+  app.innerHTML = `<div class="screen center ending"><button class="ic corner" aria-label="parents">⚙️</button>
+    ${owl('big')}<h1 class="endt">${esc(first ? E.title : E.rest)}</h1><div class="breath" ${first ? '' : 'hidden'}><i></i></div><p class="bline"></p><div class="zzz" hidden>💤 🌙</div></div>`;
+  $('.corner').onclick = () => { endToken++; parentGate(); };
+  exitCurrent = null;
+  const rest = () => { const o = $('.ending .owl'); if (o) o.classList.add('sleep'); $('.breath').hidden = true; $('.zzz').hidden = false; $('.bline').textContent = ''; $('.endt').textContent = E.rest; };
+  if (!first) { rest(); return speak(E.rest); }
+  S.endedDay = today(); save();
+  await speak(E.title, { pause: 300 }, E.breathe); if (!alive()) return;
+  for (let i = 0; i < 3; i++) {
+    $('.breath').className = 'breath in'; $('.bline').textContent = E.in; speak(E.in); await sleep(4000); if (!alive()) return;
+    $('.breath').className = 'breath out'; $('.bline').textContent = E.out; speak(E.out); await sleep(4500); if (!alive()) return;
+  }
+  const n = dayStars(); $('.breath').hidden = true;
+  if (n > 0) { $('.bline').textContent = `⭐ ${n}`; await speak(E.did(n)); if (!alive()) return; }
+  $('.endt').textContent = E.bye; await speak(E.bye); if (!alive()) return;
+  await sleep(1200); if (alive()) rest();
+}
+
 // ================= intro: music + personal welcome =================
 function intro() {
   applySettings();
@@ -2724,6 +2813,8 @@ function intro() {
 
 // ================= screens =================
 function home(fromIntro) {
+  dayStars();
+  if (sessionOver()) return calmEnding();
   stopSpeech(); clearIdle(); applySettings(); zone('home'); musicMode('calm');
   if (fromIntro === true) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);   // (back buttons pass a click event — not 'from intro')
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
@@ -2763,6 +2854,7 @@ function home(fromIntro) {
   $('.corner').onclick = () => parentGate();
 }
 function menu(area) {
+  if (sessionOver()) return calmEnding();
   zone(area); musicMode('calm');
   const ids = Object.keys(ACTS).filter(k => ACTS[k].area === area), sug = suggestIn(area);
   const TAG = { new: '✨', mastered: '🏆', rest: '💤' };
@@ -2795,7 +2887,7 @@ function buildPath() {
   // maths rotates daily through a wide mix so each day feels different
   const dayNo = Math.floor(Date.now() / 864e5);
   const MATH_A = ['add', 'sub', 'mathStory', 'missing', 'doubles', 'add', 'sub'];
-  const MATH_B = ['shapes', 'patterns', 'pop', 'clock', 'skip', 'tens', 'flash', 'measure', 'bonds', 'next', 'compare', 'count'];
+  const MATH_B = ['shapes', 'patterns', 'pop', 'clock', 'skip', 'tens', 'flash', 'measure', 'bonds', 'next', 'compare', 'count', 'money', 'groups'];
   const mathA = MATH_A[dayNo % MATH_A.length], mathB = MATH_B[dayNo % MATH_B.length];
   // what the path focuses on depends on where she is on the literacy journey
   const PLANS = [
@@ -2832,11 +2924,16 @@ function showPath() {
   const cur = path.findIndex(s => !s.done);
   zone('home'); musicMode('calm');
   if (cur === -1) return finale();
+  if (sessionOver()) return calmEnding();
+  // "first this, then that": she always sees what comes now and what comes after
+  const E = L().end, card = (s, lbl, cls) => `<div class="ft ${cls}"><small>${esc(lbl)}</small><span>${s ? (s.a === 'break' ? '🤸' : ACTS[s.a].icon) : '🏆'}</span><b>${esc(s ? (s.a === 'break' ? L().breakTitle : actName(s.a)) : E.fin)}</b></div>`;
+  const firstThen = `<div class="firstthen">${card(path[cur], E.now, 'now')}<i>➜</i>${card(path[cur + 1], E.then, '')}</div>`;
   app.innerHTML = `<div class="screen path">
     <div class="topline"><button class="ic back">🏠</button><h2>🗺️ ${L().pathTitle}</h2><div class="stars">⭐ <b>${S.stars}</b></div></div>
     <div class="stones">${path.map((s, i) => `<div class="stone ${s.done ? 'done' : i === cur ? 'now' : ''} ${s.a === 'break' ? 'brk' : ''}" style="--i:${i}">
       ${s.a === 'break' ? '🤸' : ACTS[s.a].icon}${s.done && s.sticker ? `<span class="badge">${s.sticker}</span>` : ''}${i === cur ? '' : ''}</div>`).join('')}
       <div class="stone" style="--i:${path.length};background:#fff3c4">🏆</div></div>
+    ${firstThen}
     ${owl('')}
     <button class="btn primary huge pulse go">${L().go}</button></div>`;
   $('.back').onclick = home;
@@ -2872,6 +2969,7 @@ async function checkUnlock() {
   return true;
 }
 function journey() {
+  if (sessionOver()) return calmEnding();
   stopSpeech(); clearIdle(); zone('read'); musicMode('calm');
   const cur = stageOf(), names = L().journey;
   app.innerHTML = `<div class="screen sub"><div class="topline"><button class="ic back">🏠</button><h2>🗺️ ${L().read.journey}</h2><div style="width:64px"></div></div>
@@ -3068,6 +3166,10 @@ function parents() {
     <section><h3>⚙️ Session</h3>
       <label class="set">Stops on the daily path <select data-s="stops">${[3, 4, 5, 6, 7, 8].map(n => `<option ${st.stops === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="set">Questions per stop <select data-s="perStop">${[3, 4, 5, 6, 8].map(n => `<option ${st.perStop === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="set">Session length: Tiko says a calm goodbye (breathing together, then "see you tomorrow") after about this much play a day
+        <select data-s="sessionMin">${[0, 10, 15, 20, 30, 45].map(n => `<option value="${n}" ${st.sessionMin === n ? 'selected' : ''}>${n ? n + ' minutes' : 'no limit'}</option>`).join('')}</select></label>
+      <div class="set" style="padding:10px 0;border-bottom:1px solid #eee;font-size:17px">Played today: <b>${Math.round(playedSecs() / 60)} min</b>${extraMin() ? ` (+${extraMin()} min extra allowed)` : ''}
+        <button class="pbtn alt moretime">➕ 10 more minutes today</button></div>
       <label class="set">Movement break mid-path <input type="checkbox" data-s="breaks" ${st.breaks ? 'checked' : ''}></label>
       <label class="set">Fun treat at the end of the path (art or thinking game) <input type="checkbox" data-s="artInPath" ${st.artInPath ? 'checked' : ''}></label>
       <label class="set">🎤 In "Chat with Tiko", let her answer by voice too (needs internet; her voice is sent to Google's speech service to be understood) <input type="checkbox" data-s="voiceChat" ${st.voiceChat ? 'checked' : ''}></label>
@@ -3232,6 +3334,10 @@ function parents() {
       catch (e) { msg.innerHTML = `<textarea style="width:100%;height:160px;user-select:text;-webkit-user-select:text">${esc(text)}</textarea>`; }
     };
   })();
+  // a little more time today: from wherever she is now, 10 more minutes
+  $('.moretime').onclick = () => {
+    const m = S.settings.sessionMin || 0; S.extra = { day: today(), min: Math.max(0, Math.ceil(playedSecs() / 60) - m) + 10 }; S.endedDay = ''; save(); parents();
+  };
   // backup / restore
   $('.bkup').onclick = () => {
     S.lastBackup = today(); save();

@@ -126,6 +126,18 @@ Run `node tools/content-check.js` after any content change. It checks spelling o
 - `gradeItem` writes each answer to `S.diary`, with the wrong choice she tapped (`lastWrong`, set by `askChoice`). `weekReport()` builds the parent report from the diary, `S.days` and `S.plays`; `weekReportText()` is the shareable version and never includes her name.
 - `backupText()` and `restoreBackup(text)` export and import `S`. The backup file does contain the parent settings, including the name typed on the tablet, so it must stay a local file.
 
+### Session shape
+
+- The daily path shows a "now / then" strip so she always knows what comes next.
+- `S.settings.sessionMin` (0 = no limit) is the parent-set play time per day. `sessionOver()` compares it with `S.days[today].t`. The check runs only at natural stops (`home`, `menu`, `showPath`, `journey`), never inside an activity. New top-level screens should make the same check.
+- `calmEnding()` runs the goodbye: three slow breaths, the stars won today, then Tiko rests. Reopening the app the same day goes straight to the resting screen. A parent can add ten minutes from the parent corner (`S.extra`).
+
+### Bigger maths
+
+- Adding and taking away have five levels: objects to 5, 10 and 20, the number line to 30, then two-digit numbers with tens rods and ones cubes (`mkBig`, no carrying).
+- `tapTotal(root, selector, valueOf)` gives any set of tappable things a spoken running total (rods, cubes, coins).
+- `money` and `groups` are ordinary activities with three levels each.
+
 ### The journey
 
 `STAGES` is eight places. Word places are won by knowing a fixed number of words of that level, not a share of the list, so adding words never slows her down. `stageOf()` never returns less than `S.seenStage`, so a place reached is never lost.
@@ -194,6 +206,7 @@ node tools/serve.js        (run with the repository folder as the working direct
 | `v24-check.js` | `<chrome>` | Journey pace with big word lists, word order, lucky-guess catch, sentences and families. |
 | `chat-check.js` | `<chrome> <outDir>` | Every chat topic in both languages with real touch; read-aloud with a fake microphone. |
 | `v27-check.js` | `<chrome> <outDir>` | Every library book in both languages with real touch; the weekly report; backup round trip. |
+| `v28-check.js` | `<chrome> <outDir>` | Level 5 sums, coins and groups with real touch; first/then strip; session limit and calm ending. |
 | `music-check.js` | `<chrome>` | Music on calm screens, silent during speech and work. |
 | `audio-check.js` | `<chrome> <outDir>` | Phonics sounds never overlap. |
 | `touch-trace.js`, `slider-touch.js` | `<chrome> <outDir>` | Tracing and the blending slider with real touch at odd tablet sizes. |
@@ -202,6 +215,8 @@ node tools/serve.js        (run with the repository folder as the working direct
 | `check-live.js` | `<chrome> <url> <screenshot.png>` | The deployed site: cache version, offline, clips. |
 
 When you add a question `kind`, add a branch for it in `drive.js` (`answer` function) or the play-through will hang. When you add a feature, add a check script for it in the same style: clear storage, stub `say` to record what Tiko says, drive with `Input.dispatchTouchEvent`, print one line per fact, end with `JS errors:`.
+
+The local service worker can reload the page once after a fresh load. A check script should wait until `typeof S !== 'undefined'` holds steadily before it starts (see `v28-check.js`); an occasional `S is not defined` in an older script is this race, not an app fault, and goes away on a second run.
 
 Useful test hooks: `startJourneyAt(lang, stage)`, `runStop(act, n)`, `runAct(act)`, `menu(area)`, `home()`, `journey()`, `exitCurrent()`.
 
@@ -233,3 +248,4 @@ The tablet picks up a new version the next time the app is opened online, and sh
 | v25 | Unicorn universe: new mascot, pastel theme, living sky, relaxing music, softer sounds. |
 | v26 | Chat with Tiko (English and French); Read it to Tiko with recordings for parents. |
 | v27 | Little library (six books per language); weekly parent report with mix-ups and play time; backup and restore. |
+| v28 | Maths to 99 with tens and ones (adding and taking away level 5), coins, groups of; first/then strip on the daily path; parent-set session length with a calm ending. |
