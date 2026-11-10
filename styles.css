@@ -726,6 +726,29 @@ body.work .sparkles { display: none; } body.work .rainbow { opacity: .2; } body.
 .btnrow.ra { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
 .btnrow.ra .btn:not(.huge) { flex: none; font-size: clamp(20px, 3vmin, 26px); padding: 16px 20px; }
 body.calm .chatb, body.calm .owl.talk .mouth { animation: none !important; }
+/* ---------- little library ---------- */
+.shelf { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 20px; width: 100%; max-width: 900px; padding: 20px 4px 30px; }
+.bookc { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 12px; white-space: normal; border-left: 10px solid var(--coral);
+  border-radius: 14px 28px 28px 14px; background: linear-gradient(180deg, #fff 50%, #fff0f6); animation: tileIn .5s both; animation-delay: calc(var(--i) * 70ms); }
+.bookc:nth-child(3n+2) { border-left-color: var(--grape); } .bookc:nth-child(3n) { border-left-color: var(--teal); }
+.bookc .cov { font-size: clamp(54px, 9vmin, 80px); line-height: 1.1; } .bookc b { font-size: clamp(17px, 2.4vmin, 21px); line-height: 1.2; text-align: center; }
+.bookc.locked, .bookc.st-rest { opacity: .5; filter: grayscale(.6); }
+.bookc.suggest { box-shadow: 0 0 0 5px var(--sun), 0 0 24px 6px #ffd58099, 0 8px 0 var(--line); }
+.bookc.wobble { animation: shake .45s; }
+.bookpage { display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 2vh, 20px); background: #fffdfa; border-radius: 34px; padding: clamp(14px, 3vh, 30px) clamp(14px, 3vw, 34px);
+  box-shadow: 0 8px 0 var(--line), 0 16px 30px #b98fc226; max-width: min(94vw, 900px); border-left: 12px solid #f9c4da; }
+.bookpage .scene { font-size: clamp(80px, 17vmin, 150px); line-height: 1.1; letter-spacing: .08em; }
+.bookpage .reader { box-shadow: none; background: none; padding: 0; }
+.bookpage .reader p { font-size: clamp(26px, 4.8vmin, 46px); line-height: 1.35; margin: 0; }
+.bookread .stage { gap: clamp(10px, 2vh, 22px); }
+@media (orientation: landscape) { .bookpage { flex-direction: row; gap: 4vw; } .bookpage .scene { font-size: clamp(70px, 20vmin, 150px); flex: none; max-width: 40vw; } .bookpage .reader p { text-align: left; } }
+.bookread .btnrow { display: flex; gap: 16px; align-items: center; justify-content: center; }
+.opt.bookq { font-size: clamp(50px, 9vmin, 80px); line-height: 1.1; } .opt.bookq small { font-size: clamp(18px, 2.6vmin, 24px); }
+/* parent report */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 10px 0; }
+.tiles div { background: #fff5f9; border-radius: 14px; padding: 12px; text-align: center; font-size: 14px; color: var(--soft); }
+.tiles b { display: block; font-size: 28px; color: var(--ink); }
+.chipw { display: inline-block; background: #f3ecfc; border-radius: 10px; padding: 2px 9px; margin: 2px; font-family: var(--font); font-size: 16px; }
 /* slow sparkles drifting up, everywhere: the air of this world glitters a little */
 .sparkles { position: absolute; inset: 0; pointer-events: none; }
 .sparkles i { position: absolute; left: var(--x); bottom: -30px; font-style: normal; font-size: var(--s, 16px); opacity: 0; animation: floatUp var(--d, 18s) linear infinite; animation-delay: var(--w, 0s); }

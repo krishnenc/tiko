@@ -66,7 +66,10 @@ One object, `S`, saved to `localStorage` under `tiko.v1` by `save()`. `DEFAULTS`
 | `levels`, `streak` | Level and right/wrong run per maths or thinking activity. |
 | `counts[lang]` | Sentences and stories read (used by the journey). |
 | `seenStage[lang]` | Furthest journey place reached. Also the floor for `stageOf()`. |
-| `days[yyyy-mm-dd]` | `{ q, ok }` questions and first-try successes that day. |
+| `days[yyyy-mm-dd]` | `{ q, ok, t }` questions, first-try successes and seconds played that day. |
+| `diary` | The last 800 graded answers: `[date, lang, 'ok' | 'miss' | 'caught', set, id, wrongChoice]`. Feeds the parent report. |
+| `books[lang:id]` | Date a library book was last read. |
+| `lastBackup` | Date of the last backup file. |
 | `totals`, `badges`, `goals`, `stars`, `stickers` | Rewards. `tally(k)` / `tot(k)` read and write `totals`. |
 | `plays[lang:act]` | `{ total, day, n }` for the discovery path. |
 | `used[lang:key]` | Items already handed out by `pickFresh`. |
@@ -116,6 +119,12 @@ Run `node tools/content-check.js` after any content change. It checks spelling o
 - `forgetWord(id)` sends a "known" word back to practice when she cannot read it inside a sentence.
 - `pickFresh(key, list)` hands out each item once before any repeats. Use it for anything that is not graded item by item.
 - `gradeLevel(act, first)` moves maths and thinking levels: up after 3 first-try successes in a row, down after 3 misses. `MATH_MAX` and `THINK_MAX` give the top level of each.
+
+### Library, report and backup
+
+- `BOOKS` holds the library: per language a title, six `[picture, sentence]` pages and one question. `stage` is the journey place that unlocks the book. A book read today rests until tomorrow.
+- `gradeItem` writes each answer to `S.diary`, with the wrong choice she tapped (`lastWrong`, set by `askChoice`). `weekReport()` builds the parent report from the diary, `S.days` and `S.plays`; `weekReportText()` is the shareable version and never includes her name.
+- `backupText()` and `restoreBackup(text)` export and import `S`. The backup file does contain the parent settings, including the name typed on the tablet, so it must stay a local file.
 
 ### The journey
 
@@ -184,6 +193,7 @@ node tools/serve.js        (run with the repository folder as the working direct
 | `memory-check.js` | `<chrome> <outDir>` | Memory pairs ladder and layout. |
 | `v24-check.js` | `<chrome>` | Journey pace with big word lists, word order, lucky-guess catch, sentences and families. |
 | `chat-check.js` | `<chrome> <outDir>` | Every chat topic in both languages with real touch; read-aloud with a fake microphone. |
+| `v27-check.js` | `<chrome> <outDir>` | Every library book in both languages with real touch; the weekly report; backup round trip. |
 | `music-check.js` | `<chrome>` | Music on calm screens, silent during speech and work. |
 | `audio-check.js` | `<chrome> <outDir>` | Phonics sounds never overlap. |
 | `touch-trace.js`, `slider-touch.js` | `<chrome> <outDir>` | Tracing and the blending slider with real touch at odd tablet sizes. |
@@ -222,3 +232,4 @@ The tablet picks up a new version the next time the app is opened online, and sh
 | v24 | Word lists grown to 370 (English) and 280 (French); more sentences and stories; journey won by word counts; lucky-guess catch. |
 | v25 | Unicorn universe: new mascot, pastel theme, living sky, relaxing music, softer sounds. |
 | v26 | Chat with Tiko (English and French); Read it to Tiko with recordings for parents. |
+| v27 | Little library (six books per language); weekly parent report with mix-ups and play time; backup and restore. |

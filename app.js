@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 26;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 27;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -447,7 +447,22 @@ function gradeItem(set, id, first) {
   const k = bkey(set, id);
   S.boxes[k] = first ? 5 : 1;
   S.due[k] = first ? 'never' : today();
+  diary(first ? 'ok' : 'miss', set, id, first ? '' : lastWrong);
 }
+// A small diary for the parent report: what she learned, missed (and what she chose instead), day by day.
+// Kept short (about the last 800 answers) and only on this device.
+let lastWrong = '';
+function diary(kind, set, id, extra) {
+  S.diary = S.diary || []; S.diary.push([today(), S.lang, kind, set, String(id), extra || '']);
+  if (S.diary.length > 800) S.diary.splice(0, S.diary.length - 800);
+}
+// time spent playing, per day (only while she is actually touching the screen now and then, and not in the parent corner)
+let lastTouch = Date.now();
+addEventListener('pointerdown', () => { lastTouch = Date.now(); }, true);
+setInterval(() => {
+  if (document.hidden || Date.now() - lastTouch > 90000 || $('.parent')) return;
+  const d = S.days[today()] = S.days[today()] || { q: 0, ok: 0 }; d.t = (d.t || 0) + 15; save();
+}, 15000);
 function introduced(set, items) { const l = items.filter(i => boxOf(set, i.id) > 0); return l.length ? l : items.slice(0, 3); }
 
 // ================= the literacy journey =================
@@ -511,7 +526,7 @@ function wordQueue() {
 function forgetWord(id) {
   if (!isKnown('blend', id)) return;
   for (const s of WORD_SETS) { const k = bkey(s, id); if ((S.boxes[k] || 0) >= 5 || s === 'blend') { S.boxes[k] = 1; S.due[k] = today(); } }
-  tally('caught');
+  tally('caught'); diary('caught', 'blend', id);
 }
 // A fresh pick: something not used yet TODAY by this activity (same language). Only once every item has had a turn
 // does the list start over — so the same word (e.g. "vélo") doesn't keep coming back.
@@ -571,6 +586,7 @@ const BADGES = [
   { id: 'explore5', icon: '🔭', en: 'Discovered 5 new games', fr: '5 nouveaux jeux découverts', ok: () => tot('discover') >= 5 },
   { id: 'explore15', icon: '🚀', en: 'Great explorer (15 new games)', fr: 'Grande exploratrice (15 jeux)', ok: () => tot('discover') >= 15 },
   { id: 'chat5', icon: '💬', en: 'Chatterbox (5 chats with Tiko)', fr: 'Bavarde (5 discussions avec Tiko)', ok: () => tot('chats') >= 5 },
+  { id: 'books3', icon: '📚', en: 'Read 3 little books', fr: 'Lu 3 petits livres', ok: () => tot('books') >= 3 },
   { id: 'aloud5', icon: '🎤', en: 'Read aloud 5 times', fr: 'Lu à voix haute 5 fois', ok: () => tot('readAloud') >= 5 },
   { id: 'think5', icon: '🧠', en: '5 thinking games', fr: '5 jeux de réflexion', ok: () => tot('think') >= 5 },
   { id: 'simon5', icon: '🎶', en: 'Copied 5 in a row', fr: 'Imité 5 à la suite', ok: () => tot('simon5') >= 1 },
@@ -703,6 +719,7 @@ const ACTS = {
   sentence: { icon: '🛶', area: 'read', make: mkSentence, per: 4 },
   story: { icon: '🏰', area: 'read', make: mkStory, per: 2 },
   readAloud: { icon: '🎤', area: 'read', make: mkReadAloud, per: 2 },
+  books: { icon: '📚', area: 'read', studio: () => library() },
   count: { icon: '🔢', area: 'math', make: mkCount },
   add: { icon: '➕', area: 'math', make: mkAdd },
   sub: { icon: '➖', area: 'math', make: mkSub },
@@ -755,6 +772,7 @@ Object.assign(T.fr.acts, { paint: 'Peinture', mirror: 'Miroir magique', readDraw
 T.en.acts.sentence = 'Read a sentence'; T.fr.acts.sentence = 'Lire une phrase';
 T.en.acts.story = 'Little stories'; T.fr.acts.story = 'Petites histoires';
 T.en.acts.readAloud = 'Read it to Tiko'; T.fr.acts.readAloud = 'Lis-le à Tiko';
+T.en.acts.books = 'Little books'; T.fr.acts.books = 'Petits livres';
 
 // ================= discovery path =================
 // Parent's wish: she tends to replay the same easy things. Tiko steers her FORWARD instead, building on what she
@@ -764,7 +782,7 @@ T.en.disc = { rest: "You did this one today! Let's discover something new!", mas
 T.fr.disc = { rest: "Tu l'as déjà fait aujourd'hui ! Découvrons autre chose !", mastered: 'Tu es championne ! Essayons quelque chose de nouveau !',
   conquered: 'Tu as conquis cet endroit ! Allons plus loin !', path: "Allons à l'aventure du jour !" };
 // the journey place from which each reading activity makes sense (builds on the one before)
-const READ_UNLOCK = { letters: 0, robot: 0, blend: 0, trace: 0, sight: 0, paper: 1, traceWord: 1, family: 1, spell: 1, sentence: 3, traceSentence: 3, story: 5, readAloud: 1 };
+const READ_UNLOCK = { letters: 0, robot: 0, blend: 0, trace: 0, sight: 0, paper: 1, traceWord: 1, family: 1, spell: 1, sentence: 3, traceSentence: 3, story: 5, readAloud: 1, books: 1 };
 const playKey = a => S.lang + ':' + a;
 function recordPlay(a) {
   S.plays = S.plays || {};
@@ -1905,7 +1923,7 @@ function askChoice(q, meta, container) {
         const first = attempts === 0;
         stopSpeech(); sfx('good'); burstAt(b, first ? 50 : 20); owlReact('happy');
         if (first) flyStar(b); else tally('retryOk');
-        q.grade && q.grade(first); logDay(first); save();
+        lastWrong = (q.wrong || [])[0] || ''; q.grade && q.grade(first); lastWrong = ''; logDay(first); save();
         const cb = comboHit(first);
         await sleep(300);   // let the chime finish before Tiko talks
         await speak(...(q.correctSpeak || []), ...(first ? (cb ? [cb] : praiseParts()) : []));
@@ -2530,6 +2548,150 @@ async function chatWithTiko() {
   chatToken++; await celebrateAwards(); home();
 }
 
+// ================= 📚 Tiko's little library: real little books to read, page by page =================
+// Short sentences made of simple words and magic words; one picture per page; she can tap any word to hear it,
+// or the ear to be read to. One question at the end. A book read today rests until tomorrow (discovery!).
+// page = [picture, sentence]; q = [question, right answer [picture, words], wrong answer [picture, words]]
+const BOOKS = [
+  { id: 'hat', stage: 1, cover: '🐱',
+    en: { t: 'The cat and the hat', p: [['🐱', 'I am a cat.'], ['🐱🎩', 'I see a hat.'], ['🎩', 'It is a big red hat.'], ['🐱❓', 'Can I sit in it?'], ['🎩🐱', 'Yes! I can sit in the hat.'], ['😴🎩', 'The cat naps in the hat.']],
+      q: ['Where is the cat?', ['🎩', 'in the hat'], ['🛏️', 'in the bed']] },
+    fr: { t: 'Le chat et le sac', p: [['🐱', 'Je suis un chat.'], ['🐱👜', 'Je vois un sac.'], ['👜', "C'est un sac rose."], ['🐱❓', 'Je vais dans le sac ?'], ['👜🐱', 'Oui ! Je suis dans le sac.'], ['😴👜', 'Le chat fait dodo dans le sac.']],
+      q: ['Où est le chat ?', ['👜', 'dans le sac'], ['🛏️', 'dans le lit']] } },
+  { id: 'bus', stage: 1, cover: '🚌',
+    en: { t: 'The red bus', p: [['🚌', 'The bus is red.'], ['🐶🚌', 'A dog is on the bus.'], ['🐷🚌', 'A pig is on the bus.'], ['🐔🚌', 'A hen is on the bus!'], ['🚌💨', 'The bus can go, go, go.'], ['🛑🌳', 'Stop! We are at the park.']],
+      q: ['What colour is the bus?', ['🔴', 'red'], ['🟢', 'green']] },
+    fr: { t: 'Le bus rose', p: [['🚌', 'Le bus est rose.'], ['🐱🚌', 'Un chat est dans le bus.'], ['🐄🚌', 'Une vache est dans le bus.'], ['🐔🚌', 'Une poule est dans le bus !'], ['🚌💨', 'Le bus va vite, vite, vite.'], ['🛑🌳', 'Stop ! Voici le parc.']],
+      q: ['De quelle couleur est le bus ?', ['💗', 'rose'], ['💚', 'vert']] } },
+  { id: 'ring', stage: 3, cover: '🐟',
+    en: { t: 'The fish and the ring', p: [['🐟🌊', 'A fish is in the sea.'], ['🚢', 'It sees a big ship.'], ['🤴🚢', 'The king is on the ship.'], ['💍', 'The king has a ring.'], ['💦💍', 'Splash! The ring is in the sea.'], ['🐟💍🤴', 'The fish gets the ring for the king.']],
+      q: ['What fell in the sea?', ['💍', 'the ring'], ['👑', 'the crown']] },
+    fr: { t: 'Le poisson et la bague', p: [['🐟🌊', 'Un poisson est dans la mer.'], ['🚢', 'Il voit un grand bateau.'], ['🤴🚢', 'Le roi est sur le bateau.'], ['💍', 'Le roi a une bague.'], ['💦💍', 'Plouf ! La bague tombe dans la mer.'], ['🐟💍🤴', 'Le poisson rapporte la bague au roi.']],
+      q: ["Qu'est-ce qui tombe dans la mer ?", ['💍', 'la bague'], ['👑', 'la couronne']] } },
+  { id: 'frog', stage: 3, cover: '🐸',
+    en: { t: 'The frog and the moon', p: [['🐸🪵', 'A frog sits on a log.'], ['🌃', 'It is night.'], ['🐸🌙', 'The frog sees the moon.'], ['🌙💧', 'Is the moon in the pond?'], ['🐸💦', 'The frog jumps in. Splash!'], ['🐸😊', 'No moon. But a happy, wet frog!']],
+      q: ['What did the frog see?', ['🌙', 'the moon'], ['☀️', 'the sun']] },
+    fr: { t: 'La grenouille et la lune', p: [['🐸', 'Une grenouille est assise.'], ['🌃', "C'est la nuit."], ['🐸🌙', 'La grenouille voit la lune.'], ['🌙💧', "La lune est dans l'eau ?"], ['🐸💦', 'La grenouille saute. Plouf !'], ['🐸😊', 'Pas de lune. Mais une grenouille contente !']],
+      q: ["Qu'est-ce que la grenouille voit ?", ['🌙', 'la lune'], ['☀️', 'le soleil']] } },
+  { id: 'snail', stage: 5, cover: '🐌',
+    en: { t: 'The snail and the cake', p: [['🐌', 'The snail is slow.'], ['🐌👃', 'It can smell a cake.'], ['🎂🏞️', 'The cake is by the lake.'], ['🐌➡️', 'The snail goes on and on.'], ['🌃🐌🎂', 'At night, the snail is at the cake.'], ['😋🎂', 'Yum! It was a good day.']],
+      q: ['What does the snail eat?', ['🎂', 'the cake'], ['🍎', 'an apple']] },
+    fr: { t: "L'escargot et le gâteau", p: [['🐌', "L'escargot est lent."], ['🐌👃', 'Il sent un gâteau.'], ['🎂🏞️', 'Le gâteau est près du lac.'], ['🐌➡️', "L'escargot avance, avance."], ['🌃🐌🎂', 'Le soir, il arrive au gâteau.'], ['😋🎂', 'Miam ! Quelle bonne journée !']],
+      q: ["Qu'est-ce que l'escargot mange ?", ['🎂', 'le gâteau'], ['🍎', 'une pomme']] } },
+  { id: 'tiko', stage: 5, cover: '🦄',
+    en: { t: 'Tiko the unicorn', p: [['🦄', 'Tiko is a little unicorn.'], ['🦄💗', 'Tiko has a pink mane.'], ['🏰', 'Tiko lives in a castle.'], ['🌃🦄✨', 'At night, Tiko flies to the stars.'], ['⭐🎁', 'Tiko brings a star for you.'], ['🌙⭐', 'Good night, little star.']],
+      q: ['Where does Tiko live?', ['🏰', 'in a castle'], ['⛺', 'in a tent']] },
+    fr: { t: 'Tiko la licorne', p: [['🦄', 'Tiko est une petite licorne.'], ['🦄💗', 'Tiko a une crinière rose.'], ['🏰', 'Tiko habite dans un château.'], ['🌃🦄✨', 'La nuit, Tiko vole vers les étoiles.'], ['⭐🎁', 'Tiko rapporte une étoile pour toi.'], ['🌙⭐', 'Bonne nuit, petite étoile.']],
+      q: ['Où habite Tiko ?', ['🏰', 'dans un château'], ['⛺', 'dans une tente']] } },
+];
+T.en.lib = { choose: 'Choose a book!', locked: 'This book opens later on your journey!', done: 'You read a whole book!', turn: 'Read the page, then turn it!' };
+T.fr.lib = { choose: 'Choisis un livre !', locked: "Ce livre s'ouvre plus tard dans ton voyage !", done: 'Tu as lu un livre entier !', turn: 'Lis la page, puis tourne-la !' };
+function library() {
+  return new Promise(resolve => {
+    const draw = () => {
+      zone('read'); musicMode('calm');
+      const st = stageOf(), B = S.books = S.books || {}, key = b => S.lang + ':' + b.id;
+      const firstNew = BOOKS.find(b => b.stage <= st && !B[key(b)]);
+      app.innerHTML = `<div class="screen sub library"><div class="topline"><button class="ic back">🏠</button><h2>📚 ${esc(actName('books'))}</h2><div style="width:64px"></div></div>
+        <div class="shelf">${BOOKS.map((b, i) => { const locked = b.stage > st, read = B[key(b)], rest = read === today();
+          return `<button class="btn bookc ${locked ? 'locked' : rest ? 'st-rest' : ''} ${b === firstNew ? 'suggest' : ''}" data-b="${i}" style="--i:${i}"><span class="cov">${b.cover}</span><b>${esc(b[S.lang].t)}</b>
+            <i class="tag">${locked ? '🔒' : rest ? '💤' : read ? '✅' : '✨'}</i></button>`; }).join('')}</div></div>`;
+      $('.back').onclick = () => { stopSpeech(); resolve(null); }; exitCurrent = () => resolve(null);
+      $$('[data-b]').forEach(el => el.onclick = async () => {
+        const b = BOOKS[+el.dataset.b], wob = () => { el.classList.remove('wobble'); void el.offsetWidth; el.classList.add('wobble'); sfx('tap'); };
+        if (b.stage > st) { wob(); return speak(L().lib.locked); }
+        if (B[key(b)] === today()) { wob(); return speak(L().disc.rest); }
+        sfx('pop'); const done = await readBook(b);
+        if (done) resolve(true); else if (done === null) resolve(null); else draw();
+      });
+      speak(L().lib.choose);
+    };
+    draw();
+  });
+}
+// resolves true when the whole book was read, false when she went back to the shelf, null for 🏠
+function readBook(b) {
+  return new Promise(resolve => {
+    const bk = b[S.lang]; let i = 0, done = false;
+    const finish = v => { if (done) return; done = true; stopSpeech(); clearIdle(); resolve(v); };
+    zone('read'); musicMode('work');
+    const page = () => {
+      const last = i === bk.p.length - 1, [pic, text] = bk.p[i];
+      app.innerHTML = `<div class="screen act bookread"><header class="bar"><button class="ic home" aria-label="home">🏠</button>
+        <div class="dots">${bk.p.map((_, j) => `<i class="${j < i ? 'done' : j === i ? 'now' : ''}"></i>`).join('')}</div><button class="ic shelfb" aria-label="books">📚</button></header>
+        <div class="stage"><div class="bookpage"><div class="scene">${pic}</div>${readerHTML([text])}</div>
+          <div class="btnrow">${i ? '<button class="btn prevb" aria-label="back">◀</button>' : ''}<button class="btn sun helpbtn" aria-label="read to me">👂</button>
+          <button class="btn primary huge nextb" aria-label="next">${last ? '✅' : '▶'}</button></div></div></div>`;
+      wireReader($('.stage'));
+      $('.home').onclick = () => finish(null); $('.shelfb').onclick = () => finish(false); exitCurrent = () => finish(null);
+      const p = $('.prevb'); if (p) p.onclick = () => { sfx('tap'); stopSpeech(); i--; page(); };
+      $('.nextb').onclick = () => { sfx('pop'); stopSpeech(); if (last) return question(); i++; page(); };
+      setIdle(() => nudge([L().lib.turn]));
+      if (i === 0) speak(bk.t);
+    };
+    const question = async () => {
+      const [qq, right, wrong] = bk.q, opt = ([e, w], v) => ({ html: `${e}<br><small>${esc(w)}</small>`, val: v });
+      const first = await askChoice({ title: qq, speak: [qq], visual: `<div class="pic bob">${b.cover}</div>`, optClass: 'group bookq',
+        options: shuffle([opt(right, 1), opt(wrong, 0)]), answer: 1, correctSpeak: [right[1]] }, { index: 0, count: 1 }, null);
+      if (first === null || done) return finish(null);
+      S.books = S.books || {}; S.books[S.lang + ':' + b.id] = today(); tally('books'); S.stars += 2; save();
+      sfx('win'); rain(); await speak(L().lib.done); await sleep(400); finish(true);
+    };
+    page();
+  });
+}
+
+// ================= 📊 weekly report for parents (to read, or to share with a teacher or therapist) =================
+function weekReport() {
+  const days = []; for (let i = 6; i >= 0; i--) days.push(ymd(new Date(Date.now() - i * 864e5)));
+  const inWeek = new Set(days), dz = days.map(d => S.days[d] || { q: 0, ok: 0 });
+  const sum = f => dz.reduce((s, d) => s + (f(d) || 0), 0), q = sum(d => d.q);
+  const R = { from: days[0], to: days[6], played: dz.filter(d => d.q > 0).length, q, pct: q ? Math.round(sum(d => d.ok) / q * 100) : 0, mins: Math.round(sum(d => d.t) / 60),
+    chats: 0, caught: 0, langs: {} };
+  const dia = S.diary || [], kind = set => (set === 'letter' ? 'letters' : set === 'sight' ? 'magic' : set === 'syl' ? 'syllables' : 'words');
+  const keep = S.lang;
+  for (const lg of ['en', 'fr']) {
+    S.lang = lg;   // (only so the helpers below look at this language; put back afterwards, nothing is saved)
+    const ev = dia.filter(e => e[1] === lg), wk = ev.filter(e => inWeek.has(e[0]));
+    const learned = { letters: [], magic: [], words: [], syllables: [] }, practise = { letters: [], magic: [], words: [], syllables: [] };
+    for (const e of wk) if (e[2] === 'ok' && (S.boxes[`${lg}:${e[3]}:${e[4]}`] || 0) >= 5 && !learned[kind(e[3])].includes(e[4])) learned[kind(e[3])].push(e[4]);
+    for (const [k, v] of Object.entries(S.boxes)) { const [l, set, ...rest] = k.split(':'), id = rest.join(':');
+      if (l === lg && v > 0 && v < 5 && !isKnown(set, id) && !practise[kind(set)].includes(id)) practise[kind(set)].push(id); }
+    const mix = {}; for (const e of ev) if (e[2] === 'miss' && e[5] && !e[5].includes('+')) { const k = `${e[4]} → ${e[5]}`; mix[k] = (mix[k] || 0) + 1; }
+    const acts = Object.keys(ACTS), P = S.plays || {}, played = acts.filter(a => inWeek.has((P[lg + ':' + a] || {}).day)).map(a => actName(a));
+    let never = acts.filter(a => !(P[lg + ':' + a] || {}).total && readyFor(a) && ACTS[a].area !== 'art').map(a => actName(a));
+    if (never.length > 8) never = [...never.slice(0, 8), `+${never.length - 8} more`];
+    const st = stageOf(lg);
+    R.langs[lg] = { any: wk.length > 0 || played.length > 0, stage: `${Math.min(st + 1, STAGES.length)}/${STAGES.length} ${st >= STAGES.length ? '(complete)' : T.en.journey[st]}`, learned, practise,
+      mix: Object.entries(mix).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => (n > 1 ? `${k} (×${n})` : k)), played, never,
+      known: { letters: DATA[lg].letters.filter(x => isKnown('letter', x.id)).length, magic: DATA[lg].sight.filter(x => isKnown('sight', x.id)).length, words: DATA[lg].words.filter(x => isKnown('blend', x.id)).length } };
+    R.caught += wk.filter(e => e[2] === 'caught').length;
+  }
+  S.lang = keep;
+  return R;
+}
+function weekReportText(R = weekReport()) {
+  const L2 = [`Tiko – week ${R.from} to ${R.to}`, `Played on ${R.played} of 7 days${R.mins ? `, about ${R.mins} minutes` : ''}. ${R.q} answers, ${R.pct}% right first time.`];
+  for (const lg of ['en', 'fr']) { const x = R.langs[lg]; if (!x.any) continue;
+    L2.push('', lg === 'en' ? 'ENGLISH' : 'FRENCH', `Journey place ${x.stage}. Knows ${x.known.letters} letter sounds, ${x.known.words} words, ${x.known.magic} magic words.`);
+    const list = (t, o) => { for (const k of ['letters', 'words', 'magic', 'syllables']) if (o[k].length) L2.push(`${t} ${k === 'magic' ? 'magic words' : k}: ${o[k].slice(0, 40).join(', ')}`); };
+    list('New this week –', x.learned); list('Still practising –', x.practise);
+    if (x.mix.length) L2.push(`Mix-ups (asked → chose): ${x.mix.join('; ')}`);
+    if (x.played.length) L2.push(`Played this week: ${x.played.join(', ')}`);
+    if (x.never.length) L2.push(`Ready but never tried: ${x.never.join(', ')}`);
+  }
+  if (R.caught) L2.push('', `${R.caught} word(s) she seemed to know but could not read in a sentence went back to practice.`);
+  return L2.join('\n');
+}
+// ---------- backup: everything she has learned, in one small file ----------
+function backupText() { return JSON.stringify({ app: 'tiko', version: APP_VERSION, date: today(), data: S }); }
+function restoreBackup(text) {
+  const d = JSON.parse(text);
+  if (!d || d.app !== 'tiko' || !d.data || typeof d.data.boxes !== 'object' || typeof d.data.settings !== 'object') throw new Error('not a Tiko backup');
+  S = { ...structuredClone(DEFAULTS), ...d.data, settings: { ...DEFAULTS.settings, ...d.data.settings } }; save();
+  return d.date;
+}
+
 // ================= intro: music + personal welcome =================
 function intro() {
   applySettings();
@@ -2860,6 +3022,10 @@ function parents() {
   app.innerHTML = `<div class="screen parent"><div class="wrap">
     <div class="topline"><button class="ic back">🏠</button><h2>👪 Parent corner</h2></div>
 
+    <section><h3>📊 This week</h3><div class="wkrep"></div>
+      <button class="pbtn sharerep">📤 Share / copy this report</button> <span class="repmsg" style="font-size:14px;color:var(--teal-d)"></span>
+      <p style="font-size:13px">The report has no name in it. It is made on this tablet from what she did here; nothing is sent anywhere unless you share it.</p></section>
+
     <section><h3>📲 Install on the tablet</h3>
       <p>In Chrome, tap <b>⋮ → Add to Home screen / Install app</b>. After that Tiko works offline and opens full-screen.</p>
       ${installEvt ? '<button class="pbtn inst">Install Tiko now</button>' : ''}</section>
@@ -2938,6 +3104,11 @@ function parents() {
     <section><h3>🎤 Her reading</h3><p>In "Read it to Tiko" she records herself reading. The latest 12 recordings are kept here, on this tablet only.</p><div class="readlist"></div></section>
 
     <section><h3>📷 Her paper work</h3><div class="gallery pg"></div></section>
+
+    <section><h3>💾 Backup</h3>
+      <p>Her progress lives only in this tablet's browser storage. Save a backup file now and then (it goes to Downloads); you can restore it here, or on a new tablet. Voice recordings and photos are not included.${S.lastBackup ? ` Last backup: <b>${esc(S.lastBackup)}</b>.` : ' <b>No backup yet.</b>'}</p>
+      <button class="pbtn bkup">💾 Save a backup file</button> <button class="pbtn alt rstr">📂 Restore from a backup file</button><input type="file" class="bkfile" accept=".json,application/json" hidden>
+      <p class="bkmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
     <section><h3>🧹 Reset</h3><button class="pbtn warn rst">Reset all progress</button></section>
   </div></div>`;
@@ -3038,6 +3209,46 @@ function parents() {
     $$('[data-rd]', box).forEach(b => b.onclick = async () => { const [r] = list.splice(+b.dataset.rd, 1); save(); idb.del('rec', r.k).catch(() => {}); drawReadings(); });
   };
   drawReadings();
+  // this week's report
+  (() => {
+    const R = weekReport(), chips = l => l.map(x => `<span class="chipw">${esc(x)}</span>`).join('') || '<i>—</i>';
+    const NAMES = { letters: 'letter sounds', words: 'words', magic: 'magic words', syllables: 'syllables' };
+    let h = `<div class="tiles"><div><b>${R.played}/7</b>days played</div><div><b>${R.mins || '–'}</b>minutes</div><div><b>${R.q}</b>answers</div><div><b>${R.q ? R.pct + '%' : '–'}</b>right first time</div></div>`;
+    for (const lg of ['en', 'fr']) { const x = R.langs[lg]; if (!x.any) continue;
+      const rows = (o, t) => ['letters', 'words', 'magic', 'syllables'].filter(k => o[k].length).map(k => `<p><b>${t} ${NAMES[k]} (${o[k].length}):</b> ${chips(o[k].slice(0, 40))}</p>`).join('');
+      h += `<h4>${lg === 'en' ? '🇬🇧 English' : '🇫🇷 Français'} · journey place ${esc(x.stage)}</h4>
+        <p>Knows <b>${x.known.letters}</b> letter sounds, <b>${x.known.words}</b> words, <b>${x.known.magic}</b> magic words.</p>
+        ${rows(x.learned, '🌱 New this week –') || '<p>Nothing new learned this week yet.</p>'}${rows(x.practise, '🔁 Still practising –')}
+        ${x.mix.length ? `<p><b>🔀 Mix-ups (asked → chose):</b> ${chips(x.mix)}</p>` : ''}
+        ${x.played.length ? `<p><b>▶ Played this week:</b> ${esc(x.played.join(', '))}</p>` : ''}
+        ${x.never.length ? `<p><b>🙈 Ready but never tried:</b> ${esc(x.never.join(', '))}</p>` : ''}`; }
+    if (!R.langs.en.any && !R.langs.fr.any) h += '<p>No activity recorded this week yet. (Details such as mix-ups are collected from version 27 on.)</p>';
+    if (R.caught) h += `<p>🎣 <b>${R.caught}</b> word(s) she seemed to know but could not read inside a sentence went back to practice.</p>`;
+    $('.wkrep').innerHTML = h;
+    $('.sharerep').onclick = async () => {
+      const text = weekReportText(R), msg = $('.repmsg');
+      try { if (navigator.share) { await navigator.share({ title: 'Tiko – weekly report', text }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+      try { await navigator.clipboard.writeText(text); msg.textContent = 'Copied — paste it into a message or an email.'; }
+      catch (e) { msg.innerHTML = `<textarea style="width:100%;height:160px;user-select:text;-webkit-user-select:text">${esc(text)}</textarea>`; }
+    };
+  })();
+  // backup / restore
+  $('.bkup').onclick = () => {
+    S.lastBackup = today(); save();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([backupText()], { type: 'application/json' })); a.download = `tiko-backup-${today()}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); $('.bkmsg').textContent = `Saved tiko-backup-${today()}.json (look in Downloads).`;
+  };
+  $('.rstr').onclick = () => $('.bkfile').click();
+  $('.bkfile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const text = await f.text(), d = JSON.parse(text);
+      if (!d || d.app !== 'tiko' || !d.data) throw new Error('x');
+      $('.bkmsg').innerHTML = `Backup from <b>${esc(d.date || '?')}</b> with ${Object.values(d.data.boxes || {}).filter(v => v >= 5).length} things known. This replaces the progress on this tablet. <button class="pbtn warn doit">Yes, restore it</button>`;
+      $('.doit').onclick = () => { try { restoreBackup(text); parents(); setTimeout(() => { const m = $('.bkmsg'); if (m) { m.textContent = 'Restored ✓'; m.scrollIntoView({ block: 'center' }); } }, 50); } catch (err) { $('.bkmsg').textContent = 'That file could not be restored.'; } };
+    } catch (err) { $('.bkmsg').textContent = 'That is not a Tiko backup file.'; }
+    e.target.value = '';
+  };
   (async () => {
     const g = $('.pg'), keys = ((await idb.keys('photos')) || []).sort((a, b) => b - a);
     if (!keys.length) { g.outerHTML = '<p>No photos yet. She can take one with 📷 during paper missions.</p>'; return; }
