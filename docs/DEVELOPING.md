@@ -215,6 +215,7 @@ node tools/serve.js        (run with the repository folder as the working direct
 | `rule-check.js` | `<chrome> <outDir>` | No repeats; only mistakes come back. |
 | `discovery-check.js` | `<chrome> <outDir>` | Rest, mastered, suggestions, conquered places. |
 | `memory-check.js` | `<chrome> <outDir>` | Memory pairs ladder and layout. |
+| `kim-check.js` | `<chrome> <outDir>` | "What's missing?" with real touch: drag to the gap, wrong drop, drop elsewhere, plain tap. |
 | `v24-check.js` | `<chrome>` | Journey pace with big word lists, word order, lucky-guess catch, sentences and families. |
 | `chat-check.js` | `<chrome> <outDir>` | Every chat topic in both languages with real touch; read-aloud with a fake microphone. |
 | `v27-check.js` | `<chrome> <outDir>` | Every library book in both languages with real touch; the weekly report; backup round trip. |
@@ -263,3 +264,4 @@ The tablet picks up a new version the next time the app is opened online, and sh
 | v27 | Little library (six books per language); weekly parent report with mix-ups and play time; backup and restore. |
 | v28 | Maths to 99 with tens and ones (adding and taking away level 5), coins, groups of; first/then strip on the daily path; parent-set session length with a calm ending. |
 | v29 | Themes: unicorn, dragon, owl (colours, mascot, scenery); French for a boy. |
+| v30 | "What's missing?": she drags the missing picture back into its gap. Any multiple-choice question can do this by setting `drop` (a selector for the place) on the question; `dragOpt` in `app.js` handles the finger. A tap still answers, and letting go away from the place is never a mistake. |

@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 29;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 30;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -1619,7 +1619,9 @@ function askSimon(q, meta) {
 function mkKim() {
   const l = lvl('kim'), n = [3, 4, 5][l - 1], items = shuffle(CARD_EMOJI).slice(0, n + 2), shown = items.slice(0, n), gone = pick(shown);
   const opts = shuffle([gone, ...items.slice(n, n + 2)]);
-  return { title: TH().kimLook, speak: [TH().kimLook], gate: true, optClass: '', answer: gone, correctSpeak: [],
+  return { title: TH().kimLook, speak: [TH().kimLook], gate: true, optClass: '', answer: gone, correctSpeak: [], retrySpeak: [TH().kimQ],
+    // she drags the missing picture back into the gap it left
+    drop: '.titem.empty', onCorrect: root => { const el = $('.titem.empty', root); if (el) { el.textContent = gone; el.classList.remove('empty', 'over'); el.classList.add('back'); } },
     visual: `<div class="addwrap"><div class="tray">${shown.map((e, i) => `<span class="titem" data-e="${e}" style="--i:${i}">${e}</span>`).join('')}<div class="cover">☁️</div></div>
       <button class="btn primary huge readyb pulse">👀 ${esc(TH().ready)}</button></div>`,
     options: opts.map(e => ({ html: e, val: e })), grade: f => { gradeLevel('kim', f); tally('think'); },
@@ -1629,7 +1631,7 @@ function mkKim() {
         $('.readyb', root).remove(); sfx('pop');
         const tray = $('.tray', root); if (!tray) return;
         tray.classList.add('covered'); await sleep(900);
-        const el = $(`.titem[data-e="${gone}"]`, root); if (el) el.classList.add('empty');
+        const el = $(`.titem[data-e="${gone}"]`, root); if (el) { el.textContent = ''; el.classList.add('empty'); }
         if (l >= 3) { const items2 = $$('.titem', root); items2.forEach(x => x.style.order = rand(10)); }
         tray.classList.remove('covered'); unlock(); $('.bubble').textContent = TH().kimQ; speak(TH().kimQ);
       });
@@ -2011,6 +2013,39 @@ function askReading(q, meta) {
     speak(...q.speak);
   });
 }
+// Drag an answer onto its place (`q.drop` = selector of the place). The picture follows her finger; let go on the place
+// and it counts as her answer, let go anywhere else and it just slides home (never a mistake). A plain tap still works.
+function dragOpt(b, target, choose) {
+  let id = null, sx = 0, sy = 0, drag = false;
+  b.classList.add('drag');
+  const onPlace = e => {
+    const t = target(); if (!t) return false;
+    const r = t.getBoundingClientRect(), c = b.getBoundingClientRect(), m = 30;
+    const inside = (x, y) => x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m;
+    return inside(e.clientX, e.clientY) || inside(c.left + c.width / 2, c.top + c.height / 2);
+  };
+  const glow = on => { const t = target(); if (t) t.classList.toggle('over', on); };
+  b.addEventListener('pointerdown', e => {
+    if (b.disabled || id !== null) return;
+    id = e.pointerId; sx = e.clientX; sy = e.clientY; drag = false;
+    try { b.setPointerCapture(id); } catch (err) { /* ignore */ }
+  });
+  b.addEventListener('pointermove', e => {
+    if (e.pointerId !== id) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!drag && Math.hypot(dx, dy) > 12) { drag = true; b.classList.add('dragging'); sfx('tap'); }
+    if (drag) { b.style.translate = `${dx}px ${dy}px`; glow(onPlace(e)); }
+  });
+  const end = (e, cancelled) => {
+    if (e.pointerId !== id) return; id = null;
+    if (!drag) return;
+    const hit = !cancelled && onPlace(e);
+    drag = false; b._dragT = Date.now(); b.classList.remove('dragging'); b.style.translate = ''; glow(false);
+    if (hit) choose(b);
+  };
+  b.addEventListener('pointerup', e => end(e, false));
+  b.addEventListener('pointercancel', e => end(e, true));
+}
 // multiple choice. If `container` given, renders options into it (used by paper missions).
 function askChoice(q, meta, container) {
   return new Promise(resolve => {
@@ -2024,15 +2059,17 @@ function askChoice(q, meta, container) {
     box.innerHTML = q.options.map((o, i) => `<button class="opt ${q.optClass || ''}" data-i="${i}" style="--i:${i}">${o.html}</button>`).join('');
     const btns = $$('.opt', box);
     let attempts = 0, busy = false;
-    btns.forEach(b => b.addEventListener('click', async () => {
+    const choose = async b => {
       if (busy || b.disabled) return;
       const o = q.options[+b.dataset.i];
       if (String(o.val) === String(q.answer)) {
         busy = true; b.classList.add('correct'); btns.forEach(x => { if (x !== b) x.disabled = true; });
+        const at = (q.drop && $(q.drop, root)) || b;   // drag games: the picture lands in its place, so the party is there
+        if (q.drop) b.classList.add('placed');
         if (q.onCorrect) q.onCorrect(root);
         const first = attempts === 0;
-        stopSpeech(); sfx('good'); burstAt(b, first ? 50 : 20); owlReact('happy');
-        if (first) flyStar(b); else tally('retryOk');
+        stopSpeech(); sfx('good'); burstAt(at, first ? 50 : 20); owlReact('happy');
+        if (first) flyStar(at); else tally('retryOk');
         lastWrong = (q.wrong || [])[0] || ''; q.grade && q.grade(first); lastWrong = ''; logDay(first); save();
         const cb = comboHit(first);
         await sleep(300);   // let the chime finish before Tiko talks
@@ -2049,7 +2086,9 @@ function askChoice(q, meta, container) {
           const c = btns.find(x => String(q.options[+x.dataset.i].val) === String(q.answer)); c.classList.add('hint'); speak(L().itsThis, ...(q.correctSpeak || []));
         }
       }
-    }));
+    };
+    btns.forEach(b => b.addEventListener('click', () => { if (Date.now() - (b._dragT || 0) > 500) choose(b); }));
+    if (q.drop) btns.forEach(b => dragOpt(b, () => $(q.drop, root), choose));
     // brand-new item: all choices shown, the right one glows (errorless first meeting)
     const glowNew = () => { if (!q.hintNew) return; const c = btns.find(x => String(q.options[+x.dataset.i].val) === String(q.answer)); if (c) c.classList.add('hint'); };
     if (q.setup) q.setup(root, () => { box.hidden = false; glowNew(); });
