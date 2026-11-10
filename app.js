@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 31;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 32;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -1558,18 +1558,56 @@ function mkMemory() { const l = lvl('memory'), pairs = MEM_PAIRS[l - 1] || 2, se
 function askMemory(q, meta) {
   return new Promise(resolve => {
     let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
-    const n = q.cards.length, cols = n <= 4 ? 2 : n <= 6 ? 3 : n === 10 ? 5 : 4;
+    const n = q.cards.length, cols = n <= 4 ? 2 : n <= 6 ? 3 : n === 10 ? 5 : n === 16 && innerWidth > innerHeight ? 6 : 4;   // wide screens: 16 cards in 3 rows, leaving room for the pictures to drag
     app.innerHTML = actFrame(meta, `${promptHTML(TH().memory)}<div class="memgrid ${n <= 6 ? 'big' : ''}" style="--cols:${cols}">${q.cards.map((c, i) =>
       `<button class="mcard up" data-i="${i}" style="--i:${i}"><span class="face">${c}</span><span class="back">❓</span></button>`).join('')}</div>
-      <div class="btnrow"><button class="btn primary huge readyb pulse">👀 ${esc(TH().ready)}</button>
+      <div class="btnrow memrow"><div class="mtray" hidden>${shuffle([...new Set(q.cards)]).map(e => `<button class="mopt" data-e="${e}">${e}</button>`).join('')}</div>
+      <button class="btn primary huge readyb pulse">👀 ${esc(TH().ready)}</button>
       <button class="btn sun peekb" hidden>👀 ${esc(TH().peek)}</button></div>`);
     wire(meta, finish, () => speak(TH().memory), [TH().memory]);
     const cards = $$('.mcard'); let open = [], matched = 0, misses = 0, ready = false, closeT = null, missRun = 0;
     // She decides when she has looked long enough — no timer.
     $('.readyb').onclick = () => {
       sfx('pop'); cards.forEach(c => c.classList.remove('up')); ready = true;
-      $('.readyb').remove(); $('.peekb').hidden = false; $('.bubble').textContent = TH().memoryGo; speak(TH().memoryGo);
+      $('.readyb').remove(); $('.peekb').hidden = false; $('.mtray').hidden = false; $('.bubble').textContent = TH().memoryGo; speak(TH().memoryGo);
     };
+    const picOf = c => q.cards[+c.dataset.i], mateOf = c => cards.find(x => x !== c && picOf(x) === picOf(c));
+    const glowCard = m => { if (!m) return; m.classList.remove('hint'); void m.offsetWidth; m.classList.add('hint'); setTimeout(() => m.classList.remove('hint'), 1800); };
+    const stuck = () => (q.help && missRun >= 2) || missRun >= 3;   // easy levels help after two wrong tries, bigger boards after three
+    // both cards of a picture are found
+    const pairDone = async (a, b) => {
+      [a, b].forEach(c => { c.classList.remove('found'); c.classList.add('up', 'matched'); }); matched++; missRun = 0; sfx('good'); burstAt(b, 20);
+      const t = $(`.mopt[data-e="${picOf(a)}"]`); if (t) t.classList.add('gone');
+      if (matched === q.pairs) {
+        const first = misses <= q.pairs; gradeLevel('memory', first); tally('think'); logDay(first); if (first) flyStar($('.memgrid')); save();
+        owlReact('happy'); await sleep(400); await speak(...praiseParts()); await sleep(300); finish(first);
+      }
+    };
+    // Recall with something to hold: she drags a picture from the row onto the card where it is hiding.
+    // Right → the card turns over and stays. Wrong → the card shows what it really is for a moment, then hides again.
+    $$('.mopt').forEach(b => {
+      let id = null, sx = 0, sy = 0, drag = false;
+      b.addEventListener('pointerdown', e => { if (!ready || id !== null || b.classList.contains('gone')) return; id = e.pointerId; sx = e.clientX; sy = e.clientY; drag = false; try { b.setPointerCapture(id); } catch (err) { /* ignore */ } });
+      b.addEventListener('pointermove', e => {
+        if (e.pointerId !== id) return; const dx = e.clientX - sx, dy = e.clientY - sy;
+        if (!drag && Math.hypot(dx, dy) > 12) {
+          drag = true; b.classList.add('dragging'); sfx('tap'); if (open.length) closeOpen();
+          if (stuck()) glowCard(cards.find(c => !c.classList.contains('up') && picOf(c) === b.dataset.e));
+        }
+        if (drag) b.style.translate = `${dx}px ${dy}px`;
+      });
+      const end = (e, cancelled) => {
+        if (e.pointerId !== id) return; id = null; if (!drag) return;
+        drag = false; b.classList.remove('dragging'); b.style.translate = '';
+        if (cancelled || !ready) return;
+        const c = cards.find(x => { if (x.classList.contains('up')) return false; const r = x.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; });
+        if (!c) return;                                   // let go anywhere else: it just slides home, never a mistake
+        c.classList.add('up');
+        if (picOf(c) === b.dataset.e) { const m = mateOf(c); if (m.classList.contains('found')) pairDone(m, c); else { c.classList.add('found'); missRun = 0; sfx('good'); burstAt(c, 10); } }
+        else { misses++; missRun++; sfx('oops'); owlReact('think'); setTimeout(() => { if (!c.classList.contains('found') && !c.classList.contains('matched') && !open.includes(c)) c.classList.remove('up'); }, q.help ? 2200 : 1600); }
+      };
+      b.addEventListener('pointerup', e => end(e, false)); b.addEventListener('pointercancel', e => end(e, true));
+    });
     // Peek: all cards face up for 2 s — as often as she likes
     $('.peekb').onclick = async () => {
       if (!ready) return; sfx('tap');
@@ -1582,23 +1620,17 @@ function askMemory(q, meta) {
       if (!ready) return;
       if (open.length >= 2) { closeOpen(); if (c.classList.contains('up')) return; }
       if (c.classList.contains('up')) return;
+      // its partner was already found by dragging: turning this one over completes the pair
+      if (!open.length && mateOf(c).classList.contains('found')) { sfx('tap'); return pairDone(mateOf(c), c); }
       c.classList.add('up'); sfx('tap'); open.push(c);
       if (open.length < 2) {
-        // easy levels: stuck after two wrong tries → the partner card glows to help her find it
-        if ((q.help && missRun >= 2) || missRun >= 3) {   // bigger boards help too, one wrong try later
-          const mate = cards.find(x => x !== c && q.cards[+x.dataset.i] === q.cards[+c.dataset.i]);
-          if (mate) { mate.classList.remove('hint'); void mate.offsetWidth; mate.classList.add('hint'); setTimeout(() => mate.classList.remove('hint'), 1800); }
-        }
+        // stuck after wrong tries → the partner card glows to help her find it
+        if (stuck()) { const m = mateOf(c); if (!m.classList.contains('up')) glowCard(m); }
         return;
       }
       const [a, b] = open;
-      if (q.cards[+a.dataset.i] === q.cards[+b.dataset.i]) {
-        a.classList.add('matched'); b.classList.add('matched'); open = []; matched++; missRun = 0; sfx('good'); burstAt(b, 20);
-        if (matched === q.pairs) {
-          const first = misses <= q.pairs; gradeLevel('memory', first); tally('think'); logDay(first); if (first) flyStar($('.memgrid')); save();
-          owlReact('happy'); await sleep(400); await speak(...praiseParts()); await sleep(300); finish(first);
-        }
-      } else { misses++; missRun++; closeT = setTimeout(() => { if (open.length === 2) closeOpen(); }, q.help ? 3500 : 2500); }
+      if (picOf(a) === picOf(b)) { open = []; pairDone(a, b); }
+      else { misses++; missRun++; closeT = setTimeout(() => { if (open.length === 2) closeOpen(); }, q.help ? 3500 : 2500); }
     }));
     speak(TH().memory);
   });
