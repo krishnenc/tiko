@@ -30,29 +30,100 @@ const DATA = {
       ['web', 'w e b', '🕸️'], ['leg', 'l e g', '🦵'], ['van', 'v a n', '🚐'], ['rat', 'r a t', '🐀'],
       ['mug', 'm u g', '☕'], ['ten', 't e n', '🔟'], ['lip', 'l i p', '👄'], ['pan', 'p a n', '🍳'],
       ['net', 'n e t', '🥅'], ['tub', 't u b', '🛁'],
+      // more simple words (a 4th value marks a word that is not "a thing" — it is never put into the "I see a …" sentences)
+      ['bag', 'b a g', '👜'], ['cap', 'c a p', '🧢'], ['can', 'c a n', '🥫'], ['pot', 'p o t', '🍲'], ['log', 'l o g', '🪵'],
+      ['jet', 'j e t', '✈️'], ['bin', 'b i n', '🗑️'], ['pin', 'p i n', '📌'], ['cab', 'c a b', '🚕'], ['ram', 'r a m', '🐏'],
+      ['egg', 'e gg:g', '🥚'], ['ant', 'a n t', '🐜'], ['ox', 'o x', '🐂'], ['man', 'm a n', '👨'], ['kid', 'k i d', '🧒'],
+      ['hut', 'h u t', '🛖'], ['tag', 't a g', '🏷️'], ['tap', 't a p', '🚰'],
+      ['six', 's i x', '6️⃣', 1], ['red', 'r e d', '🔴', 1], ['hot', 'h o t', '🔥', 1], ['sad', 's a d', '😢', 1], ['mad', 'm a d', '😠', 1],
+      ['run', 'r u n', '🏃', 1], ['hug', 'h u g', '🤗', 1], ['zap', 'z a p', '⚡', 1], ['cut', 'c u t', '✂️', 1], ['fix', 'f i x', '🔧', 1],
+      ['yum', 'y u m', '😋', 1], ['dig', 'd i g', '⛏️', 1], ['win', 'w i n', '🥇', 1],
       ['fish', 'f i sh', '🐟'], ['ship', 'sh i p', '🚢'], ['duck', 'd u ck', '🦆'], ['sock', 's o ck', '🧦'],
       ['bell', 'b e ll', '🔔'], ['shell', 'sh e ll', '🐚'], ['chick', 'ch i ck', '🐤'], ['king', 'k i ng', '🤴'],
       ['ring', 'r i ng', '💍'], ['bee', 'b ee', '🐝'], ['tree', 't r ee', '🌳'], ['sheep', 'sh ee p', '🐑'],
       ['moon', 'm oo n', '🌙'], ['book', 'b oo k', '📖'], ['frog', 'f r o g', '🐸'], ['crab', 'c r a b', '🦀'],
       ['drum', 'd r u m', '🥁'], ['flag', 'f l a g', '🚩'], ['hand', 'h a n d', '✋'], ['milk', 'm i l k', '🥛'],
       ['tent', 't e n t', '⛺'], ['bath', 'b a th', '🛁'], ['car', 'c ar', '🚗'], ['star', 's t ar', '⭐'],
+      ['shop', 'sh o p', '🏪'], ['lock', 'l o ck', '🔒'], ['rock', 'r o ck', '🪨'], ['truck', 't r u ck', '🚚'], ['brick', 'b r i ck', '🧱'],
+      ['clock', 'c l o ck', '⏰'], ['plug', 'p l u g', '🔌'], ['clip', 'c l i p', '📎'], ['sled', 's l e d', '🛷'], ['brush', 'b r u sh', '🖌️'],
+      ['dish', 'd i sh', '🍽️'], ['song', 's o ng', '🎵'], ['string', 's t r i ng', '🧵'], ['seed', 's ee d', '🌱'], ['jeep', 'j ee p', '🚙'],
+      ['sweet', 's w ee t', '🍬'], ['tooth', 't oo th', '🦷'], ['boot', 'b oo t', '🥾'], ['spoon', 's p oo n', '🥄'], ['broom', 'b r oo m', '🧹'],
+      ['hook', 'h oo k', '🪝'], ['cook', 'c oo k', '🧑‍🍳'], ['park', 'p ar k', '🏞️'], ['shark', 'sh ar k', '🦈'], ['scarf', 's c ar f', '🧣'],
+      ['cart', 'c ar t', '🛒'], ['card', 'c ar d', '💳'], ['arm', 'ar m', '💪'], ['gift', 'g i f t', '🎁'], ['mask', 'm a s k', '😷'],
+      ['camp', 'c a m p', '🏕️'], ['dress', 'd r e ss:s', '👗'], ['pill', 'p i ll', '💊'], ['vest', 'v e s t', '🦺'], ['skunk', 's k u n k', '🦨'],
+      ['squid', 's qu:q i d', '🦑'], ['elf', 'e l f', '🧝'], ['plant', 'p l a n t', '🪴'], ['skull', 's k u ll', '💀'], ['lunch', 'l u n ch', '🍱'],
+      ['thumb', 'th u mb:m', '👍'], ['list', 'l i s t', '📋'], ['fist', 'f i s t', '✊'], ['drop', 'd r o p', '💧'], ['kiss', 'k i ss:s', '💋'],
+      ['cross', 'c r o ss:s', '❌'], ['film', 'f i l m', '🎬'], ['wish', 'w i sh', '🌠'], ['quiz', 'qu:q i z', '❓'],
+      ['chips', 'ch i p s', '🍟', 1], ['feet', 'f ee t', '🦶', 1], ['black', 'b l a ck', '⚫', 1], ['stop', 's t o p', '🛑', 1], ['swim', 's w i m', '🏊', 1],
+      ['clap', 'c l a p', '👏', 1], ['grin', 'g r i n', '😁', 1], ['crash', 'c r a sh', '💥', 1], ['splash', 's p l a sh', '💦', 1], ['sing', 's i ng', '🎤', 1],
+      ['green', 'g r ee n', '🟢', 1], ['sleep', 's l ee p', '😴', 1], ['three', 'th r ee', '3️⃣', 1], ['wind', 'w i n d', '🌬️', 1], ['yarn', 'y ar n', '🧶', 1],
+      ['chess', 'ch e ss:s', '♟️', 1], ['wink', 'w i n k', '😉', 1], ['think', 'th i n k', '🤔', 1], ['punch', 'p u n ch', '👊', 1], ['help', 'h e l p', '🆘', 1],
+      ['left', 'l e f t', '⬅️', 1], ['golf', 'g o l f', '⛳', 1], ['cash', 'c a sh', '💵', 1], ['add', 'a dd:d', '➕', 1],
       // level 3: long vowels & vowel teams ("text:sound" — the tile shows the letters, plays the sound; _e = silent e)
       ['cake', 'c a:ay k _e', '🎂'], ['kite', 'k i:igh t _e', '🪁'], ['bike', 'b i:igh k _e', '🚲'], ['snake', 's n a:ay k _e', '🐍'],
       ['cube', 'c u:ue b _e', '🧊'], ['bone', 'b o:oa n _e', '🦴'], ['rain', 'r ai:ay n', '🌧️'], ['snail', 's n ai:ay l', '🐌'],
       ['train', 't r ai:ay n', '🚂'], ['boat', 'b oa t', '⛵'], ['goat', 'g oa t', '🐐'], ['coat', 'c oa t', '🧥'],
       ['queen', 'qu:q ee n', '👸'], ['corn', 'c or n', '🌽'], ['fork', 'f or k', '🍴'], ['horse', 'h or s _e', '🐴'],
       ['cow', 'c ow', '🐄'], ['owl', 'ow l', '🦉'], ['coin', 'c oi n', '🪙'], ['night', 'n igh t', '🌃'], ['light', 'l igh t', '💡'],
+      ['wave', 'w a:ay v _e', '🌊'], ['plane', 'p l a:ay n _e', '🛩️'], ['skate', 's k a:ay t _e', '⛸️'], ['whale', 'wh:w a:ay l _e', '🐋'],
+      ['game', 'g a:ay m _e', '🎮'], ['nail', 'n ai:ay l', '💅'], ['chain', 'ch ai:ay n', '⛓️'], ['brain', 'b r ai:ay n', '🧠'],
+      ['smile', 's m i:igh l _e', '😊'], ['dice', 'd i:igh c:s _e', '🎲'], ['bride', 'b r i:igh d _e', '👰'], ['pie', 'p ie:igh', '🥧'],
+      ['tie', 't ie:igh', '👔'], ['fly', 'f l y:igh', '🪰'], ['rose', 'r o:oa s:z _e', '🌹'], ['nose', 'n o:oa s:z _e', '👃'],
+      ['phone', 'ph:f o:oa n _e', '📱'], ['globe', 'g l o:oa b _e', '🌍'], ['road', 'r oa d', '🛣️'], ['bow', 'b ow:oa', '🎀'],
+      ['bowl', 'b ow:oa l', '🥣'], ['ghost', 'gh:g o:oa s t', '👻'], ['leaf', 'l ea:ee f', '🍃'], ['peach', 'p ea:ee ch', '🍑'],
+      ['beach', 'b ea:ee ch', '🏖️'], ['seal', 's ea:ee l', '🦭'], ['key', 'k ey:ee', '🔑'], ['clown', 'c l ow n', '🤡'],
+      ['crown', 'c r ow n', '👑'], ['mouse', 'm ou:ow s _e', '🐭'], ['house', 'h ou:ow s _e', '🏠'], ['cloud', 'c l ou:ow d', '☁️'],
+      ['boy', 'b oy:oi', '👦'], ['toy', 't oy:oi', '🧸'], ['bird', 'b ir:er d', '🐦'], ['girl', 'g ir:er l', '👧'], ['shirt', 'sh ir:er t', '👕'],
+      ['purse', 'p ur:er s _e', '👛'], ['torch', 't or ch', '🔦'], ['storm', 's t or m', '⛈️'], ['horn', 'h or n', '📯'], ['door', 'd oor:or', '🚪'],
+      ['ball', 'b a:or ll', '⚽'], ['saw', 's aw:or', '🪚'], ['paw', 'p aw:or', '🐾'], ['wolf', 'w o:oo l f', '🐺'],
+      ['grapes', 'g r a:ay p _e s', '🍇', 1], ['mail', 'm ai:ay l', '📬', 1], ['paint', 'p ai:ay n t', '🎨', 1], ['five', 'f i:igh v _e', '5️⃣', 1],
+      ['nine', 'n i:igh n _e', '9️⃣', 1], ['cry', 'c r y:igh', '😭', 1], ['soap', 's oa p', '🧼', 1], ['toast', 't oa s t', '🍞', 1],
+      ['snow', 's n ow:oa', '❄️', 1], ['meat', 'm ea:ee t', '🥩', 1], ['tea', 't ea:ee', '🍵', 1], ['cheese', 'ch ee s:z _e', '🧀', 1],
+      ['brown', 'b r ow n', '🟤', 1], ['oil', 'oi l', '🛢️', 1], ['point', 'p oi n t', '👉', 1], ['surf', 's ur:er f', '🏄', 1],
+      ['four', 'f our:or', '4️⃣', 1], ['yawn', 'y aw:or n', '🥱', 1], ['salt', 's a:o l t', '🧂', 1],
       // level 4: two-syllable words
       ['rabbit', 'r a bb:b i t', '🐰'], ['robot', 'r o:oa b o t', '🤖'], ['lemon', 'l e m o:u n', '🍋'], ['pencil', 'p e n c:s i l', '✏️'],
       ['rocket', 'r o ck e t', '🚀'], ['carrot', 'c a rr:r o:u t', '🥕'], ['picnic', 'p i c n i c', '🧺'], ['hotdog', 'h o t d o g', '🌭'],
       ['laptop', 'l a p t o p', '💻'], ['pumpkin', 'p u m p k i n', '🎃'], ['sandwich', 's a n d w i ch', '🥪'], ['muffin', 'm u ff:f i n', '🧁'],
       ['tiger', 't i:igh g er', '🐯'], ['spider', 's p i:igh d er', '🕷️'], ['monster', 'm o n s t er', '👾'], ['button', 'b u tt:t o:u n', '🔘'],
       ['sunflower', 's u n f l ow er', '🌻'], ['rainbow', 'r ai:ay n b ow:oa', '🌈'], ['snowman', 's n ow:oa m a n', '⛄'],
+      ['dragon', 'd r a g o:u n', '🐉'], ['wizard', 'w i z ar:er d', '🧙'], ['panda', 'p a n d a:u', '🐼'], ['parrot', 'p a rr:r o:u t', '🦜'],
+      ['camel', 'c a m e l', '🐫'], ['dolphin', 'd o l ph:f i n', '🐬'], ['penguin', 'p e n g u:w i n', '🐧'], ['lizard', 'l i z ar:er d', '🦎'],
+      ['hamster', 'h a m s t er', '🐹'], ['ladybug', 'l a:ay d y:ee b u g', '🐞'], ['butterfly', 'b u tt:t er f l y:igh', '🦋'],
+      ['dinosaur', 'd i:igh n o:u s aur:or', '🦕'], ['unicorn', 'u:ue n i c or n', '🦄'], ['mermaid', 'm er m ai:ay d', '🧜'],
+      ['pirate', 'p i:igh r a:u t _e', '🏴‍☠️'], ['doctor', 'd o c t or:er', '🧑‍⚕️'], ['farmer', 'f ar m er', '🧑‍🌾'], ['ninja', 'n i n j a:u', '🥷'],
+      ['zombie', 'z o m b ie:ee', '🧟'], ['helmet', 'h e l m e t', '⛑️'], ['bucket', 'b u ck e t', '🪣'], ['ticket', 't i ck e t', '🎫'],
+      ['magnet', 'm a g n e t', '🧲'], ['trumpet', 't r u m p e t', '🎺'], ['planet', 'p l a n e t', '🪐'], ['comet', 'c o m e t', '☄️'],
+      ['camera', 'c a m er a:u', '📷'], ['guitar', 'g ui:i t ar', '🎸'], ['violin', 'v i:igh o:u l i n', '🎻'], ['apple', 'a pp:p le:l', '🍎'],
+      ['cherry', 'ch e rr:r y:ee', '🍒'], ['melon', 'm e l o:u n', '🍈'], ['mango', 'm a n g o:oa', '🥭'], ['banana', 'b a:u n a:ar n a:u', '🍌'],
+      ['coconut', 'c o:oa c o:u n u t', '🥥'], ['tomato', 't o:u m a:ar t o:oa', '🍅'], ['potato', 'p o:u t a:ay t o:oa', '🥔'],
+      ['pepper', 'p e pp:p er', '🌶️'], ['pancake', 'p a n c a:ay k _e', '🥞'], ['cookie', 'c oo k ie:ee', '🍪'], ['lollipop', 'l o ll i p o p', '🍭'],
+      ['pretzel', 'p r e t z e l', '🥨'], ['hammer', 'h a mm:m er', '🔨'], ['ladder', 'l a dd:d er', '🪜'], ['letter', 'l e tt:t er', '✉️'],
+      ['ruler', 'r u:oo l er', '📏'], ['candle', 'c a n d le:l', '🕯️'], ['bottle', 'b o tt:t le:l', '🍼'], ['puzzle', 'p u zz:z le:l', '🧩'],
+      ['castle', 'c a s _t le:l', '🏰'], ['turtle', 't ur:er t le:l', '🐢'], ['burger', 'b ur:er g er', '🍔'], ['desert', 'd e s:z er t', '🏜️'],
+      ['volcano', 'v o l c a:ay n o:oa', '🌋'], ['tractor', 't r a c t or:er', '🚜'], ['scooter', 's c oo t er', '🛴'],
+      ['helicopter', 'h e l i c o p t er', '🚁'], ['alien', 'a:ay l i:ee e n', '👽'], ['angel', 'a:ay n g:j e l', '👼'], ['baby', 'b a:ay b y:ee', '👶'],
+      ['balloon', 'b a:u ll oo n', '🎈'], ['party', 'p ar t y:ee', '🎉'], ['trophy', 't r o:oa ph:f y:ee', '🏆'], ['umbrella', 'u m b r e ll a:u', '☂️'],
+      ['tornado', 't or n a:ay d o:oa', '🌪️'], ['cactus', 'c a c t u s', '🌵'], ['tulip', 't u:ue l i p', '🌷'], ['mushroom', 'm u sh r oo m', '🍄'],
+      ['lobster', 'l o b s t er', '🦞'], ['octopus', 'o c t o:u p u s', '🐙'], ['hippo', 'h i pp:p o:oa', '🦛'], ['gorilla', 'g o:u r i ll a:u', '🦍'],
+      ['monkey', 'm o:u n k ey:ee', '🐵'], ['turkey', 't ur:er k ey:ee', '🦃'], ['chipmunk', 'ch i p m u n k', '🐿️'], ['beaver', 'b ea:ee v er', '🦫'],
+      ['otter', 'o tt:t er', '🦦'], ['kangaroo', 'k a n g a:u r oo', '🦘'], ['koala', 'k o:oa a:ar l a:u', '🐨'], ['flamingo', 'f l a:u m i n g o:oa', '🦩'],
+      ['peacock', 'p ea:ee c o ck', '🦚'], ['eagle', 'ea:ee g le:l', '🦅'], ['crocodile', 'c r o c o:u d i:igh l _e', '🐊'],
+      ['elephant', 'e l e ph:f a:u n t', '🐘'], ['giraffe', 'g:j i:u r a ff:f _e', '🦒'], ['zebra', 'z e b r a:u', '🦓'], ['lion', 'l i:igh o:u n', '🦁'],
+      ['sunset', 's u n s e t', '🌇'], ['toothbrush', 't oo th b r u sh', '🪥'], ['lipstick', 'l i p s t i ck', '💄'], ['backpack', 'b a ck p a ck', '🎒'],
+      ['basketball', 'b a s k e t b a:or ll', '🏀'], ['number', 'n u m b er', '🔢'], ['flower', 'f l ow er', '🌸'], ['shower', 'sh ow er', '🚿'],
+      ['tower', 't ow er', '🗼'], ['window', 'w i n d ow:oa', '🪟'], ['crayon', 'c r ay o n', '🖍️'],
+      ['garlic', 'g ar l i c', '🧄', 1], ['butter', 'b u tt:t er', '🧈', 1], ['popcorn', 'p o p c or n', '🍿', 1], ['paper', 'p a:ay p er', '📄', 1],
+      ['seven', 's e v e n', '7️⃣', 1], ['thunder', 'th u n d er', '🌩️', 1], ['tennis', 't e nn:n i s', '🎾', 1], ['hockey', 'h o ck ey:ee', '🏒', 1],
+      ['bowling', 'b ow:oa l i ng', '🎳', 1], ['fishing', 'f i sh i ng', '🎣', 1], ['magic', 'm a g:j i c', '🪄', 1], ['hundred', 'h u n d r e d', '💯', 1],
+      ['yellow', 'y e ll ow:oa', '🟡', 1],
     ],
-    tiers: [26, 50, 71, 90],   // end of each difficulty level in the list above
+    tiers: [57, 154, 240, 370],  // end of each difficulty level in the list above (checked by tools/content-check.js)
     sight: ['I', 'a', 'the', 'and', 'is', 'it', 'in', 'to', 'you', 'my', 'we', 'see', 'go', 'he', 'she',
       'me', 'can', 'like', 'look', 'up', 'no', 'yes', 'said', 'was', 'are', 'for', 'on', 'at', 'big',
-      'little', 'here', 'come', 'play', 'this', 'they', 'have', 'do', 'of', 'all', 'with'],
+      'little', 'here', 'come', 'play', 'this', 'they', 'have', 'do', 'of', 'all', 'with',
+      'not', 'but', 'what', 'there', 'out', 'be', 'am', 'an', 'so', 'his', 'her', 'him', 'had', 'has', 'one', 'two', 'when', 'then',
+      'went', 'were', 'some', 'want', 'that', 'them', 'from', 'down', 'too', 'by', 'your', 'who'],
   },
 
   fr: {
@@ -75,12 +146,49 @@ const DATA = {
       ['café', 'ca fé', '☕'], ['robe', 'ro be', '👗'], ['tomate', 'to ma te', '🍅'], ['salade', 'sa la de', '🥗'],
       ['tulipe', 'tu li pe', '🌷'], ['pirate', 'pi ra te', '🏴‍☠️'], ['canapé', 'ca na pé', '🛋️'],
       ['ananas', 'a na nas', '🍍'], ['piano', 'pi a no', '🎹'], ['radio', 'ra di o', '📻'],
+      ['dé', 'dé', '🎲'], ['rat', 'ra _t', '🐀'], ['sac', 'sac', '👜'], ['bol', 'bol', '🥣'], ['épée', 'é pée', '🗡️'], ['fée', 'fée', '🧚'],
+      ['fusée', 'fu sée:zé', '🚀'], ['carotte', 'ca ro tte', '🥕'], ['patate', 'pa ta te', '🥔'], ['olive', 'o li ve', '🫒'],
+      ['numéro', 'nu mé ro', '🔢'], ['lavabo', 'la va bo', '🚰'], ['vidéo', 'vi dé o', '📹'], ['télé', 'té lé', '📺'], ['koala', 'ko a la', '🐨'],
+      ['vase', 'va se:ze', '🏺'], ['rose', 'ro se:ze', '🌹'], ['pile', 'pi le', '🔋'], ['île', 'î le', '🏝️'], ['sirène', 'si rè ne', '🧜‍♀️'],
+      ['parasol', 'pa ra sol', '⛱️'], ['animal', 'a ni mal', '🐾'], ['bus', 'bus', '🚌'], ['taxi', 'ta xi', '🚕'], ['lit', 'li _t', '🛏️'],
+      ['jus', 'ju _s', '🧃'], ['note', 'no te', '🎵'], ['école', 'é co le', '🏫'], ['mamie', 'ma mie', '👵'], ['papi', 'pa pi', '👴'],
+      ['nuage', 'nu a ge', '☁️'], ['orage', 'o ra ge', '⛈️'], ['tornade', 'tor na de', '🌪️'], ['comète', 'co mè te', '☄️'],
+      ['cerise', 'ce ri se:ze', '🍒'], ['caméra', 'ca mé ra', '🎥'], ['botte', 'bo tte', '🥾'], ['fête', 'fê te', '🎉'], ['mer', 'mer', '🌊'],
+      ['mur', 'mur', '🧱'], ['clé', 'clé', '🔑'], ['plage', 'pla ge', '🏖️'], ['canard', 'ca nar _d', '🦆'], ['renard', 're nar _d', '🦊'],
+      ['homard', 'ho mar _d', '🦞'], ['coq', 'coq', '🐓'], ['bague', 'ba gue', '💍'], ['glace', 'gla ce', '🍦'], ['parc', 'parc', '🏞️'],
+      ['malade', 'ma la de', '🤒', 1], ['zéro', 'zé ro', '0️⃣', 1], ['midi', 'mi di', '🕛', 1], ['rire', 'ri re', '😂', 1], ['fumée', 'fu mée', '💨', 1],
+      ['riz', 'ri _z', '🍚', 1], ['sel', 'sel', '🧂', 1], ['police', 'po li ce', '👮', 1], ['dodo', 'do do', '😴', 1], ['ski', 'ski', '⛷️', 1],
+      ['nage', 'na ge', '🏊', 1], ['magie', 'ma gie', '🪄', 1], ['maïs', 'ma ïs', '🌽', 1], ['thé', 'thé', '🍵', 1], ['miel', 'miel', '🍯', 1],
       ['vache', 'va che', '🐄'], ['chat', 'cha _t', '🐱'], ['loup', 'lou _p', '🐺'], ['poule', 'pou le', '🐔'],
       ['mouton', 'mou ton', '🐑'], ['lapin', 'la pin', '🐰'], ['cheval', 'che val', '🐴'], ['banane', 'ba na ne', '🍌'],
       ['melon', 'me lon', '🍈'], ['lion', 'li on', '🦁'], ['pomme', 'pom me', '🍎'], ['robot', 'ro bo _t', '🤖'],
       ['souris', 'sou ri _s', '🐭'], ['bateau', 'ba teau', '🚢'], ['gâteau', 'gâ teau', '🎂'], ['cadeau', 'ca deau', '🎁'],
       ['citron', 'ci tron', '🍋'], ['avion', 'a vion', '✈️'], ['maison', 'mai son', '🏠'], ['poisson', 'poi sson', '🐟'],
       ['fourmi', 'four mi', '🐜'], ['oiseau', 'oi seau', '🐦'], ['chocolat', 'cho co la _t', '🍫'], ['chien', 'chien', '🐶'],
+      ['panda', 'pan da', '🐼'], ['photo', 'pho to', '📷'], ['tigre', 'ti gre', '🐯'], ['zèbre', 'zè bre', '🦓'], ['livre', 'li vre', '📖'],
+      ['pied', 'pied', '🦶'], ['main', 'main', '✋'], ['bras', 'bra _s', '💪'], ['dent', 'dent', '🦷'], ['nez', 'nez', '👃'], ['pain', 'pain', '🍞'],
+      ['feu', 'feu', '🔥'], ['roi', 'roi', '🤴'], ['reine', 'rei ne', '👸'], ['porte', 'por te', '🚪'], ['chaise', 'chai se:ze', '🪑'],
+      ['lampe', 'lam pe', '💡'], ['ballon', 'ba llon', '🎈'], ['guitare', 'gui ta re', '🎸'], ['tambour', 'tam bour', '🥁'], ['stylo', 'sty lo', '🖊️'],
+      ['cartable', 'car ta ble', '🎒'], ['règle', 'rè gle', '📏'], ['maman', 'ma man', '👩'], ['garçon', 'gar çon', '👦'], ['docteur', 'doc teur', '🧑‍⚕️'],
+      ['fantôme', 'fan tô me', '👻'], ['dragon', 'dra gon', '🐉'], ['licorne', 'li cor ne', '🦄'], ['planète', 'pla nè te', '🪐'],
+      ['volcan', 'vol can', '🌋'], ['désert', 'dé sert:zèr', '🏜️'], ['forêt', 'fo rêt', '🌲'], ['arbre', 'ar bre', '🌳'], ['fleur', 'fleur', '🌸'],
+      ['cactus', 'cac tus', '🌵'], ['poire', 'poi re', '🍐'], ['pêche', 'pê che', '🍑'], ['orange', 'o ran ge', '🍊'], ['bonbon', 'bon bon', '🍬'],
+      ['biscuit', 'bis cui _t', '🍪'], ['crêpe', 'crê pe', '🥞'], ['soupe', 'sou pe', '🍲'], ['couteau', 'cou teau', '🔪'], ['cochon', 'co chon', '🐷'],
+      ['chèvre', 'chè vre', '🐐'], ['dinde', 'din de', '🦃'], ['ours', 'ours', '🐻'], ['singe', 'sin ge', '🐵'], ['kangourou', 'kan gou rou', '🦘'],
+      ['hibou', 'hi bou', '🦉'], ['hérisson', 'hé ri sson', '🦔'], ['castor', 'cas tor', '🦫'], ['mouche', 'mou che', '🪰'], ['crabe', 'cra be', '🦀'],
+      ['serpent', 'ser pen:pan _t', '🐍'], ['train', 'train', '🚂'], ['tracteur', 'trac teur', '🚜'], ['bougie', 'bou gie', '🕯️'],
+      ['cloche', 'clo che', '🔔'], ['montre', 'mon tre', '⌚'], ['chapeau', 'cha peau', '🎩'], ['pantalon', 'pan ta lon', '👖'],
+      ['manteau', 'man teau', '🧥'], ['écharpe', 'é char pe', '🧣'], ['gant', 'gan _t', '🧤'], ['couronne', 'cou ro nne', '👑'],
+      ['marteau', 'mar teau', '🔨'], ['lettre', 'le:lè ttre', '✉️'], ['téléphone', 'té lé pho ne', '📱'], ['ordinateur', 'or di na teur', '💻'],
+      ['horloge', 'hor lo ge', '🕰️'], ['seau', 'seau', '🪣'], ['savon', 'sa von', '🧼'], ['brosse', 'bro sse', '🪥'], ['douche', 'dou che', '🚿'],
+      ['bain', 'bain', '🛁'], ['fenêtre', 'fe nê tre', '🪟'], ['château', 'châ teau', '🏰'], ['tente', 'ten:tan te', '⛺'], ['tour', 'tour', '🗼'],
+      ['pont', 'pon _t', '🌉'], ['route', 'rou te', '🛣️'], ['jardin', 'jar din', '🏡'], ['bouche', 'bou che', '👄'], ['bisou', 'bi sou:zou', '😘'],
+      ['câlin', 'câ lin', '🤗'], ['nounours', 'nou nours', '🧸'], ['coupe', 'cou pe', '🏆'], ['violon', 'vi o lon', '🎻'],
+      ['lait', 'lait', '🥛', 1], ['eau', 'eau', '💧', 1], ['bleu', 'bleu', '🔵', 1], ['rouge', 'rou ge', '🔴', 1], ['vert', 'vert', '🟢', 1],
+      ['jaune', 'jau ne', '🟡', 1], ['noir', 'noir', '⚫', 1], ['musique', 'mu si:zi que', '🎶', 1], ['neige', 'nei ge', '❄️', 1],
+      ['raisin', 'rai sin:zin', '🍇', 1], ['triste', 'tris te', '😢', 1], ['fâché', 'fâ ché', '😠', 1], ['danse', 'dan se', '💃', 1],
+      ['six', 'six', '6️⃣', 1], ['dix', 'dix', '🔟', 1], ['trois', 'trois', '3️⃣', 1], ['nuit', 'nuit', '🌃', 1], ['terre', 'te:tè rre', '🌍', 1],
+      ['frites', 'fri te _s', '🍟', 1], ['beurre', 'beu rre', '🧈', 1],
       // niveau 3 : sons complexes et mots longs
       ['papillon', 'pa pi llon', '🦋'], ['grenouille', 'gre nouille', '🐸'], ['fraise', 'frai se', '🍓'], ['montagne', 'mon ta gne', '⛰️'],
       ['étoile', 'é toi le', '⭐'], ['pingouin', 'pin gouin', '🐧'], ['crocodile', 'cro co di le', '🐊'], ['citrouille', 'ci trouille', '🎃'],
@@ -88,39 +196,73 @@ const DATA = {
       ['baleine', 'ba lei ne', '🐋'], ['dauphin', 'dau phin', '🐬'], ['requin', 're quin', '🦈'], ['camion', 'ca mion', '🚚'],
       ['chameau', 'cha meau', '🐫'], ['abeille', 'a beille', '🐝'], ['soleil', 'so leil', '☀️'], ['parapluie', 'pa ra pluie', '☂️'],
       ['éléphant', 'é lé phant', '🐘'], ['escargot', 'es car go _t', '🐌'],
+      ['fille', 'fille', '👧'], ['pompier', 'pom:pon pier', '🧑‍🚒'], ['clown', 'clown', '🤡'], ['sorcière', 'sor ciè re', '🧙‍♀️'],
+      ['champignon', 'cham pi gnon', '🍄'], ['bouteille', 'bou teille', '🍾'], ['fourchette', 'four che:chè tte', '🍴'],
+      ['cuillère', 'cui llè re', '🥄'], ['assiette', 'a ssie tte', '🍽️'], ['sucette', 'su ce:cè tte', '🍭'], ['œuf', 'œuf', '🥚'],
+      ['perroquet', 'pe:pè rro quet', '🦜'], ['cygne', 'cy gne', '🦢'], ['aigle', 'ai gle', '🦅'], ['écureuil', 'é cu reuil', '🐿️'],
+      ['araignée', 'a rai gnée', '🕷️'], ['coccinelle', 'co cci ne:nè lle', '🐞'], ['chenille', 'che nille', '🐛'], ['pieuvre', 'pieu vre', '🐙'],
+      ['phoque', 'pho que', '🦭'], ['hippopotame', 'hi ppo po ta me', '🦛'], ['rhinocéros', 'rhi no cé ros', '🦏'], ['gorille', 'go rille', '🦍'],
+      ['dinosaure', 'di no sau:zo re', '🦕'], ['hélicoptère', 'hé li cop tè re', '🚁'], ['ambulance', 'am bu lan ce', '🚑'],
+      ['trottinette', 'tro tti ne:nè tte', '🛴'], ['chaussette', 'chau sse:sè tte', '🧦'], ['crayon', 'cra:crè yon', '🖍️'], ['réveil', 'ré veil', '⏰'],
+      ['aimant', 'ai man _t', '🧲'], ['échelle', 'é che:chè lle', '🪜'], ['poubelle', 'pou be:bè lle', '🗑️'], ['oreille', 'o reille', '👂'],
+      ['cœur', 'cœur', '❤️'], ['médaille', 'mé daille', '🏅'], ['trompette', 'trom pe:pè tte', '🎺'],
+      ['pluie', 'pluie', '🌧️', 1], ['ciseaux', 'ci seaux:zo', '✂️', 1], ['tennis', 'te:tè nnis', '🎾', 1], ['quatre', 'qua tre', '4️⃣', 1],
+      ['lunettes', 'lu ne:nè tte _s', '👓', 1],
     ],
-    tiers: [18, 42, 64, 64],
+    tiers: [82, 216, 280, 280],  // checked by tools/content-check.js
     sight: ['je', 'tu', 'il', 'elle', 'on', 'un', 'une', 'le', 'la', 'les', 'et', 'est', 'a', 'de', 'des',
       'mon', 'ma', 'dans', 'sur', 'avec', 'oui', 'non', "c'est", 'pas', 'petit', 'grand', 'voici', 'moi',
-      'papa', 'maman'],
+      'papa', 'maman',
+      'nous', 'vous', 'ils', 'que', 'qui', 'pour', 'au', 'du', 'en', 'son', 'sa', 'tout', 'très', 'bien', 'aussi', 'mais', 'suis', 'va', 'fait', 'ont'],
   },
 };
 
 // How many of the words (from the start of the list) are "simple" – the rest need digraphs etc.
-DATA.en.simpleWords = 26;
-DATA.fr.simpleWords = 18;
+DATA.en.simpleWords = DATA.en.tiers[0];
+DATA.fr.simpleWords = DATA.fr.tiers[0];
 // French grammatical gender (feminine words); everything else is masculine
 const FR_FEM = new Set(['radio', 'lune', 'moto', 'tomate', 'salade', 'tulipe', 'robe', 'vache', 'poule', 'banane', 'pomme', 'souris', 'maison', 'fourmi',
-  'grenouille', 'fraise', 'montagne', 'étoile', 'citrouille', 'tortue', 'voiture', 'girafe', 'baleine', 'abeille']);
-const aan = w => /^[aeiou]/.test(w) ? 'an' : 'a';   // a cat, an owl
+  'grenouille', 'fraise', 'montagne', 'étoile', 'citrouille', 'tortue', 'voiture', 'girafe', 'baleine', 'abeille',
+  'épée', 'fée', 'fusée', 'carotte', 'patate', 'olive', 'vidéo', 'télé', 'pile', 'île', 'sirène', 'note', 'école', 'mamie', 'comète', 'cerise',
+  'caméra', 'botte', 'fête', 'mer', 'clé', 'plage', 'bague', 'glace', 'tornade', 'photo', 'main', 'dent', 'reine', 'porte', 'chaise', 'lampe',
+  'guitare', 'règle', 'maman', 'licorne', 'planète', 'forêt', 'fleur', 'poire', 'pêche', 'orange', 'crêpe', 'soupe', 'chèvre', 'dinde', 'mouche',
+  'bougie', 'cloche', 'montre', 'écharpe', 'couronne', 'lettre', 'horloge', 'brosse', 'douche', 'fenêtre', 'tente', 'tour', 'route', 'bouche',
+  'coupe', 'fille', 'sorcière', 'bouteille', 'fourchette', 'cuillère', 'assiette', 'sucette', 'araignée', 'coccinelle', 'chenille', 'pieuvre',
+  'ambulance', 'trottinette', 'chaussette', 'échelle', 'poubelle', 'oreille', 'médaille', 'trompette']);
+const FR_HASP = new Set(['hibou', 'homard', 'hérisson']);   // "h aspiré": le hibou, not l'hibou
+const aan = w => /^[aeiou]/.test(w) && !/^uni/.test(w) ? 'an' : 'a';   // a cat, an owl, a unicorn
 const frUn = w => FR_FEM.has(w) ? 'une' : 'un';
-const frLe = w => /^[aeiouéèêh]/.test(w) ? "l'" : FR_FEM.has(w) ? 'la ' : 'le ';
+const frLe = w => /^[aeiouéèêâîôœh]/.test(w) && !FR_HASP.has(w) ? "l'" : FR_FEM.has(w) ? 'la ' : 'le ';
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const frCol = c => /^[aeiou]/.test(c) ? "l'" + c : 'le ' + c;   // le rouge, l'orange
 
 // Sentences & tiny stories, built from words she has already met.
 const SENTENCES = {
   en: [w => `I see ${aan(w)} ${w}.`, w => `The ${w} is big.`, w => `I like the ${w}.`, w => `Look at the ${w}!`,
-    w => `Here is my ${w}.`, w => `Can you see the ${w}?`, w => `It is ${aan(w)} ${w}.`],
+    w => `Here is my ${w}.`, w => `Can you see the ${w}?`, w => `It is ${aan(w)} ${w}.`,
+    w => `The ${w} is little.`, w => `This is my ${w}.`, w => `We like the ${w}.`, w => `She has ${aan(w)} ${w}.`, w => `He has ${aan(w)} ${w}.`,
+    w => `I can see the ${w}.`, w => `Come and look at the ${w}!`, w => `The ${w} is here.`, w => `Is it ${aan(w)} ${w}? Yes!`,
+    w => `I have ${aan(w)} ${w}.`, w => `Do you like the ${w}?`, w => `Go to the ${w}.`, w => `My ${w} is with me.`,
+    w => `They have ${aan(w)} ${w}.`, w => `Here is ${aan(w)} ${w} for you.`, w => `Look! ${cap(aan(w))} ${w}!`, w => `I want ${aan(w)} ${w}.`,
+    w => `We can see ${aan(w)} ${w}.`, w => `Where is the ${w}? Here!`, w => `That is not my ${w}.`],
   fr: [w => `Je vois ${frUn(w)} ${w}.`, w => `Voici ${frUn(w)} ${w}.`, w => `J'aime ${frLe(w)}${w}.`,
-    w => `Il y a ${frUn(w)} ${w}.`, w => `Regarde ${frLe(w)}${w} !`, w => `C'est ${frUn(w)} ${w}.`],
+    w => `Il y a ${frUn(w)} ${w}.`, w => `Regarde ${frLe(w)}${w} !`, w => `C'est ${frUn(w)} ${w}.`,
+    w => `J'ai ${frUn(w)} ${w}.`, w => `Tu as ${frUn(w)} ${w}.`, w => `Il a ${frUn(w)} ${w}.`, w => `Elle a ${frUn(w)} ${w}.`,
+    w => `${cap(frLe(w))}${w} est ici.`, w => `Où est ${frLe(w)}${w} ?`, w => `C'est ${frLe(w)}${w} de papa.`, w => `C'est ${frLe(w)}${w} de maman.`,
+    w => `Oui, c'est ${frUn(w)} ${w} !`, w => `Je veux ${frUn(w)} ${w}.`, w => `On a ${frUn(w)} ${w}.`, w => `Voici ${frLe(w)}${w} de mamie.`,
+    w => `Tu vois ${frLe(w)}${w} ?`, w => `Maman a ${frUn(w)} ${w}.`, w => `Papa a ${frUn(w)} ${w}.`, w => `${cap(frLe(w))}${w} est avec moi.`],
 };
 // harder sentences (later on the journey): two things to read — answered with a pair of pictures
 const SENTENCES2 = {
   en: [(a, b) => `I can see ${aan(a)} ${a} and ${aan(b)} ${b}.`, (a, b) => `The ${a} is next to the ${b}.`,
-    (a, b) => `Look at the ${a} and the ${b}!`, (a, b) => `My ${a} is bigger than my ${b}.`],
+    (a, b) => `Look at the ${a} and the ${b}!`, (a, b) => `My ${a} is bigger than my ${b}.`,
+    (a, b) => `I have ${aan(a)} ${a} and ${aan(b)} ${b}.`, (a, b) => `The ${a} is with the ${b}.`, (a, b) => `Here is the ${a} and here is the ${b}.`,
+    (a, b) => `She can see the ${a} and the ${b}.`, (a, b) => `We like the ${a} and the ${b}.`, (a, b) => `Is the ${a} on the ${b}?`],
   fr: [(a, b) => `Je vois ${frUn(a)} ${a} et ${frUn(b)} ${b}.`, (a, b) => `Il y a ${frUn(a)} ${a} et ${frUn(b)} ${b}.`,
-    (a, b) => `Regarde ${frLe(a)}${a} et ${frLe(b)}${b} !`, (a, b) => `J'aime ${frLe(a)}${a} et ${frLe(b)}${b}.`],
+    (a, b) => `Regarde ${frLe(a)}${a} et ${frLe(b)}${b} !`, (a, b) => `J'aime ${frLe(a)}${a} et ${frLe(b)}${b}.`,
+    (a, b) => `J'ai ${frUn(a)} ${a} et ${frUn(b)} ${b}.`, (a, b) => `${cap(frLe(a))}${a} est avec ${frLe(b)}${b}.`,
+    (a, b) => `Voici ${frLe(a)}${a} et ${frLe(b)}${b}.`, (a, b) => `Tu vois ${frLe(a)}${a} et ${frLe(b)}${b} ?`,
+    (a, b) => `Maman a ${frUn(a)} ${a} et ${frUn(b)} ${b}.`, (a, b) => `Où sont ${frLe(a)}${a} et ${frLe(b)}${b} ?`],
 };
 // each story: (A, B) => { lines, q, answer: 'A'|'B' }
 const STORIES = {
@@ -128,11 +270,22 @@ const STORIES = {
     (A, B) => ({ lines: [`I see ${aan(A)} ${A}.`, `The ${A} can see ${aan(B)} ${B}.`, `The ${B} is big.`, `Look at the ${A} and the ${B}!`], q: `What can the ${A} see?`, answer: 'B' }),
     (A, B) => ({ lines: [`I have ${aan(A)} ${A}.`, `I have ${aan(B)} ${B} too.`, `The ${A} is little.`, `I like my ${B}!`], q: 'What is little?', answer: 'A' }),
     (A, B) => ({ lines: [`Here is ${aan(A)} ${A}.`, `The ${A} is on ${aan(B)} ${B}.`, `Is it a big ${B}?`, `Yes! It is big.`], q: `The ${A} is on a…?`, answer: 'B' }),
+    (A, B) => ({ lines: [`My ${A} is here.`, `My ${B} is not here.`, `Where is my ${B}?`, `Look! It is with the ${A}!`], q: 'What was not here?', answer: 'B' }),
+    (A, B) => ({ lines: [`We go to see ${aan(A)} ${A}.`, `We see ${aan(B)} ${B} too.`, `I like the ${B}.`, `You like the ${A}.`], q: 'What do I like?', answer: 'B' }),
+    (A, B) => ({ lines: [`This is ${aan(A)} ${A}.`, 'It is for you.', `This is ${aan(B)} ${B}.`, 'It is for me!'], q: 'What is for you?', answer: 'A' }),
+    (A, B) => ({ lines: [`She has ${aan(A)} ${A}.`, `He has ${aan(B)} ${B}.`, 'They play all day.', 'What fun!'], q: 'What does he have?', answer: 'B' }),
+    (A, B) => ({ lines: [`Look at the little ${A}.`, `It can see a big ${B}.`, `The ${A} said: come and play!`], q: 'What is little?', answer: 'A' }),
+    (A, B) => ({ lines: [`I want ${aan(A)} ${A}.`, `You want ${aan(B)} ${B}.`, 'Here they are!', 'We are so happy.'], q: 'What do you want?', answer: 'B' }),
   ],
   fr: [
     (A, B) => ({ lines: [`Je vois ${frUn(A)} ${A}.`, `${cap(frLe(A))}${A} voit ${frUn(B)} ${B}.`, `Regarde ${frLe(A)}${A} et ${frLe(B)}${B} !`], q: `Qu'est-ce que ${frLe(A)}${A} voit ?`, answer: 'B' }),
     (A, B) => ({ lines: [`J'ai ${frUn(A)} ${A}.`, `J'ai aussi ${frUn(B)} ${B}.`, `J'aime ${frLe(B)}${B} !`], q: "Qu'est-ce que j'aime ?", answer: 'B' }),
     (A, B) => ({ lines: [`Voici ${frUn(A)} ${A}.`, `${cap(frLe(A))}${A} est sur ${frUn(B)} ${B}.`, 'Oh ! Comme c\'est drôle !'], q: `Qui est sur ${frLe(B)}${B} ?`, answer: 'A' }),
+    (A, B) => ({ lines: ['Voici mon ami.', `Il a ${frUn(A)} ${A}.`, `Moi, j'ai ${frUn(B)} ${B}.`, 'On est contents !'], q: "Qu'est-ce que j'ai ?", answer: 'B' }),
+    (A, B) => ({ lines: [`Maman a ${frUn(A)} ${A}.`, `Papa a ${frUn(B)} ${B}.`, "Et moi ? J'ai un bisou !"], q: "Qu'est-ce que papa a ?", answer: 'B' }),
+    (A, B) => ({ lines: [`Où est ${frLe(A)}${A} ?`, `${cap(frLe(A))}${A} est avec ${frLe(B)}${B}.`, 'Les voici !'], q: "Qu'est-ce que je cherche ?", answer: 'A' }),
+    (A, B) => ({ lines: [`Je veux ${frUn(A)} ${A}.`, `Tu veux ${frUn(B)} ${B}.`, 'On a tout ! Merci !'], q: "Qu'est-ce que tu veux ?", answer: 'B' }),
+    (A, B) => ({ lines: [`Regarde ! C'est ${frUn(A)} ${A}.`, `Et voici ${frUn(B)} ${B}.`, `J'aime bien ${frLe(A)}${A}.`], q: "Qu'est-ce que j'aime bien ?", answer: 'A' }),
   ],
 };
 
@@ -140,7 +293,7 @@ const STORIES = {
 for (const lang of Object.keys(DATA)) {
   const d = DATA[lang];
   d.letters = d.letters.map(([l, s, k, e]) => ({ id: l, l, s, k, e }));
-  d.words = d.words.map(([w, u, e]) => ({ id: w, w, units: u.split(' '), e }));
+  d.words = d.words.map(([w, u, e, x]) => ({ id: w, w, units: u.split(' '), e, x: !!x }));
   d.sight = d.sight.map(w => ({ id: w, w }));
   d.sounds = Object.assign({}, d.extraSounds);
   for (const x of d.letters) d.sounds[x.l] = x.s;
@@ -164,6 +317,18 @@ const FR_SAY = {
   teau: 'tô', deau: 'dô', seau: 'sô', meau: 'mô', dau: 'dô',
   sson: 'son', llon: 'lon', mai: 'mè', frai: 'frè', lei: 'lè', leil: 'lèye', beille: 'bèye', nouille: 'nouye', trouille: 'trouye',
   poi: 'pwa', voi: 'vwa', oi: 'wa', quin: 'kin', phin: 'fin', phant: 'fan',
+  // v24 words
+  ve: 'veu', ze: 'zeu', tte: 'teu', gue: 'gueu', bre: 'breu', vre: 'vreu', ble: 'bleu', gle: 'gleu', tre: 'treu', ttre: 'treu', sse: 'seu',
+  nne: 'neu', rre: 'reu', lle: 'leu', 'pée': 'pé', 'mée': 'mé', mie: 'mi', gie: 'ji', xi: 'ksi', 'ïs': 'isse', ko: 'co', ho: 'o', 'î': 'i', 'fê': 'fè',
+  pho: 'fo', pied: 'pié', nez: 'né', jau: 'jo', rei: 'rè', chai: 'chè', nei: 'nè', rai: 'rè', ai: 'è', 'rêt': 'rè', 'crê': 'crè', 'pê': 'pè', 'nê': 'nè',
+  lam: 'lent', tam: 'tant', am: 'an', cham: 'champ', trom: 'tron', man: 'ment', fan: 'fend', dan: 'dans', gan: 'gant', tan: 'tant', lan: 'lent',
+  ran: 'rend', pan: 'pend', kan: 'quand', can: 'quand', din: 'dain', sin: 'sain', zin: 'zain', pon: 'pont', von: 'vont', 'çon': 'son', yon: 'ion',
+  sty: 'sti', doc: 'doque', 'tô': 'to', 'zèr': 'zère', cac: 'caque', tus: 'tusse', bis: 'bisse', cui: 'kui', cas: 'casse', ser: 'serre',
+  trac: 'traque', hor: 'or', 'châ': 'cha', 'câ': 'ca', 'fâ': 'fa', tris: 'trisse', nours: 'nourse', hi: 'i', 'hé': 'é', gou: 'goût', rou: 'roue',
+  bou: 'boue', dou: 'doux', nou: 'nous', por: 'port', gar: 'gare', sor: 'sort',
+  pier: 'pié', 'ciè': 'siè', gnon: 'nion', teille: 'tèye', 'llè': 'yè', ssie: 'sié', 'cè': 'sè', rro: 'ro', quet: 'kè', cy: 'si', reuil: 'reuille',
+  'gnée': 'nié', cci: 'ksi', nille: 'niye', ppo: 'po', rhi: 'ri', 'cé': 'sé', ros: 'rosse', rille: 'riye', cop: 'cope', tro: 'trop', tti: 'ti',
+  chau: 'chaud', veil: 'vèye', reille: 'rèye', daille: 'daye', qua: 'ka', nnis: 'nisse', clown: 'cloune',
 };
 for (const [k, v] of Object.entries(FR_SAY)) if (!DATA.fr.sounds[k] || DATA.fr.sounds[k] === k) DATA.fr.sounds[k] = v;
 

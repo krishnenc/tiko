@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 23;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 24;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -397,19 +397,23 @@ function bumpCount(k) { const c = S.counts[S.lang] = S.counts[S.lang] || {}; c[k
 // word difficulty levels: tier(lg, 1) = simple words, 2 = digraphs/blends (FR: ou/on/ch…), 3 = long vowels (FR: complex
 // sounds, long words), 4 = two-syllable words (EN)
 const tier = (lg, n) => { const t = DATA[lg].tiers; return DATA[lg].words.slice(n > 1 ? t[n - 2] : 0, t[n - 1]); };
+// The word lists are long (so she never runs out of new words), but a place on the journey is won by knowing a fixed
+// NUMBER of words of that level — not a share of the whole list — so the journey keeps the same pace.
+const wordsKnown = (lg, n, need) => Math.min(1, tier(lg, n).length ? frac(lg, 'blend', tier(lg, n)) * tier(lg, n).length / Math.min(need, tier(lg, n).length) : 1);
 const STAGES = [
   { icon: '🏝️', goal: .8, prog: lg => frac(lg, 'letter', DATA[lg].letters) },
-  { icon: '🌉', goal: .8, prog: lg => frac(lg, 'blend', tier(lg, 1)) },
+  { icon: '🌉', goal: 1, prog: lg => wordsKnown(lg, 1, 22) },
   { icon: '🌲', goal: .8, prog: lg => frac(lg, 'sight', DATA[lg].sight.slice(0, 20)) },
-  { icon: '⛰️', goal: .7, prog: lg => frac(lg, 'blend', tier(lg, 2)) },
+  { icon: '⛰️', goal: 1, prog: lg => wordsKnown(lg, 2, 18) },
   { icon: '🛶', goal: 1, prog: lg => Math.min(1, cnt(lg, 'sentence') / 15) },
-  { icon: '🌊', goal: .7, prog: lg => frac(lg, 'blend', tier(lg, 3)) },
+  { icon: '🌊', goal: 1, prog: lg => wordsKnown(lg, 3, 16) },
   { icon: '🏰', goal: 1, prog: lg => Math.min(1, cnt(lg, 'story') / 10) },
-  // the summit: English two-syllable words; French has no level 4 words, so all the magic words instead
-  { icon: '🏔️', goal: .7, prog: lg => tier(lg, 4).length ? frac(lg, 'blend', tier(lg, 4)) : frac(lg, 'sight', DATA[lg].sight) },
+  // the summit: English two-syllable words; French has no level 4 words, so the magic words instead
+  { icon: '🏔️', goal: 1, prog: lg => tier(lg, 4).length ? wordsKnown(lg, 4, 16) : Math.min(1, frac(lg, 'sight', DATA[lg].sight.slice(0, 30)) / .7) },
 ];
 const stagePct = (i, lg = S.lang) => Math.min(1, STAGES[i].prog(lg) / STAGES[i].goal);
-function stageOf(lg = S.lang) { for (let i = 0; i < STAGES.length; i++) if (stagePct(i, lg) < 1) return i; return STAGES.length; }
+// a place she has already reached is never taken away again (new content, or a word going back to practice, can't move her back)
+function stageOf(lg = S.lang) { for (let i = (S.seenStage || {})[lg] || 0; i < STAGES.length; i++) if (stagePct(i, lg) < 1) return i; return STAGES.length; }
 // Parent "start the journey at…": mark everything belonging to the earlier places as known (box 3, resting),
 // so she starts at the chosen place. Forward only — it never erases progress.
 function startJourneyAt(lg, target) {
@@ -433,6 +437,19 @@ function wordLevel(lg = S.lang) {
   return lv;
 }
 function wordsNow() { const d = DATA[S.lang]; return d.words.slice(0, d.tiers[wordLevel() - 1]); }
+// the order new words are met in: mostly words of her CURRENT level (discovery!), now and then one left over from an easier level
+function wordQueue() {
+  const d = DATA[S.lang], lv = wordLevel(), all = wordsNow();
+  if (lv < 2) return all;
+  const cut = d.tiers[lv - 2], low = all.slice(0, cut), top = all.slice(cut);
+  return Math.random() < .3 ? all : [...top, ...low];
+}
+// Caught a lucky guess: she "knew" this word but could not read it inside a sentence → it goes back to practice (once, quietly)
+function forgetWord(id) {
+  if (!isKnown('blend', id)) return;
+  for (const s of WORD_SETS) { const k = bkey(s, id); if ((S.boxes[k] || 0) >= 5 || s === 'blend') { S.boxes[k] = 1; S.due[k] = today(); } }
+  tally('caught');
+}
 // A fresh pick: something not used yet TODAY by this activity (same language). Only once every item has had a turn
 // does the list start over — so the same word (e.g. "vélo") doesn't keep coming back.
 function pickFresh(key, list) {
@@ -445,7 +462,8 @@ function pickFresh(key, list) {
 // words she hasn't yet shown she knows (falls back to all of them if she knows every word at this level)
 const notKnown = list => { const l = list.filter(w => !isKnown('blend', w.id)); return l.length ? l : list; };
 function knownWords() {
-  const k = DATA[S.lang].words.filter(w => boxOf('blend', w.id) > 0);
+  // only "things" (a cat, a ship): words like "red" or "run" don't fit the "I see a …" sentences
+  const k = DATA[S.lang].words.filter(w => !w.x && WORD_SETS.some(s => boxOf(s, w.id) > 0));
   return new Set(k.map(w => w.e)).size >= 3 ? k : DATA[S.lang].words.slice(0, 8);
 }
 
@@ -738,16 +756,17 @@ function mkSentence() {
     const pair = (p, q2) => ({ html: `<span class="pair">${p.e}${q2.e}</span>`, val: p.w + '+' + q2.w });
     return { kind: 'sentence', title: R.find, speak: [R.find], lines: [s], optClass: '',
       options: shuffle([pair(w, b), pair(w, c), pair(d, b)]), answer: w.w + '+' + b.w, correctSpeak: [s],
-      grade: f => { if (f) bumpCount('sentence'); } };
+      // a wrong pair shows which of the two words she could not read
+      grade(f) { if (f) bumpCount('sentence'); else (this.wrong || []).forEach(v => { const [p, q2] = v.split('+'); if (p !== w.w) forgetWord(w.id); if (q2 !== b.w) forgetWord(b.id); }); } };
   }
-  const s = pick(SENTENCES[S.lang])(w.w);
+  const s = pickFresh('sentenceT', SENTENCES[S.lang].map((f, i) => ({ id: i, f }))).f(w.w);
   return { kind: 'sentence', title: R.find, speak: [R.find], lines: [s], optClass: '',
     options: pictureOptions(w, DATA[S.lang].words), answer: w.w, correctSpeak: [s],
-    grade: f => { if (f) bumpCount('sentence'); } };
+    grade: f => { if (f) bumpCount('sentence'); else forgetWord(w.id); } };
 }
 function mkStory() {
   const R = L().read, ws = shuffle(knownWords()), A = pickFresh('story', ws), B = ws.find(x => x.e !== A.e);
-  const st = pick(STORIES[S.lang])(A.w, B.w), ans = st.answer === 'A' ? A : B;
+  const st = pickFresh('storyT', STORIES[S.lang].map((f, i) => ({ id: i, f }))).f(A.w, B.w), ans = st.answer === 'A' ? A : B;
   const C = shuffle(DATA[S.lang].words.filter(x => x.e !== A.e && x.e !== B.e))[0];
   return { kind: 'story', title: R.story, speak: [R.story], lines: st.lines, q: st.q, optClass: '',
     options: shuffle([A, B, C]).map(x => ({ html: x.e, val: x.w })), answer: ans.w, correctSpeak: [ans.w],
@@ -841,7 +860,7 @@ const sliderHTML = () => `<div class="slider"><div class="arrow"></div><span cla
 const mergeTiles = r => { const u = $('.units', r); if (u) u.classList.add('merged'); };
 function mkBlend() {
   const q = L().q;
-  const { item, isNew } = chooseItem('blend', wordsNow());
+  const { item, isNew } = chooseItem('blend', wordQueue());
   const sounds = item.units.filter(u => !u.startsWith('_'));
   return {
     title: q.blend, speak: [q.blend], gate: true,
@@ -855,7 +874,7 @@ function mkBlend() {
 }
 // 🤖 Robot talk: oral blending — no letters at all, just listen to the sounds and find the picture
 function mkRobot() {
-  const { item, isNew } = chooseItem('oral', wordsNow());
+  const { item, isNew } = chooseItem('oral', wordQueue());
   const sounds = item.units.filter(u => !u.startsWith('_'));
   return {
     title: '🤖 ' + L().bl.robot, speak: [L().bl.robot, { pause: 250 }, { seq: sounds, gap: 700 }],
@@ -867,8 +886,13 @@ function mkRobot() {
 }
 // 🏠 Word families (English): only the first sound changes — cat, hat, bat, rat.
 // Syllables (French, méthode syllabique): m + a → ma; find the syllable Tiko says.
-const FAMILIES = { at: ['cat', 'hat', 'bat', 'rat'], en: ['hen', 'pen', 'ten'], ox: ['fox', 'box'], an: ['van', 'pan'], ug: ['bug', 'mug'],
-  ap: ['map'], et: ['net'], ell: ['bell', 'shell'], ing: ['king', 'ring'], ip: ['lip', 'ship'], ock: ['sock'], ub: ['tub'], ed: ['bed'], ish: ['fish'] };
+const FAMILIES = { at: ['cat', 'hat', 'bat', 'rat'], en: ['hen', 'pen', 'ten'], ox: ['fox', 'box'], an: ['van', 'pan', 'can', 'man'], ug: ['bug', 'mug', 'hug'],
+  ap: ['map', 'cap', 'tap', 'zap'], et: ['net', 'jet'], ag: ['bag', 'tag'], un: ['sun', 'run'], in: ['bin', 'pin', 'win'], ot: ['pot', 'hot'],
+  og: ['dog', 'log'], ig: ['pig', 'dig'], ed: ['bed', 'red'], ix: ['six', 'fix'], ad: ['sad', 'mad'], ut: ['nut', 'hut', 'cut'],
+  ell: ['bell', 'shell'], ing: ['king', 'ring', 'sing'], ip: ['lip', 'ship'], ock: ['sock', 'lock', 'rock'], ill: ['pill'], ish: ['fish', 'dish', 'wish'],
+  ark: ['park', 'shark'], eep: ['sheep', 'jeep'], ook: ['book', 'hook', 'cook'], ake: ['cake'], ain: ['rain', 'chain'], ail: ['nail', 'mail'],
+  oat: ['boat', 'goat', 'coat'], ight: ['night', 'light'], ose: ['rose', 'nose'], each: ['peach', 'beach'], oy: ['boy', 'toy'], aw: ['saw', 'paw'] };
+const famOf = w => Object.values(FAMILIES).find(l => l.length >= 2 && l.includes(w));
 function mkFamily() {
   if (S.lang === 'fr') {
     const c = pick(['m', 'l', 'p', 't', 'r', 's', 'v', 'n', 'b', 'd', 'f']), vs = shuffle(['a', 'i', 'o', 'u', 'é']), v = vs[0];
@@ -879,8 +903,9 @@ function mkFamily() {
       grade: f => gradeItem('syl', syl, f) };
   }
   const words = DATA.en.words, byW = w => words.find(x => x.w === w);
-  const [, ws] = pick(Object.entries(FAMILIES).filter(([, list]) => list.length >= 2));
-  const item = byW(pick(ws)), onset = item.units[0], rimeUnits = item.units.slice(1), rime = item.w.slice(unitText(onset).length);
+  // a word she doesn't know yet (at her level) comes first — the same rule as everywhere: no repeats of what she knows
+  let pool = wordQueue().filter(w => famOf(w.w)); if (!pool.length) pool = words.filter(w => famOf(w.w));
+  const item = chooseItem('fam', pool).item, ws = famOf(item.w), onset = item.units[0], rimeUnits = item.units.slice(1), rime = item.w.slice(unitText(onset).length);
   // choices: other words from the same family first (cat vs hat vs bat — only the first sound tells them apart)
   const fam = shuffle(ws.filter(w => w !== item.w).map(byW)), others = [];
   for (const x of [...fam, ...shuffle(words)]) if (x.e !== item.e && !others.some(o => o.e === x.e)) { others.push(x); if (others.length === 2) break; }
@@ -901,7 +926,7 @@ async function playRun(units) { for (const u of units) if (!u.startsWith('_')) a
 async function speakQuick(u) { if (u.startsWith('_')) return sleep(150); await playUnit(u, S.lang, 1.15); }
 function mkSpell() {
   const d = DATA[S.lang], q = L().q;
-  const { item, isNew } = chooseItem('spell', wordsNow());
+  const { item, isNew } = chooseItem('spell', wordQueue());
   const known = new Set(item.units.map(unitText));
   const pool = shuffle(d.words.flatMap(w => w.units.map(unitText))).filter(u => !known.has(u));
   const extra = [...new Set(pool)].slice(0, item.units.length <= 3 ? 2 : 1);
@@ -1817,7 +1842,7 @@ function askChoice(q, meta, container) {
         await speak(...(q.correctSpeak || []), ...(first ? (cb ? [cb] : praiseParts()) : []));
         await sleep(350); finish(first);
       } else {
-        attempts++; const mine = attempts; b.classList.add('wrong'); b.disabled = true; stopSpeech(); sfx('oops'); owlReact('think');
+        attempts++; const mine = attempts; (q.wrong = q.wrong || []).push(String(o.val)); b.classList.add('wrong'); b.disabled = true; stopSpeech(); sfx('oops'); owlReact('think');
         await sleep(350);   // the soft "oops" first, then Tiko
         if (mine !== attempts || busy || done) return;   // she already tapped again (or got it right) — that tap takes over
         if (attempts === 1 && btns.length > 2) speak(L().retry, { pause: 150 }, ...(q.retrySpeak || q.speak));
