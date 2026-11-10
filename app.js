@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 32;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 33;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -369,10 +369,10 @@ function addStar() {
 }
 
 // ================= mascot =================
-// Tiko changes with the theme a parent picks: a winged unicorn, a little dragon, or an owl. Every mascot is an SVG
+// Tiko changes with the theme a parent picks: a winged unicorn, a little dragon, a dinosaur, or an owl. Every mascot is an SVG
 // in a 120×120 box using the same class names (owl-body, wing l / wing r, eyes, mouth), so all the animations
 // (blink, bob, hop, flap, dance, talk, sleep) work for each of them. owl(cls) draws the current one.
-const THEMES = { unicorn: ['Unicorn', 'pink and lavender', '#f6c1da'], dino: ['Dragon', 'blue, green and orange', '#bfdcf6'], owl: ['Owl', 'soft and natural', '#d5e9dc'] };
+const THEMES = { unicorn: ['Unicorn', 'pink and lavender', '#f6c1da'], dino: ['Dragon', 'blue, green and orange', '#bfdcf6'], rex: ['Dinosaur', 'jungle green and orange', '#cfe9c4'], owl: ['Owl', 'soft and natural', '#d5e9dc'] };
 const themeName = () => (THEMES[S.settings.theme] ? S.settings.theme : 'unicorn');
 const MASCOTS = {};
 function owl(cls = '', theme = themeName()) { return MASCOTS[theme](cls); }
@@ -401,6 +401,32 @@ MASCOTS.dino = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120"
     <circle cx="54" cy="67.5" r="1.5" fill="#3f9f86" stroke="none"/><circle cx="66" cy="67.5" r="1.5" fill="#3f9f86" stroke="none"/>
     <path class="mouth" d="M52 74 q8 5.5 16 0" stroke="#2f7f6a" stroke-width="2" stroke-linecap="round" fill="none"/>
     <path d="M64.5 75.2 l1.6 3 l1.6 -3.6z" fill="#fff" stroke="none"/>
+  </g></svg></div>`;
+// a small, round dinosaur: plates down the back, short arms (they are the "wings" for the animations), a chunky tail
+MASCOTS.rex = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
+  <ellipse cx="60" cy="115" rx="30" ry="4.5" fill="#0000001a"/>
+  <g class="owl-body" stroke="#57a04a" stroke-width="1.2" stroke-linejoin="round">
+    <path d="M80 100 q26 6 28 -16 q6 20 -8 28 q-12 5 -20 -4z" fill="#86cf6a"/>
+    <path d="M97 97 l6 -7 l2 9z M104 88 l6 -5 l0 8z" fill="#ffa552" stroke="#e58530"/>
+    <rect x="43" y="98" width="13" height="16" rx="6" fill="#86cf6a"/><rect x="64" y="98" width="13" height="16" rx="6" fill="#86cf6a"/>
+    <path d="M45 113 h2 M49.500 113.500 h1 M53 113 h1 M66 113 h2 M70.500 113.500 h1 M74 113 h1" stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+    <ellipse cx="60" cy="92" rx="25" ry="18" fill="#86cf6a"/>
+    <ellipse cx="60" cy="95" rx="15" ry="13" fill="#fff6d6" stroke="none"/>
+    <path class="wing l" d="M38 84 q-12 -2 -15 8 q3 -1 4 2 q3 -2 5 1 q5 -2 8 -5z" fill="#86cf6a"/>
+    <path class="wing r" d="M82 84 q12 -2 15 8 q-3 -1 -4 2 q-3 -2 -5 1 q-5 -2 -8 -5z" fill="#86cf6a"/>
+    <path d="M40 27 l3 -13 l9 9z M53 22 l7 -14 l7 14z M68 23 l9 -9 l3 13z" fill="#ffa552" stroke="#e58530"/>
+    <ellipse cx="60" cy="54" rx="36" ry="31" fill="#98dc7c"/>
+    <g stroke="none" fill="#6fbf58" opacity=".7"><circle cx="34" cy="40" r="3.500"/><circle cx="42" cy="33" r="2.200"/><circle cx="86" cy="40" r="3.500"/><circle cx="78" cy="33" r="2.200"/></g>
+    <g class="eyes" stroke="none">
+      <ellipse cx="45" cy="52" rx="7.500" ry="9" fill="#fff"/><ellipse cx="75" cy="52" rx="7.500" ry="9" fill="#fff"/>
+      <ellipse cx="46" cy="53" rx="5" ry="6.400" fill="#33473a"/><ellipse cx="74" cy="53" rx="5" ry="6.400" fill="#33473a"/>
+      <circle cx="48" cy="50" r="2.200" fill="#fff"/><circle cx="76" cy="50" r="2.200" fill="#fff"/>
+    </g>
+    <ellipse cx="31" cy="64" rx="6" ry="4" fill="#ff9f8a" opacity=".5" stroke="none"/><ellipse cx="89" cy="64" rx="6" ry="4" fill="#ff9f8a" opacity=".5" stroke="none"/>
+    <ellipse cx="60" cy="72" rx="19" ry="11" fill="#b9eba2" stroke="none"/>
+    <circle cx="53" cy="67.500" r="1.500" fill="#57a04a" stroke="none"/><circle cx="67" cy="67.500" r="1.500" fill="#57a04a" stroke="none"/>
+    <path class="mouth" d="M50 75 q10 6.500 20 0" stroke="#3f7f36" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M54.500 76.600 l1.500 2.800 l1.500 -2.200z M62.500 77.200 l1.500 2.800 l1.500 -3.400z" fill="#fff" stroke="none"/>
   </g></svg></div>`;
 MASCOTS.owl = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
   <ellipse cx="60" cy="114" rx="32" ry="5" fill="#0000001a"/>
@@ -2720,6 +2746,7 @@ T.fr.chat = { btn: 'Parler', hello: 'Coucou', bye: "J'ai adoré parler avec toi 
 const CHAT_ME = {
   unicorn: { en: { hug: 'unicorn hug', home: 'in the pink castle, up on the hill' }, fr: { hug: 'câlin de licorne', home: 'dans le château rose, sur la colline' } },
   dino: { en: { hug: 'dragon hug', home: 'in a cosy cave, next to the volcano' }, fr: { hug: 'câlin de dragon', home: 'dans une grotte douillette, près du volcan' } },
+  rex: { en: { hug: 'dinosaur hug', home: 'in the jungle, under the giant ferns' }, fr: { hug: 'câlin de dinosaure', home: 'dans la jungle, sous les grandes fougères' } },
   owl: { en: { hug: 'owl hug', home: 'in a big old tree, in the forest' }, fr: { hug: 'câlin de chouette', home: 'dans un grand arbre, dans la forêt' } },
 };
 let chatToken = 0;
@@ -3645,8 +3672,8 @@ function worksheet(lang) {
 }
 
 // ================= she picks her own world: the theme chooser on the home screen =================
-T.en.theme = { ask: 'Who is Tiko today?', unicorn: 'Unicorn', dino: 'Dragon', owl: 'Owl', iam: n => `I am Tiko the ${n.toLowerCase()}!` };
-T.fr.theme = { ask: "Qui est Tiko aujourd'hui ?", unicorn: 'Licorne', dino: 'Dragon', owl: 'Chouette', iam: n => `Je suis Tiko ${n === 'Dragon' ? 'le dragon' : 'la ' + n.toLowerCase()} !` };
+T.en.theme = { ask: 'Who is Tiko today?', unicorn: 'Unicorn', dino: 'Dragon', rex: 'Dinosaur', owl: 'Owl', iam: n => `I am Tiko the ${n.toLowerCase()}!` };
+T.fr.theme = { ask: "Qui est Tiko aujourd'hui ?", unicorn: 'Licorne', dino: 'Dragon', rex: 'Dinosaure', owl: 'Chouette', iam: n => `Je suis Tiko ${['Dragon', 'Dinosaure'].includes(n) ? 'le ' : 'la '}${n.toLowerCase()} !` };
 function themePicker() {
   stopSpeech(); clearIdle(); musicMode('calm');
   const TH = L().theme;

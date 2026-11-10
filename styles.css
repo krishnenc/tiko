@@ -729,7 +729,7 @@ body.calm .bob, body.calm .pulse, body.calm .mover, body.calm .pencil, body.calm
 /* ---------- unicorn universe: soft finishing touches ---------- */
 .btn, .opt, .unit, .bubble, .eq, .wordbig, .reader, .badge, .starcount, .stars, .goalbar { box-shadow: 0 7px 0 var(--line), 0 14px 26px var(--shade); }
 .btn.primary { background: linear-gradient(180deg, var(--coral), var(--coral-d)); box-shadow: 0 8px 0 var(--coral-dd, var(--coral-d)), 0 14px 30px var(--coral-g); text-shadow: 0 2px 0 #00000033; }
-:root { --coral-dd: #b94a75; } body[data-theme="dino"] { --coral-dd: #2f6aa8; } body[data-theme="owl"] { --coral-dd: #b35d33; }
+:root { --coral-dd: #b94a75; } body[data-theme="dino"] { --coral-dd: #2f6aa8; } body[data-theme="owl"] { --coral-dd: #b35d33; } body[data-theme="rex"] { --coral-dd: #23703f; }
 .btn.teal { background: linear-gradient(180deg, #6fd3c3, var(--teal)); box-shadow: 0 8px 0 var(--teal-d), 0 12px 24px #57c4b340; }
 .btn.sun { background: linear-gradient(180deg, #ffe2a3, var(--sun)); box-shadow: 0 8px 0 var(--sun-d), 0 12px 24px #ffd58055; }
 .btn.grape { background: linear-gradient(180deg, #b9a0ee, var(--grape)); box-shadow: 0 8px 0 var(--grape-d), 0 12px 24px #a78be240; }
@@ -849,10 +849,22 @@ body.calm .chatb, body.calm .owl.talk .mouth { animation: none !important; }
 .cloud { filter: drop-shadow(0 6px 0 var(--shade)); }
 .scene { display: none; position: absolute; right: 5%; bottom: 14vh; width: clamp(90px, 19vmin, 170px); opacity: .8; }
 body.work .scene { opacity: .45; }
-body[data-theme="dino"] .rainbow, body[data-theme="dino"] .castle, body[data-theme="owl"] .rainbow, body[data-theme="owl"] .castle { display: none; }
-body[data-theme="dino"] .sc-dino, body[data-theme="owl"] .sc-owl { display: block; }
-body[data-theme="dino"] .sparkles i::before { content: '✨'; } body[data-theme="owl"] .sparkles i::before { content: '🍃'; }
-body[data-theme="dino"] .sky-stars, body[data-theme="owl"] .sky-stars { opacity: .6; }
+body[data-theme="dino"] .rainbow, body[data-theme="dino"] .castle, body[data-theme="owl"] .rainbow, body[data-theme="owl"] .castle,
+body[data-theme="rex"] .rainbow, body[data-theme="rex"] .castle { display: none; }
+body[data-theme="dino"] .sc-dino, body[data-theme="owl"] .sc-owl, body[data-theme="rex"] .sc-rex { display: block; }
+body[data-theme="dino"] .sparkles i::before { content: '✨'; } body[data-theme="owl"] .sparkles i::before { content: '🍃'; } body[data-theme="rex"] .sparkles i::before { content: '🌿'; }
+body[data-theme="dino"] .sky-stars, body[data-theme="owl"] .sky-stars, body[data-theme="rex"] .sky-stars { opacity: .6; }
+/* Dinosaur: jungle green, warm orange and sunny sand */
+body[data-theme="rex"] {
+  --bg1: #d9f0d2; --bgm: #ecf6dc; --bg2: #fff6de; --ink: #33473a; --soft: #75877a;
+  --teal: #3fa9c2; --teal-d: #2b88a0; --coral: #45a868; --coral-d: #2f8a50; --sun: #ffd166; --sun-d: #e6ab35;
+  --grape: #f08a4b; --grape-d: #d16c2e; --line: #dfe9d8; --hill1: #c3e6b4; --hill2: #a5d79c; --hill3: #ecdfae;
+  --coral-l: #7fcf98; --coral-g: #45a86855; --coral-s: #bfe6c9; --shade: #7fa58226;
+  --t1: #e2f5dc; --t2: #dff2f6; --t3: #fff1d2; --t4: #fde6d6; --t5: #eef6d2; --t6: #fff3c9; }
+body[data-theme="rex"][data-zone="read"] { --bg1: #d6ecf2; --bgm: #e6f3e6; --bg2: #fbf6e4; --hill1: #c4e2d6; --hill2: #b3dbb0; --hill3: #e6e6b8; }
+body[data-theme="rex"][data-zone="math"] { --bg1: #d2f0d6; --bgm: #e6f6dc; --bg2: #fff7de; --hill1: #b6e4b6; --hill2: #9bd69c; --hill3: #e0e8ac; }
+body[data-theme="rex"][data-zone="art"] { --bg1: #ffe8cc; --bgm: #fff1dc; --bg2: #fff9e6; --hill1: #ffd7ae; --hill2: #f2dfa2; --hill3: #cfe8b6; }
+body[data-theme="rex"][data-zone="think"] { --bg1: #d9e8dc; --bgm: #e4eee2; --bg2: #f6f4e8; --hill1: #c6dccc; --hill2: #b6d6ba; --hill3: #dfe4c0; }
 /* Dragon: sky blue, sea green and a warm orange */
 body[data-theme="dino"] {
   --bg1: #cfe6fb; --bgm: #e0f3ef; --bg2: #fdf7e6; --ink: #2f4156; --soft: #71839a;
