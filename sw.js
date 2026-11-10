@@ -1,10 +1,10 @@
 // Tiko service worker - works fully offline after first load.
-const VERSION = 'tiko-v37';
+const VERSION = 'tiko-v38';
 const FONTS = 'tiko-fonts';
 // phonics clips live in their own long-lived cache, so an app update never wipes them
 // (they still refresh in the background whenever the tablet is online)
 const SOUNDS = 'tiko-sounds';
-const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'data.js', 'sheets.js', 'manifest.webmanifest',
+const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'data.js', 'sheets.js', 'science.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
 // Install only waits for the small core files. Sound clips are fetched afterwards by the page,
 // one at a time, and cached by the fetch handler below, so a slow/stalled download can never block an update.

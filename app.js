@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 37;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 38;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -673,6 +673,9 @@ const BADGES = [
   { id: 'chat5', icon: '💬', en: 'Chatterbox (5 chats with Tiko)', fr: 'Bavarde (5 discussions avec Tiko)', ok: () => tot('chats') >= 5 },
   { id: 'books3', icon: '📚', en: 'Read 3 little books', fr: 'Lu 3 petits livres', ok: () => tot('books') >= 3 },
   { id: 'aloud5', icon: '🎤', en: 'Read aloud 5 times', fr: 'Lu à voix haute 5 fois', ok: () => tot('readAloud') >= 5 },
+  { id: 'sci5', icon: '🔭', en: '5 science discoveries', fr: '5 découvertes en sciences', ok: () => tot('sciNew') >= 5 },
+  { id: 'planets', icon: '🪐', en: 'Visited the Sun, the Moon and every planet', fr: 'Visité le Soleil, la Lune et toutes les planètes', ok: () => typeof sciAllPlanets === 'function' && sciAllPlanets() },
+  { id: 'rocket3', icon: '🚀', en: '3 rocket flights', fr: '3 vols en fusée', ok: () => tot('rockets') >= 3 },
   { id: 'think5', icon: '🧠', en: '5 thinking games', fr: '5 jeux de réflexion', ok: () => tot('think') >= 5 },
   { id: 'simon5', icon: '🎶', en: 'Copied 5 in a row', fr: 'Imité 5 à la suite', ok: () => tot('simon5') >= 1 },
   { id: 'puzzle3', icon: '🧩', en: '3 jigsaws done', fr: '3 puzzles finis', ok: () => tot('puzzles') >= 3 },
@@ -837,6 +840,11 @@ const ACTS = {
   mix: { icon: '🧪', area: 'art', make: mkMix, per: 4 },
   music: { icon: '🎵', area: 'art', studio: () => musicStudio() },
   paperMath: { icon: '📒', area: 'math', make: mkPaperMath, per: 2 },
+  // the science track lives in science.js (pure curiosity: nothing is graded)
+  space: { icon: '🪐', area: 'sci', studio: () => spaceExplorer() },
+  rocket: { icon: '🚀', area: 'sci', studio: () => rocketLaunch() },
+  zoom: { icon: '🔭', area: 'sci', studio: () => zoomOut() },
+  wonder: { icon: '💡', area: 'sci', studio: () => wonderCards() },
 };
 const actName = id => L().acts[id] || (id === 'traceNum' ? L().paper.trace.replace(/!.*/, '') + ' 123' : id === 'paperMath' ? '📝 ' + L().maths : '');
 // fill names that are not in T
@@ -860,6 +868,9 @@ T.en.acts.sentence = 'Read a sentence'; T.fr.acts.sentence = 'Lire une phrase';
 T.en.acts.story = 'Little stories'; T.fr.acts.story = 'Petites histoires';
 T.en.acts.readAloud = 'Read it to Tiko'; T.fr.acts.readAloud = 'Lis-le à Tiko';
 T.en.acts.books = 'Little books'; T.fr.acts.books = 'Petits livres';
+T.en.sciName = 'Science'; T.fr.sciName = 'Sciences';
+Object.assign(T.en.acts, { space: 'Space explorer', rocket: 'Rocket launch', zoom: 'Zoom out!', wonder: 'I wonder…' });
+Object.assign(T.fr.acts, { space: "Explore l'espace", rocket: 'Décollage de fusée', zoom: 'Recule, recule !', wonder: 'Je me demande…' });
 
 // ================= discovery path =================
 // Parent's wish: she tends to replay the same easy things. Tiko steers her FORWARD instead, building on what she
@@ -891,8 +902,8 @@ function mastered(a) {
   return false;
 }
 // Tracks a parent can hide (parent corner → "What she sees"). Hidden = not on the home screen and not on the daily path.
-const AREAS = ['read', 'math', 'art', 'think'];
-const TRACKS = [['read', '📖', 'Reading'], ['math', '🔢', 'Maths'], ['art', '🎨', 'Art'], ['think', '🧠', 'Thinking'], ['journey', '🗺️', 'My journey (the reading map)'], ['stickers', '🌟', 'My stickers'], ['chat', '💬', 'Chat with Tiko']];
+const AREAS = ['read', 'math', 'art', 'think', 'sci'];
+const TRACKS = [['read', '📖', 'Reading'], ['math', '🔢', 'Maths'], ['sci', '🚀', 'Science'], ['art', '🎨', 'Art'], ['think', '🧠', 'Thinking'],['journey', '🗺️', 'My journey (the reading map)'], ['stickers', '🌟', 'My stickers'], ['chat', '💬', 'Chat with Tiko']];
 const hid = k => !!(S.settings.hide || {})[k];
 const readyFor = a => ACTS[a].area !== 'read' || (READ_UNLOCK[a] ?? 9) <= stageOf();
 function actState(a) {
@@ -3118,7 +3129,7 @@ function home(fromIntro) {
       <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr">🇫🇷 Français</button></div>
     <div class="hero">${owl('big')}${hid('chat') ? '' : `<button class="chatb">💬 ${L().chat.btn}</button>`}<h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
     <button class="btn primary huge pulse go">▶ ${L().start}</button>
-    <div class="row">${[['read', '📖', L().reading], ['math', '🔢', L().maths], ['art', '🎨', L().artName], ['think', '🧠', L().thinkName], ['journey', '🗺️', L().read.journey], ['stickers', '🌟', L().stickers]]
+    <div class="row">${[['read', '📖', L().reading], ['math', '🔢', L().maths], ['sci', '🚀', L().sciName], ['art', '🎨', L().artName], ['think', '🧠', L().thinkName], ['journey', '🗺️', L().read.journey], ['stickers', '🌟', L().stickers]]
       .filter(([k]) => !hid(k)).map(([k, ic, n]) => `<button class="btn card" data-m="${k}">${ic}<span>${n}</span></button>`).join('')}
     </div>
     <div class="row" style="align-items:center;gap:12px"><div class="starcount">⭐ ${S.stars} &nbsp; 🌟 ${S.stickers.length} &nbsp; 🏅 ${Object.keys(S.badges).length}</div>
@@ -3149,7 +3160,7 @@ function menu(area) {
   const ids = Object.keys(ACTS).filter(k => ACTS[k].area === area), sug = suggestIn(area);
   const TAG = { new: '✨', mastered: '🏆', rest: '💤' };
   app.innerHTML = `<div class="screen menu">
-    <div class="topline"><button class="ic back">🏠</button><h2>${area === 'read' ? '📖 ' + L().reading : area === 'art' ? '🎨 ' + L().artName : area === 'think' ? '🧠 ' + L().thinkName : '🔢 ' + L().maths}</h2><div style="width:64px"></div></div>
+    <div class="topline"><button class="ic back">🏠</button><h2>${area === 'read' ? '📖 ' + L().reading : area === 'art' ? '🎨 ' + L().artName : area === 'think' ? '🧠 ' + L().thinkName : area === 'sci' ? '🚀 ' + L().sciName : '🔢 ' + L().maths}</h2><div style="width:64px"></div></div>
     <div class="grid">${ids.map((k, i) => { const s = actState(k);
       return `<button class="btn card st-${s} ${k === sug ? 'suggest' : ''}" data-a="${k}" style="--i:${i}">${ACTS[k].icon}<span>${esc(actName(k))}</span>${TAG[s] && (s !== 'new' || k === sug) ? `<i class="tag">${TAG[s]}</i>` : ''}</button>`; }).join('')}</div></div>`;
   $('.back').onclick = home;
@@ -3197,11 +3208,11 @@ function buildPath() {
   // tracks the parent has hidden never appear on the path
   const stops = order.filter(a => !hid(ACTS[a].area)).slice(0, S.settings.stops);
   // a fun treat at the end of every path: art one day, a thinking game the next (whichever of the two is not hidden)
-  const artDay = hid('think') || (dayNo % 2 && !hid('art'));
-  if (S.settings.artInPath && !(hid('art') && hid('think'))) stops.push(artDay ? ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw'][Math.floor(dayNo / 2) % 6]
-    : ['memory', 'simon', 'jigsaw', 'kim', 'odd'][Math.floor(dayNo / 2) % 5]);
+  // (v38: science takes its turn too — art, thinking, science, day after day)
+  const treats = [['art', ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw']], ['think', ['memory', 'simon', 'jigsaw', 'kim', 'odd']], ['sci', ['space', 'wonder', 'rocket', 'space', 'wonder', 'zoom']]].filter(([k]) => !hid(k));
+  if (S.settings.artInPath && treats.length) { const list = treats[dayNo % treats.length][1]; stops.push(list[Math.floor(dayNo / treats.length) % list.length]); }
   // with reading or maths hidden the plan runs short: top it up from the tracks she does see (new things first)
-  const want = S.settings.stops + (S.settings.artInPath && !(hid('art') && hid('think')) ? 1 : 0);
+  const want = S.settings.stops + (S.settings.artInPath && treats.length ? 1 : 0);
   if (stops.length < want) {
     const extra = shuffle(Object.keys(ACTS).filter(k => !hid(ACTS[k].area) && readyFor(k) && !mastered(k) && !stops.includes(k) && k !== 'books'));
     extra.sort((x, y) => playedEver(x) - playedEver(y));
