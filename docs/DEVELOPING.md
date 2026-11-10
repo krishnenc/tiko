@@ -19,7 +19,7 @@ These come from the parent and from hard-won bugs. Treat them as requirements.
 
 **Look, sound and feel**
 
-- The app is a **unicorn universe**: pink first, with lavender, mint and warm gold, in soft pastels that are easy on the eye. Tiko is a small winged unicorn.
+- The app is a world of its own, in soft pastels that are easy on the eye. There are three themes (see "Themes"): the default **unicorn** (pink first, with lavender, mint and warm gold), **dragon** (blue, green, orange) and **owl** (soft and natural). Tiko is the mascot of the chosen theme.
 - Sounds are soft and bell-like. Relaxing music plays on calm screens only and goes silent whenever Tiko speaks.
 - While she is working, the scenery steps back (`body.work`).
 - Honour `body.calm` (parent's "calm mode"): every new animation needs an entry in the calm rules in `styles.css`.
@@ -186,6 +186,18 @@ A feature that is not an activity (for example Chat with Tiko) is a screen funct
 - Size text and tiles with `clamp()` and `vmin`/`vh` so both orientations fit. The home screen must not scroll at 601x962.
 - App icons are generated from the mascot: `node tools/make-icons.js <chrome> tiko/icons`.
 
+### Themes
+
+The child picks the theme herself with the 🎨 button on the home screen (`themePicker()`); a parent can also set it in the parent corner. It is stored in `S.settings.theme`: `unicorn`, `dino` or `owl`. A new theme also needs its name in `T.en.theme` and `T.fr.theme`. Activities, progress and rewards are the same in every theme. A theme is three things:
+
+1. **Colours.** `applySettings()` sets `body[data-theme]`. The default variables on `:root` are the unicorn theme; the "themes" block at the end of `styles.css` overrides them per theme, plus one rule per zone for the sky. Never hard-code a theme colour in a rule: use `--coral` (main), `--coral-d`, `--coral-dd`, `--coral-l`, `--coral-g` (glow), `--coral-s` (soft), `--grape` (accent), `--teal`, `--sun`, `--t1`…`--t6` (card tints), `--shade`, `--line`, `--ink`.
+2. **Mascot.** `MASCOTS[theme](cls)` returns the SVG. Every mascot uses a 120×120 box and the class names `owl-body`, `wing l`, `wing r`, `eyes`, `mouth`, so all animations work. `owl(cls)` draws the current one; `owl(cls, theme)` a specific one.
+3. **Scenery.** In `index.html`, the unicorn theme shows `.rainbow` and `.castle`; other themes hide those and show their own `.scene.sc-<theme>` SVG.
+
+To add a theme: add an entry to `THEMES` (name, description, browser-bar colour), a mascot, a CSS block (copy an existing one), a scene, and a `CHAT_ME` entry (the words that fill `{hug}` and `{home}` in chat lines). Keep chat lines and other text free of mascot-specific details, or put the detail behind a `{word}`. Run `themes-check.js` and look at its screenshots.
+
+French text addressed to the child is written in the feminine. `S.settings.frBoy` switches it to the masculine at start-up through `frenchForBoy()`; when you add French text with a gendered word, add the pair to its `MAP`.
+
 ## 9. Testing
 
 Tests are Node scripts that drive headless Chrome through the DevTools protocol. They live in `tools/`, next to the repository folder, and are not published.
@@ -207,6 +219,7 @@ node tools/serve.js        (run with the repository folder as the working direct
 | `chat-check.js` | `<chrome> <outDir>` | Every chat topic in both languages with real touch; read-aloud with a fake microphone. |
 | `v27-check.js` | `<chrome> <outDir>` | Every library book in both languages with real touch; the weekly report; backup round trip. |
 | `v28-check.js` | `<chrome> <outDir>` | Level 5 sums, coins and groups with real touch; first/then strip; session limit and calm ending. |
+| `themes-check.js` | `<chrome> <outDir>` | Each theme's colours, mascot, scenery and chat words; the picker; French for a boy. Screenshots of every theme. |
 | `music-check.js` | `<chrome>` | Music on calm screens, silent during speech and work. |
 | `audio-check.js` | `<chrome> <outDir>` | Phonics sounds never overlap. |
 | `touch-trace.js`, `slider-touch.js` | `<chrome> <outDir>` | Tracing and the blending slider with real touch at odd tablet sizes. |
@@ -249,3 +262,4 @@ The tablet picks up a new version the next time the app is opened online, and sh
 | v26 | Chat with Tiko (English and French); Read it to Tiko with recordings for parents. |
 | v27 | Little library (six books per language); weekly parent report with mix-ups and play time; backup and restore. |
 | v28 | Maths to 99 with tens and ones (adding and taking away level 5), coins, groups of; first/then strip on the daily path; parent-set session length with a calm ending. |
+| v29 | Themes: unicorn, dragon, owl (colours, mascot, scenery); French for a boy. |

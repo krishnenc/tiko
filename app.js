@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 28;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 29;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, voiceChat: false, sessionMin: 0, calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, voiceChat: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -39,7 +39,12 @@ if (!S.knownV22) { for (const k of Object.keys(S.boxes || {})) if (S.boxes[k] >=
 // v23: Memory pairs was too hard — new gentler ladder (2 pairs first), so she starts again at the bottom (once)
 if (!S.memV23) { S.levels = S.levels || {}; S.streak = S.streak || {}; S.levels.memory = 1; S.streak.memory = { ok: 0, bad: 0 }; S.memV23 = true; }
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
-function applySettings() { document.body.classList.toggle('calm', !!S.settings.calm); document.documentElement.lang = S.lang; }
+function applySettings() {
+  document.body.classList.toggle('calm', !!S.settings.calm); document.documentElement.lang = S.lang;
+  // the theme a parent chose: colours and scenery come from body[data-theme] in styles.css, the mascot from MASCOTS
+  const th = themeName(); document.body.dataset.theme = th;
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = THEMES[th][2];
+}
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* ignore */ }
 
 // ================= IndexedDB (recordings + photos) =================
@@ -364,8 +369,58 @@ function addStar() {
 }
 
 // ================= mascot =================
-// Tiko is a little winged unicorn (the function keeps its old name: Tiko used to be an owl)
-function owl(cls = '') {
+// Tiko changes with the theme a parent picks: a winged unicorn, a little dragon, or an owl. Every mascot is an SVG
+// in a 120×120 box using the same class names (owl-body, wing l / wing r, eyes, mouth), so all the animations
+// (blink, bob, hop, flap, dance, talk, sleep) work for each of them. owl(cls) draws the current one.
+const THEMES = { unicorn: ['Unicorn', 'pink and lavender', '#f6c1da'], dino: ['Dragon', 'blue, green and orange', '#bfdcf6'], owl: ['Owl', 'soft and natural', '#d5e9dc'] };
+const themeName = () => (THEMES[S.settings.theme] ? S.settings.theme : 'unicorn');
+const MASCOTS = {};
+function owl(cls = '', theme = themeName()) { return MASCOTS[theme](cls); }
+MASCOTS.dino = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
+  <ellipse cx="60" cy="115" rx="30" ry="4.5" fill="#0000001a"/>
+  <g class="owl-body" stroke="#3f9f86" stroke-width="1.2" stroke-linejoin="round">
+    <path class="wing l" d="M38 80 q-14 -20 -30 -12 q6 4 5 10 q6 -2 8 4 q5 -3 9 2 q4 -1 8 -4z" fill="#ffb26b" stroke="#e8914a"/>
+    <path class="wing r" d="M82 80 q14 -20 30 -12 q-6 4 -5 10 q-6 -2 -8 4 q-5 -3 -9 2 q-4 -1 -8 -4z" fill="#ffb26b" stroke="#e8914a"/>
+    <path d="M80 100 q22 4 22 -14 q8 14 -4 24 q-10 6 -18 -2z" fill="#6fcfae"/>
+    <path d="M100 84 l8 -6 l-2 10z" fill="#ffb26b" stroke="#e8914a"/>
+    <rect x="43" y="98" width="13" height="16" rx="6" fill="#6fcfae"/><rect x="64" y="98" width="13" height="16" rx="6" fill="#6fcfae"/>
+    <path d="M45 113 h2 M49.5 113.5 h1 M53 113 h1 M66 113 h2 M70.5 113.5 h1 M74 113 h1" stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+    <ellipse cx="60" cy="92" rx="25" ry="18" fill="#6fcfae"/>
+    <ellipse cx="60" cy="95" rx="15" ry="13" fill="#fff3cf" stroke="none"/>
+    <path d="M50 90 h20 M49 96 h22 M52 102 h16" stroke="#f3dfa6" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+    <path d="M36 30 l-4 -16 l14 9z M84 30 l4 -16 l-14 9z" fill="#fff3cf" stroke="#e6d190"/>
+    <path d="M52 25 l4 -11 l5 9 l5 -11 l4 12z" fill="#ffb26b" stroke="#e8914a"/>
+    <ellipse cx="60" cy="54" rx="36" ry="31" fill="#7fdcbb"/>
+    <g class="eyes" stroke="none">
+      <ellipse cx="45" cy="52" rx="7.5" ry="9" fill="#fff"/><ellipse cx="75" cy="52" rx="7.5" ry="9" fill="#fff"/>
+      <ellipse cx="46" cy="53" rx="5" ry="6.4" fill="#2f4156"/><ellipse cx="74" cy="53" rx="5" ry="6.4" fill="#2f4156"/>
+      <circle cx="48" cy="50" r="2.2" fill="#fff"/><circle cx="76" cy="50" r="2.2" fill="#fff"/>
+    </g>
+    <ellipse cx="31" cy="64" rx="6" ry="4" fill="#ff9f8a" opacity=".5" stroke="none"/><ellipse cx="89" cy="64" rx="6" ry="4" fill="#ff9f8a" opacity=".5" stroke="none"/>
+    <ellipse cx="60" cy="71" rx="17" ry="10.5" fill="#a5ecd2" stroke="none"/>
+    <circle cx="54" cy="67.5" r="1.5" fill="#3f9f86" stroke="none"/><circle cx="66" cy="67.5" r="1.5" fill="#3f9f86" stroke="none"/>
+    <path class="mouth" d="M52 74 q8 5.5 16 0" stroke="#2f7f6a" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M64.5 75.2 l1.6 3 l1.6 -3.6z" fill="#fff" stroke="none"/>
+  </g></svg></div>`;
+MASCOTS.owl = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
+  <ellipse cx="60" cy="114" rx="32" ry="5" fill="#0000001a"/>
+  <g class="owl-body">
+    <path class="wing l" d="M24 58 q-16 20 2 40 q8-16 6-40z" fill="#b98a5a"/>
+    <path class="wing r" d="M96 58 q16 20 -2 40 q-8-16 -6-40z" fill="#b98a5a"/>
+    <path d="M28 36 l4 -20 l16 14z M92 36 l-4 -20 l-16 14z" fill="#c79763"/>
+    <ellipse cx="60" cy="66" rx="38" ry="42" fill="#dcae78"/>
+    <ellipse cx="60" cy="82" rx="24" ry="24" fill="#fff3dd"/>
+    <path d="M48 76 q4 4 8 0 M56 86 q4 4 8 0 M64 76 q4 4 8 0" stroke="#edd3a8" stroke-width="2" fill="none"/>
+    <g class="eyes">
+      <circle cx="44" cy="50" r="15" fill="#fff"/><circle cx="76" cy="50" r="15" fill="#fff"/>
+      <circle cx="46" cy="52" r="8" fill="#40463f"/><circle cx="74" cy="52" r="8" fill="#40463f"/>
+      <circle cx="49" cy="48" r="3" fill="#fff"/><circle cx="77" cy="48" r="3" fill="#fff"/>
+    </g>
+    <circle cx="30" cy="66" r="5" fill="#ff9f8a" opacity=".55"/><circle cx="90" cy="66" r="5" fill="#ff9f8a" opacity=".55"/>
+    <path class="mouth" d="M54 62 l6 9 l6 -9z" fill="#f29a4a"/>
+    <path d="M48 106 l-4 6 M53 107 l0 6 M67 107 l0 6 M72 106 l4 6" stroke="#f29a4a" stroke-width="3.5" stroke-linecap="round"/>
+  </g></svg></div>`;
+MASCOTS.unicorn = (cls = '') => {
   return `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
   <ellipse cx="60" cy="115" rx="30" ry="4.5" fill="#0000001a"/>
   <g class="owl-body" stroke="#e3cfee" stroke-width="1.2" stroke-linejoin="round">
@@ -2418,9 +2473,9 @@ function askReadAloud(q, meta) {
 const CHATS = [
   { id: 'feel', turns: [
     { en: 'Hello! How are you today?', fr: "Coucou ! Comment ça va aujourd'hui ?", opts: [
-      ['😊', 'I am happy!', 'Je suis contente !', 'Yay! Me too! My horn is glowing!', 'Youpi ! Moi aussi ! Ma corne brille !'],
+      ['😊', 'I am happy!', 'Je suis contente !', 'Yay! Me too! I am doing a happy dance!', 'Youpi ! Moi aussi ! Je fais la danse de la joie !'],
       ['😴', 'I am tired.', 'Je suis fatiguée.', 'Oh! Then we will go gently.', 'Oh ! Alors on y va tout doucement.'],
-      ['😢', 'I am sad.', 'Je suis triste.', 'Oh no. Here is a big unicorn hug.', 'Oh non. Voici un gros câlin de licorne.']] },
+      ['😢', 'I am sad.', 'Je suis triste.', 'Oh no. Here is a big {hug}.', 'Oh non. Voici un gros {hug}.']] },
     { en: 'What would you like to do today?', fr: "Qu'est-ce que tu veux faire aujourd'hui ?", opts: [
       ['📖', 'I want to read.', 'Je veux lire.', 'Great idea! I love reading with you.', "Bonne idée ! J'adore lire avec toi."],
       ['🎨', 'I want to draw.', 'Je veux dessiner.', 'Ooh! Draw me a rainbow!', 'Oh ! Dessine-moi un arc-en-ciel !'],
@@ -2430,7 +2485,7 @@ const CHATS = [
       ['🤗', 'Yes! Big hug!', 'Oui ! Gros câlin !', 'Mmm! What a lovely hug!', 'Mmm ! Quel beau câlin !']] }] },
   { id: 'colour', turns: [
     { en: 'What is your favourite colour?', fr: 'Quelle est ta couleur préférée ?', mem: 'colour', opts: [
-      ['💗', 'I like pink.', "J'aime le rose.", 'Pink! Like my mane!', 'Le rose ! Comme ma crinière !', 'pink', 'le rose'],
+      ['💗', 'I like pink.', "J'aime le rose.", 'Pink! Like the sky in the evening!', 'Le rose ! Comme le ciel du soir !', 'pink', 'le rose'],
       ['💜', 'I like purple.', "J'aime le violet.", 'Purple is magic!', "Le violet, c'est magique !", 'purple', 'le violet'],
       ['💙', 'I like blue.', "J'aime le bleu.", 'Blue, like the sky!', 'Bleu, comme le ciel !', 'blue', 'le bleu'],
       ['💛', 'I like yellow.', "J'aime le jaune.", 'Yellow, like the sun!', 'Jaune, comme le soleil !', 'yellow', 'le jaune']] },
@@ -2438,19 +2493,19 @@ const CHATS = [
       ['💛', 'The sun is yellow.', 'Le soleil est jaune.', 'Yes! Bright yellow!', 'Oui ! Tout jaune !'],
       ['💚', 'The sun is green.', 'Le soleil est vert.', 'Hee hee! A green sun! That is funny!', "Hi hi ! Un soleil vert ! C'est rigolo !"]] },
     { en: 'And what colour is the grass?', fr: "Et de quelle couleur est l'herbe ?", opts: [
-      ['💚', 'The grass is green.', "L'herbe est verte.", 'Yes! I love to eat green grass. Yum!', "Oui ! J'adore manger l'herbe verte. Miam !"],
+      ['💚', 'The grass is green.', "L'herbe est verte.", 'Yes! I love to roll in the green grass!', "Oui ! J'adore me rouler dans l'herbe verte !"],
       ['💗', 'The grass is pink.', "L'herbe est rose.", 'Pink grass! In my world, maybe!', "De l'herbe rose ! Dans mon monde, peut-être !"]] }] },
   { id: 'animal', turns: [
     { en: 'Which animal do you like best?', fr: 'Quel animal préfères-tu ?', mem: 'animal', opts: [
       ['🐱', 'I like cats.', "J'aime les chats.", 'Meow! Cats are so soft.', 'Miaou ! Les chats sont tout doux.', 'cats', 'les chats'],
       ['🐶', 'I like dogs.', "J'aime les chiens.", 'Woof! Dogs are good friends.', 'Ouaf ! Les chiens sont de bons amis.', 'dogs', 'les chiens'],
       ['🐰', 'I like rabbits.', "J'aime les lapins.", 'Hop hop! Rabbits jump like me!', 'Hop hop ! Les lapins sautent comme moi !', 'rabbits', 'les lapins'],
-      ['🐴', 'I like horses.', "J'aime les chevaux.", 'Horses are my cousins!', 'Les chevaux sont mes cousins !', 'horses', 'les chevaux']] },
+      ['🐴', 'I like horses.', "J'aime les chevaux.", 'Horses run so fast!', 'Les chevaux courent si vite !', 'horses', 'les chevaux']] },
     { en: 'Is it big or little?', fr: 'Il est grand ou petit ?', opts: [
       ['🐘', 'It is big.', 'Il est grand.', 'Wow! So big!', 'Waouh ! Si grand !'],
       ['🐭', 'It is little.', 'Il est petit.', 'Aww! So little and cute!', 'Oh ! Si petit et mignon !']] },
     { en: 'Would you like to ride on my back?', fr: 'Tu veux monter sur mon dos ?', opts: [
-      ['🦄', 'Yes, please!', "Oui, s'il te plaît !", 'Hold on tight! We fly over the rainbow!', "Tiens-toi bien ! On vole au-dessus de l'arc-en-ciel !"],
+      ['🌈', 'Yes, please!', "Oui, s'il te plaît !", 'Hold on tight! We fly over the rainbow!', "Tiens-toi bien ! On vole au-dessus de l'arc-en-ciel !"],
       ['🙈', 'No, thank you.', 'Non, merci.', 'That is fine. We can walk together.', "D'accord. On peut marcher ensemble."]] }] },
   { id: 'food', turns: [
     { en: 'What do you like to eat?', fr: "Qu'est-ce que tu aimes manger ?", mem: 'food', opts: [
@@ -2460,13 +2515,13 @@ const CHATS = [
       ['🍌', 'I like bananas.', "J'aime les bananes.", 'Bananas! Like a little monkey!', 'Des bananes ! Comme un petit singe !', 'bananas', 'les bananes']] },
     { en: 'Do you know what I eat?', fr: 'Tu sais ce que je mange ?', opts: [
       ['🧁', 'Rainbow cakes?', 'Des gâteaux arc-en-ciel ?', 'Yes! Rainbow cakes are the best!', "Oui ! Les gâteaux arc-en-ciel, c'est le meilleur !"],
-      ['🌱', 'Green grass?', "De l'herbe verte ?", 'Yes! And sometimes a rainbow cake!', 'Oui ! Et parfois un gâteau arc-en-ciel !']] },
+      ['🍓', 'Red berries?', 'Des fruits rouges ?', 'Yes! And sometimes a rainbow cake!', 'Oui ! Et parfois un gâteau arc-en-ciel !']] },
     { en: 'Are you hungry now?', fr: 'Tu as faim maintenant ?', opts: [
       ['😋', 'Yes, I am hungry.', "Oui, j'ai faim.", 'Me too! We can ask a grown-up for a snack.', 'Moi aussi ! On peut demander un goûter à un adulte.'],
       ['🙂', 'No, I am fine.', 'Non, ça va.', "Good! Then let's play!", 'Super ! Alors on joue !']] }] },
   { id: 'weather', turns: [
     { en: 'Look outside! What is the weather like?', fr: 'Regarde dehors ! Quel temps fait-il ?', opts: [
-      ['☀️', 'It is sunny.', 'Il fait beau.', 'Lovely! The sun makes me sparkle.', 'Chouette ! Le soleil me fait briller.'],
+      ['☀️', 'It is sunny.', 'Il fait beau.', 'Lovely! The sun makes me happy.', 'Super ! Le soleil me met de bonne humeur.'],
       ['🌧️', 'It is raining.', 'Il pleut.', 'Rain makes rainbows! I love rainbows.', "La pluie fait des arcs-en-ciel ! J'adore les arcs-en-ciel."],
       ['☁️', 'It is cloudy.', 'Il y a des nuages.', 'I like to jump on the clouds!', "J'aime sauter sur les nuages !"]] },
     { en: 'What do you wear when it rains?', fr: "Qu'est-ce que tu mets quand il pleut ?", opts: [
@@ -2474,19 +2529,19 @@ const CHATS = [
       ['🧥', 'I wear my coat.', 'Je mets mon manteau.', 'Nice and warm!', 'Bien au chaud !'],
       ['☂️', 'I take my umbrella.', 'Je prends mon parapluie.', 'Good idea! Stay dry!', 'Bonne idée ! Reste au sec !']] },
     { en: 'Do you like the snow?', fr: 'Tu aimes la neige ?', opts: [
-      ['⛄', 'Yes! I make a snowman.', 'Oui ! Je fais un bonhomme de neige.', 'Can he have a horn like me?', 'Il peut avoir une corne comme moi ?'],
+      ['⛄', 'Yes! I make a snowman.', 'Oui ! Je fais un bonhomme de neige.', 'Can he have wings like me?', 'Il peut avoir des ailes comme moi ?'],
       ['🥶', 'No, it is too cold.', 'Non, il fait trop froid.', 'Brrr! You are right.', 'Brrr ! Tu as raison.']] }] },
   { id: 'ask', turns: [
     { en: 'Now you can ask me something!', fr: 'Maintenant, pose-moi une question !', opts: [
-      ['🎂', 'How old are you?', 'Tu as quel âge ?', 'I am seven, like a big girl!', "J'ai sept ans, comme une grande !"],
-      ['🏰', 'Where do you live?', 'Tu habites où ?', 'I live in the pink castle, up on the hill.', "J'habite dans le château rose, sur la colline."],
+      ['🎂', 'How old are you?', 'Tu as quel âge ?', 'I am seven. That is a lot!', "J'ai sept ans. C'est beaucoup !"],
+      ['🏰', 'Where do you live?', 'Tu habites où ?', 'I live {home}.', "J'habite {home}."],
       ['💤', 'Where do you sleep?', 'Tu dors où ?', 'I sleep on a soft cloud.', 'Je dors sur un nuage tout doux.']] },
     { en: 'Ask me another one!', fr: 'Pose-moi une autre question !', opts: [
       ['🌈', 'Can you fly?', 'Tu sais voler ?', 'Yes! I fly over the rainbow.', "Oui ! Je vole au-dessus de l'arc-en-ciel."],
       ['🎵', 'Can you sing?', 'Tu sais chanter ?', 'La la la! I sing with the birds.', 'La la la ! Je chante avec les oiseaux.'],
       ['📖', 'Can you read?', 'Tu sais lire ?', 'I am learning, just like you!', "J'apprends, comme toi !"]] },
     { en: 'One more?', fr: 'Encore une ?', opts: [
-      ['🦄', 'Do you have friends?', 'Tu as des amis ?', 'Yes! You are my best friend.', 'Oui ! Tu es ma meilleure amie.'],
+      ['🤝', 'Do you have friends?', 'Tu as des amis ?', 'Yes! You are my best friend.', 'Oui ! Tu es ma meilleure amie.'],
       ['⭐', 'What do you love?', "Qu'est-ce que tu aimes ?", 'I love stars, books, and you!', "J'aime les étoiles, les livres, et toi !"]] }] },
   { id: 'swap' },   // the two-languages game, built from CHAT_WORDS
 ];
@@ -2499,6 +2554,11 @@ T.en.chat = { btn: 'Chat', hello: 'Hello', bye: 'I loved talking with you! See y
 T.fr.chat = { btn: 'Parler', hello: 'Coucou', bye: "J'ai adoré parler avec toi ! À bientôt !", tap: 'Touche ta réponse !', mic: 'Dis-le', remember: (a, b) => `Je me souviens ! Tu aimes ${a}${b ? ' et ' + b : ''} !`,
   swapIntro: 'On joue au jeu des deux langues !', swapTeach: (a, b) => [`En anglais, ${a} se dit`, b], swapAsk: w => ['Que veut dire', w, '?'], swapShow: (a, b, w) => `En anglais, ${a} se dit « ${b} ». Que veut dire « ${w} » ?`,
   swapYes: (w, a) => ['Oui !', w, `veut dire ${a} ! Bravo !`], swapNo: (w, a) => ['Bien essayé !', w, `veut dire ${a}.`], ans: a => cap(a) + ' !' };
+const CHAT_ME = {
+  unicorn: { en: { hug: 'unicorn hug', home: 'in the pink castle, up on the hill' }, fr: { hug: 'câlin de licorne', home: 'dans le château rose, sur la colline' } },
+  dino: { en: { hug: 'dragon hug', home: 'in a cosy cave, next to the volcano' }, fr: { hug: 'câlin de dragon', home: 'dans une grotte douillette, près du volcan' } },
+  owl: { en: { hug: 'owl hug', home: 'in a big old tree, in the forest' }, fr: { hug: 'câlin de chouette', home: 'dans un grand arbre, dans la forêt' } },
+};
 let chatToken = 0;
 async function chatWithTiko() {
   stopSpeech(); clearIdle(); zone('home'); musicMode('work');
@@ -2527,7 +2587,9 @@ async function chatWithTiko() {
     await speak(...l.parts(lang).map(p => typeof p === 'string' ? { text: p, lang } : p));
     if (o) o.classList.remove('talk');
   };
-  const plain = (en, fr) => ({ show: { en, fr }, parts: lang => [lang === 'en' ? en : fr] });
+  // {hug} and {home} depend on who Tiko is in the chosen theme
+  const fill = (s, lang) => s.replace(/\{(\w+)\}/g, (_, k) => CHAT_ME[themeName()][lang][k] || '');
+  const plain = (en, fr) => { en = fill(en, 'en'); fr = fill(fr, 'fr'); return { show: { en, fr }, parts: lang => [lang === 'en' ? en : fr] }; };
   $('.again').onclick = () => { if (line) { sfx('tap'); talk(line); } };
   $('.otherl').onclick = () => { if (line) { sfx('tap'); talk(line, other()); } };   // hear the same thing in the other language
   $$('.chat .lang').forEach(b => b.onclick = () => { if (b.dataset.l === S.lang) return; S.lang = b.dataset.l; save(); applySettings(); sfx('pop'); chips(); if (relang) relang(); });
@@ -2634,10 +2696,10 @@ const BOOKS = [
     fr: { t: "L'escargot et le gâteau", p: [['🐌', "L'escargot est lent."], ['🐌👃', 'Il sent un gâteau.'], ['🎂🏞️', 'Le gâteau est près du lac.'], ['🐌➡️', "L'escargot avance, avance."], ['🌃🐌🎂', 'Le soir, il arrive au gâteau.'], ['😋🎂', 'Miam ! Quelle bonne journée !']],
       q: ["Qu'est-ce que l'escargot mange ?", ['🎂', 'le gâteau'], ['🍎', 'une pomme']] } },
   { id: 'tiko', stage: 5, cover: '🦄',
-    en: { t: 'Tiko the unicorn', p: [['🦄', 'Tiko is a little unicorn.'], ['🦄💗', 'Tiko has a pink mane.'], ['🏰', 'Tiko lives in a castle.'], ['🌃🦄✨', 'At night, Tiko flies to the stars.'], ['⭐🎁', 'Tiko brings a star for you.'], ['🌙⭐', 'Good night, little star.']],
-      q: ['Where does Tiko live?', ['🏰', 'in a castle'], ['⛺', 'in a tent']] },
-    fr: { t: 'Tiko la licorne', p: [['🦄', 'Tiko est une petite licorne.'], ['🦄💗', 'Tiko a une crinière rose.'], ['🏰', 'Tiko habite dans un château.'], ['🌃🦄✨', 'La nuit, Tiko vole vers les étoiles.'], ['⭐🎁', 'Tiko rapporte une étoile pour toi.'], ['🌙⭐', 'Bonne nuit, petite étoile.']],
-      q: ['Où habite Tiko ?', ['🏰', 'dans un château'], ['⛺', 'dans une tente']] } },
+    en: { t: 'Luna the unicorn', p: [['🦄', 'Luna is a little unicorn.'], ['🦄💗', 'Luna has a pink mane.'], ['🏰', 'Luna lives in a castle.'], ['🌃🦄✨', 'At night, Luna flies to the stars.'], ['⭐🎁', 'Luna brings a star for you.'], ['🌙⭐', 'Good night, little star.']],
+      q: ['Where does Luna live?', ['🏰', 'in a castle'], ['⛺', 'in a tent']] },
+    fr: { t: 'Luna la licorne', p: [['🦄', 'Luna est une petite licorne.'], ['🦄💗', 'Luna a une crinière rose.'], ['🏰', 'Luna habite dans un château.'], ['🌃🦄✨', 'La nuit, Luna vole vers les étoiles.'], ['⭐🎁', 'Luna rapporte une étoile pour toi.'], ['🌙⭐', 'Bonne nuit, petite étoile.']],
+      q: ['Où habite Luna ?', ['🏰', 'dans un château'], ['⛺', 'dans une tente']] } },
 ];
 T.en.lib = { choose: 'Choose a book!', locked: 'This book opens later on your journey!', done: 'You read a whole book!', turn: 'Read the page, then turn it!' };
 T.fr.lib = { choose: 'Choisis un livre !', locked: "Ce livre s'ouvre plus tard dans ton voyage !", done: 'Tu as lu un livre entier !', turn: 'Lis la page, puis tourne-la !' };
@@ -2820,6 +2882,7 @@ function home(fromIntro) {
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
   app.innerHTML = `<div class="screen home">
     <button class="ic corner" aria-label="parents">⚙️</button>
+    <button class="ic themepick" aria-label="theme">🎨</button>
     <div class="langs"><button class="lang ${S.lang === 'en' ? 'on' : ''}" data-l="en">🇬🇧 English</button>
       <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr">🇫🇷 Français</button></div>
     <div class="hero">${owl('big')}<button class="chatb">💬 ${L().chat.btn}</button><h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
@@ -2841,7 +2904,7 @@ function home(fromIntro) {
     speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, S.lang === 'fr' ? 'On parle français !' : "Let's speak English!");
   });
   // tapping Tiko gives a random silly reaction
-  const silly = S.lang === 'fr' ? ['Youpi !', 'Ça chatouille !', 'Hi hi hi !', 'On joue ?', 'Tu es super !', 'Ma corne brille !']
+  const silly = S.lang === 'fr' ? ['Youpi !', 'Ça chatouille !', 'Hi hi hi !', 'On joue ?', 'Tu es super !', 'Ça brille !']
     : ['Wheee!', 'That tickles!', 'Hee hee hee!', "Let's play!", "You're awesome!", 'Sparkle, sparkle!'];
   $('.owl').onclick = () => {
     const o = $('.owl'), k = pick(['happy', 'dance', 'spin']);
@@ -2850,6 +2913,7 @@ function home(fromIntro) {
   };
   $('.go').onclick = () => { sfx('pop'); startPath(); };
   $('.chatb').onclick = () => { sfx('pop'); chatWithTiko(); };
+  $('.themepick').onclick = () => { sfx('pop'); themePicker(); };
   $$('[data-m]').forEach(b => b.onclick = () => { sfx('tap'); const m = b.dataset.m; m === 'stickers' ? stickerBook() : m === 'journey' ? journey() : menu(m); });
   $('.corner').onclick = () => parentGate();
 }
@@ -3124,6 +3188,9 @@ function parents() {
       <button class="pbtn sharerep">📤 Share / copy this report</button> <span class="repmsg" style="font-size:14px;color:var(--teal-d)"></span>
       <p style="font-size:13px">The report has no name in it. It is made on this tablet from what she did here; nothing is sent anywhere unless you share it.</p></section>
 
+    <section><h3>🎨 Theme</h3><p>Choose the world and the friend Tiko is. Everything else (activities, progress, stars) stays the same.</p>
+      <div class="themes">${Object.entries(THEMES).map(([k, [n, d]]) => `<button class="themeb ${themeName() === k ? 'on' : ''}" data-theme="${k}">${owl('', k)}${n}<small>${d}</small></button>`).join('')}</div></section>
+
     <section><h3>📲 Install on the tablet</h3>
       <p>In Chrome, tap <b>⋮ → Add to Home screen / Install app</b>. After that Tiko works offline and opens full-screen.</p>
       ${installEvt ? '<button class="pbtn inst">Install Tiko now</button>' : ''}</section>
@@ -3133,10 +3200,11 @@ function parents() {
       Print it or save it as a PDF. Every daily path also includes a <b>paper mission</b>. She works on paper, then taps ✅ or uses 📷 to show Tiko her work.</p>
       <button class="pbtn ws" data-l="en">🇬🇧 English worksheet</button><button class="pbtn ws" data-l="fr">🇫🇷 Fiche en français</button></section>
 
-    <section><h3>👧 Her name</h3>
-      <p>Tiko welcomes her by name and sometimes uses it in praise. It's stored only on this tablet, never online.
-      If the robot voice says it wrong, type how it sounds (e.g. "Koo-zha-lee"), or better, record it in your voice.</p>
-      <label class="set">Name <input class="nm-in" data-s="name" type="text" maxlength="30" value="${esc(st.name)}" placeholder="Her name"></label>
+    <section><h3>🧒 The child's name</h3>
+      <p>Tiko welcomes the child by name and sometimes uses it in praise. It's stored only on this tablet, never online.
+      If the robot voice says it wrong, type how it sounds, syllable by syllable (e.g. "Mee-ah"), or better, record it in your voice.</p>
+      <label class="set">Name <input class="nm-in" data-s="name" type="text" maxlength="30" value="${esc(st.name)}" placeholder="Name"></label>
+      <label class="set">In French, Tiko speaks to a boy ("champion", "prêt", "content"… instead of "championne", "prête", "contente") <input type="checkbox" data-s="frBoy" ${st.frBoy ? 'checked' : ''}></label>
       <label class="set">Spoken as (optional) <input class="nm-in" data-s="nameSay" type="text" maxlength="40" value="${esc(st.nameSay)}" placeholder="How it sounds"></label>
       <button class="pbtn alt nm-test">▶ Hear it</button><button class="pbtn nm-rec">⏺ Record her name</button>
       <button class="pbtn alt nm-del" ${recKeys.has('name') ? '' : 'hidden'}>🗑 Delete recording</button></section>
@@ -3334,6 +3402,8 @@ function parents() {
       catch (e) { msg.innerHTML = `<textarea style="width:100%;height:160px;user-select:text;-webkit-user-select:text">${esc(text)}</textarea>`; }
     };
   })();
+  $('[data-s="frBoy"]').addEventListener('change', () => setTimeout(() => location.reload(), 150));   // the French texts are prepared when the app starts
+  $$('.themeb').forEach(b => b.onclick =() => { S.settings.theme = b.dataset.theme; save(); applySettings(); parents(); });
   // a little more time today: from wherever she is now, 10 more minutes
   $('.moretime').onclick = () => {
     const m = S.settings.sessionMin || 0; S.extra = { day: today(), min: Math.max(0, Math.ceil(playedSecs() / 60) - m) + 10 }; S.endedDay = ''; save(); parents();
@@ -3410,6 +3480,42 @@ function worksheet(lang) {
   el.classList.add('preview');
   $('#shx').onclick = () => { el.classList.remove('preview'); el.innerHTML = ''; };
 }
+
+// ================= she picks her own world: the theme chooser on the home screen =================
+T.en.theme = { ask: 'Who is Tiko today?', unicorn: 'Unicorn', dino: 'Dragon', owl: 'Owl', iam: n => `I am Tiko the ${n.toLowerCase()}!` };
+T.fr.theme = { ask: "Qui est Tiko aujourd'hui ?", unicorn: 'Licorne', dino: 'Dragon', owl: 'Chouette', iam: n => `Je suis Tiko ${n === 'Dragon' ? 'le dragon' : 'la ' + n.toLowerCase()} !` };
+function themePicker() {
+  stopSpeech(); clearIdle(); musicMode('calm');
+  const TH = L().theme;
+  app.innerHTML = `<div class="screen center themescreen"><div class="topline"><button class="ic back">🏠</button><h2>🎨 ${esc(TH.ask)}</h2><div style="width:64px"></div></div>
+    <div class="themechoice">${Object.keys(THEMES).map((k, i) => `<button class="btn themec ${themeName() === k ? 'on' : ''}" data-theme="${k}" style="--i:${i}">${owl('', k)}<b>${esc(TH[k])}</b></button>`).join('')}</div></div>`;
+  $('.back').onclick = home; exitCurrent = home;
+  let busy = false;
+  $$('.themec').forEach(b => b.onclick = async () => {
+    if (busy) return; busy = true;
+    S.settings.theme = b.dataset.theme; save(); applySettings();
+    $$('.themec').forEach(x => x.classList.toggle('on', x === b));
+    const o = $('.owl', b); o.classList.add('dance'); sfx('win'); burstAt(b, 40);
+    await speak(TH.iam(TH[b.dataset.theme])); await sleep(400);
+    if ($('.themescreen')) home();
+  });
+  speak(TH.ask);
+}
+
+// ================= French for a boy =================
+// French words addressed to the child are written in the feminine. If a parent says the child is a boy, they are
+// switched to the masculine once, when the app starts (interface text, badges and chat lines; not the story books).
+function frenchForBoy() {
+  const MAP = [['une championne', 'un champion'], ['championne', 'champion'], ['prête', 'prêt'], ['courageuse', 'courageux'], ['Grande exploratrice', 'Grand explorateur'],
+    ['exploratrice', 'explorateur'], ['Exploratrice', 'Explorateur'], ['Bavarde', 'Bavard'], ['contente', 'content'], ['fatiguée', 'fatigué'], ['Meilleures amies', 'Meilleurs amis'],
+    ['meilleure amie', 'meilleur ami'], ['amies', 'amis'], ['Amies', 'Amis']];
+  const fix = s => MAP.reduce((t, [a, b]) => t.split(a).join(b), s);
+  const walk = o => { for (const k of Object.keys(o)) { if (typeof o[k] === 'string') o[k] = fix(o[k]); else if (o[k] && typeof o[k] === 'object') walk(o[k]); } };
+  walk(T.fr);
+  for (const b of BADGES) b.fr = fix(b.fr);
+  for (const c of CHATS) for (const t of c.turns || []) { t.fr = fix(t.fr); for (const o of t.opts) { o[2] = fix(o[2]); o[4] = fix(o[4]); } }
+}
+if (S.settings.frBoy) frenchForBoy();
 
 // ================= boot =================
 document.addEventListener('contextmenu', e => e.preventDefault());
