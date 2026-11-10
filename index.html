@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Tiko</title>
-<meta name="theme-color" content="#9b7fd1">
+<meta name="theme-color" content="#f6c1da">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
@@ -16,11 +16,29 @@
 </head>
 <body>
 <div class="world" aria-hidden="true">
+  <div class="sky-stars">
+    <i style="--x:8%;--y:9%;--s:16px;--d:4.5s"></i><i style="--x:22%;--y:4%;--s:11px;--d:6s;--w:-2s"></i><i style="--x:37%;--y:13%;--s:14px;--d:5s;--w:-1s"></i>
+    <i style="--x:52%;--y:6%;--s:18px;--d:7s;--w:-3s"></i><i style="--x:66%;--y:15%;--s:11px;--d:4s;--w:-2.5s"></i><i style="--x:90%;--y:22%;--s:14px;--d:5.5s;--w:-1.5s"></i>
+    <i style="--x:14%;--y:27%;--s:10px;--d:6.5s;--w:-4s"></i><i style="--x:45%;--y:24%;--s:10px;--d:5s;--w:-3.5s"></i><i style="--x:78%;--y:33%;--s:12px;--d:7s;--w:-.5s"></i>
+    <i style="--x:4%;--y:42%;--s:12px;--d:5s;--w:-2s"></i><i style="--x:94%;--y:46%;--s:10px;--d:6s;--w:-1s"></i>
+  </div>
   <div class="sun"></div>
+  <div class="rainbow"></div>
   <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+  <svg class="castle" viewBox="0 0 100 90">
+    <g fill="#d5c5f5"><rect x="8" y="38" width="18" height="52"/><rect x="74" y="38" width="18" height="52"/><rect x="24" y="52" width="52" height="38"/><rect x="40" y="24" width="20" height="66"/></g>
+    <g fill="#f7b3d0"><path d="M4 40 L17 14 L30 40Z"/><path d="M70 40 L83 14 L96 40Z"/><path d="M36 26 L50 0 L64 26Z"/></g>
+    <path d="M43 90 V72 a7 7 0 0 1 14 0 V90Z" fill="#b9a2ea"/><g fill="#fff6c9"><rect x="14" y="48" width="6" height="9" rx="3"/><rect x="80" y="48" width="6" height="9" rx="3"/><rect x="47" y="36" width="6" height="10" rx="3"/></g>
+  </svg>
+  <div class="sparkles">
+    <i style="--x:6%;--d:22s"></i><i style="--x:19%;--d:17s;--w:-6s;--s:12px;--c:'💗'"></i><i style="--x:33%;--d:26s;--w:-12s;--s:13px"></i>
+    <i style="--x:48%;--d:19s;--w:-3s;--s:12px;--c:'⭐'"></i><i style="--x:62%;--d:24s;--w:-15s"></i><i style="--x:76%;--d:18s;--w:-9s;--s:12px;--c:'💜'"></i>
+    <i style="--x:90%;--d:23s;--w:-18s;--s:13px"></i>
+  </div>
   <svg class="hills" viewBox="0 0 1200 200" preserveAspectRatio="none">
-    <path d="M0 120 Q200 40 420 110 T850 90 T1200 100 V200 H0Z" fill="#b8e6a0"/>
-    <path d="M0 160 Q300 90 600 150 T1200 140 V200 H0Z" fill="#8fd47a"/>
+    <path class="h1" d="M0 110 Q160 30 380 100 T800 70 T1200 90 V200 H0Z"/>
+    <path class="h2" d="M0 140 Q220 70 460 130 T900 115 T1200 125 V200 H0Z"/>
+    <path class="h3" d="M0 172 Q300 110 600 162 T1200 152 V200 H0Z"/>
   </svg>
 </div>
 <main id="app"></main>

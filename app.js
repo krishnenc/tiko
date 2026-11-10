@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 24;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 25;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -78,13 +78,58 @@ function sfx(kind) {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     if (actx.state === 'suspended') actx.resume();
     const t = actx.currentTime;
-    if (kind === 'good') { tone(660, t, .15, 'triangle'); tone(880, t + .1, .3, 'triangle'); }
-    else if (kind === 'oops') { tone(320, t, .18, 'sine', .08); tone(250, t + .13, .25, 'sine', .07); }
-    else if (kind === 'tap') tone(560, t, .07, 'sine', .07);
-    else if (kind === 'pop') tone(940, t, .09, 'triangle', .08);
-    else if (kind === 'win') [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * .11, .35, 'triangle', .13));
+    // soft, round, bell-like sounds (pure tones, gentle volumes) — nothing sharp or startling
+    if (kind === 'good') { tone(784, t, .25, 'sine', .1); tone(1175, t + .1, .45, 'sine', .08); tone(1568, t + .1, .3, 'sine', .02); }
+    else if (kind === 'oops') { tone(330, t, .2, 'sine', .06); tone(277, t + .13, .3, 'sine', .05); }
+    else if (kind === 'tap') tone(660, t, .07, 'sine', .045);
+    else if (kind === 'pop') tone(880, t, .1, 'sine', .06);
+    else if (kind === 'win') [523, 587, 659, 784, 880, 1047, 1319].forEach((f, i) => { tone(f, t + i * .09, .7, 'sine', .085); tone(f * 2, t + i * .09, .35, 'sine', .015); });
   } catch (e) { /* ignore */ }
 }
+
+// ================= relaxing music (synthesised, no files): a slow music box over a warm, quiet pad =================
+// It plays on the calm screens (home, menus, map, stickers, drawing), goes silent whenever Tiko speaks, and stays off
+// during learning activities unless a parent asks for it there too (then very quietly).
+const music = { on: false, mode: 'off', g: null, timer: 0, next: 0, bar: 0, speaking: 0, upT: 0 };
+// C – Am – F – G: [bass, pad, then the notes the music box may play]
+const M_CHORDS = [[130.8, 196, 261.6, 329.6, 392, 493.9], [110, 164.8, 261.6, 329.6, 392, 440], [87.3, 174.6, 261.6, 349.2, 440, 523.3], [98, 196, 293.7, 392, 440, 493.9]];
+function mVoice(f, t0, dur, vol, att = .02) {
+  const o = actx.createOscillator(), g = actx.createGain(); o.type = 'sine'; o.frequency.value = f;
+  g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(vol, t0 + att); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(music.g); o.start(t0); o.stop(t0 + dur + .05);
+}
+function musicTick() {
+  if (!music.on || !actx) return;
+  const BAR = 4.8;
+  if (music.next < actx.currentTime) music.next = actx.currentTime + .1;
+  while (music.next < actx.currentTime + 1.5) {
+    const c = M_CHORDS[music.bar % 4], t = music.next;
+    mVoice(c[0], t, BAR * 1.2, .1, 1.4); mVoice(c[1], t, BAR * 1.2, .055, 1.8);
+    (music.bar % 2 ? [2, 4, 3, 5, 4, 2] : [2, 3, 4, 3, 5, 3]).forEach((n, i) => {
+      if (i && Math.random() < .22) return;   // little rests, so it never becomes a tune that nags
+      const f = c[n] * 2, at = t + i * BAR / 6 + Math.random() * .03;
+      mVoice(f, at, 2.4, .05); mVoice(f * 2, at, 1.1, .012);
+    });
+    music.next += BAR; music.bar++;
+  }
+}
+function musicSet() {
+  try {
+    const st = S.settings, lvl2 = !st.ambient || document.hidden ? 0 : music.mode === 'calm' ? 1 : music.mode === 'work' && st.ambientWork ? .3 : 0;
+    if (lvl2 > 0 && !music.on) {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (!music.g) { music.g = actx.createGain(); music.g.gain.value = 0.0001; music.g.connect(actx.destination); }
+      music.on = true; musicTick(); music.timer = setInterval(musicTick, 400);
+    } else if (!lvl2 && music.on) { music.on = false; clearInterval(music.timer); }
+    if (!music.g) return;
+    if (lvl2 > 0 && actx.state === 'suspended' && !music.speaking) actx.resume();
+    const want = music.speaking ? 0 : lvl2 * .6;
+    music.g.gain.cancelScheduledValues(actx.currentTime);
+    music.g.gain.setTargetAtTime(Math.max(0.0001, want), actx.currentTime, want ? .9 : .07);   // slow fade in, quick duck
+  } catch (e) { /* ignore */ }
+}
+function musicMode(m) { music.mode = m; document.body.classList.toggle('work', m === 'work'); musicSet(); }
+document.addEventListener('visibilitychange', musicSet);
 
 // ================= speech =================
 let voices = [];
@@ -186,6 +231,11 @@ function playBlob(blob) {
 }
 // speak(...parts): string | {unit} | {pause} | {text, lang}
 async function speak(...parts) {
+  // the music goes quiet while Tiko talks, and drifts back a moment after she has finished
+  music.speaking++; clearTimeout(music.upT); musicSet();
+  try { await speakParts(parts); } finally { music.speaking--; clearTimeout(music.upT); music.upT = setTimeout(musicSet, 900); }
+}
+async function speakParts(parts) {
   stopSpeech(); const t = speakToken;
   await sleep(150);
   for (const p of parts.flat()) {
@@ -238,7 +288,7 @@ function jingle() {
     const mel = [['G4', 1], ['C5', 1], ['E5', 1], ['G5', 1], ['E5', 1], ['C5', 1], ['D5', 2],
       ['A4', 1], ['D5', 1], ['F4', 1], ['A4', 1], ['G4', 1], ['B4', 1], ['C5', 1], ['E5', 1], ['G5', 2], ['C6', 4]];
     let t = t0;
-    for (const [n, d] of mel) { tone(N[n], t, d * b * 0.95, 'triangle', 0.11); t += d * b; }
+    for (const [n, d] of mel) { tone(N[n], t, d * b * 1.6, 'sine', 0.1); tone(N[n] * 2, t, d * b, 'sine', 0.02); t += d * b; }   // music-box sound
     // soft bass + chord pad
     [['C4', 0, 8], ['F4', 8, 4], ['G4', 12, 6], ['C4', 18, 6]].forEach(([n, s, d]) => {
       tone(N[n] / 2, t0 + s * b, d * b, 'sine', 0.09); tone(N[n], t0 + s * b, d * b, 'sine', 0.035);
@@ -269,7 +319,7 @@ const fx = $('#fx'), fctx = fx.getContext('2d');
 let parts = [], fxRunning = false;
 function sizeFx() { const d = devicePixelRatio || 1; fx.width = innerWidth * d; fx.height = innerHeight * d; fctx.setTransform(d, 0, 0, d, 0, 0); }
 addEventListener('resize', sizeFx); sizeFx();
-const FX_COLORS = ['#ff7a6b', '#ffc94a', '#20b2a0', '#9b7fd1', '#5bb8f5', '#4cc47c', '#ff9ed2'];
+const FX_COLORS = ['#f9a8c9', '#ffd580', '#8fdccb', '#b9a0ee', '#9ed0f5', '#a6e3bd', '#ffc2dd'];
 function burst(x, y, n = 40, spread = 1) {
   if (S.settings.calm) n = Math.min(n, 10);
   for (let i = 0; i < n; i++) {
@@ -314,26 +364,39 @@ function addStar() {
 }
 
 // ================= mascot =================
+// Tiko is a little winged unicorn (the function keeps its old name: Tiko used to be an owl)
 function owl(cls = '') {
   return `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
-  <ellipse cx="60" cy="114" rx="32" ry="5" fill="#0000001a"/>
-  <g class="owl-body">
-    <path class="wing l" d="M24 58 q-16 20 2 40 q8-16 6-40z" fill="#7d5ba6"/>
-    <path class="wing r" d="M96 58 q16 20 -2 40 q-8-16 -6-40z" fill="#7d5ba6"/>
-    <path d="M28 36 l4 -20 l16 14z M92 36 l-4 -20 l-16 14z" fill="#8a6cc4"/>
-    <ellipse cx="60" cy="66" rx="38" ry="42" fill="#9b7fd1"/>
-    <ellipse cx="60" cy="82" rx="24" ry="24" fill="#efe6ff"/>
-    <path d="M48 76 q4 4 8 0 M56 86 q4 4 8 0 M64 76 q4 4 8 0" stroke="#d6c6f5" stroke-width="2" fill="none"/>
-    <g class="eyes">
-      <circle cx="44" cy="50" r="15" fill="#fff"/><circle cx="76" cy="50" r="15" fill="#fff"/>
-      <circle cx="46" cy="52" r="8" fill="#2d3142"/><circle cx="74" cy="52" r="8" fill="#2d3142"/>
-      <circle cx="49" cy="48" r="3" fill="#fff"/><circle cx="77" cy="48" r="3" fill="#fff"/>
+  <ellipse cx="60" cy="115" rx="30" ry="4.5" fill="#0000001a"/>
+  <g class="owl-body" stroke="#e3cfee" stroke-width="1.2" stroke-linejoin="round">
+    <path class="wing l" d="M38 82 q-12 -16 -27 -9 q-6 9 3 14 q-3 7 6 9 q1 6 9 3 q7 -2 11 -9z" fill="#dccdfb" stroke="#c9b4f2"/>
+    <path class="wing r" d="M82 82 q12 -16 27 -9 q6 9 -3 14 q3 7 -6 9 q-1 6 -9 3 q-7 -2 -11 -9z" fill="#dccdfb" stroke="#c9b4f2"/>
+    <path d="M80 100 q20 0 17 -18 q12 14 0 25 q-9 7 -17 -1z" fill="#ff9ecb" stroke="none"/>
+    <path d="M82 102 q13 1 14 -9 q5 9 -3 14 q-6 3 -11 -2z" fill="#b99cf0" stroke="none"/>
+    <rect x="43" y="98" width="12" height="16" rx="5.5" fill="#fff"/><rect x="65" y="98" width="12" height="16" rx="5.5" fill="#fff"/>
+    <path d="M43 109 h12 a5.5 5.5 0 0 1 -5.5 5.5 h-1 a5.5 5.5 0 0 1 -5.5 -5.5z M65 109 h12 a5.5 5.5 0 0 1 -5.5 5.5 h-1 a5.5 5.5 0 0 1 -5.5 -5.5z" fill="#f7a8cc" stroke="none"/>
+    <ellipse cx="60" cy="92" rx="25" ry="18" fill="#fff"/>
+    <path d="M29 36 l1 -22 l17 13z M91 36 l-1 -22 l-17 13z" fill="#fff"/>
+    <path d="M33 31 l1 -11 l9 7z M87 31 l-1 -11 l-9 7z" fill="#ffc2dd" stroke="none"/>
+    <path d="M60 0 l8.5 27 h-17z" fill="#ffd66b" stroke="#f0b848"/>
+    <path d="M56.5 12 l7.5 -3 M54.5 19 l10.5 -4.5 M53 25.5 l13.5 -5" stroke="#f0b13c" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+    <ellipse cx="60" cy="55" rx="36" ry="31" fill="#fff"/>
+    <path d="M44 27 q9 -10 24 -4 q-1 9 -11 9 q4 4 1 9 q-11 -2 -14 -14z" fill="#ff9ecb" stroke="none"/>
+    <path d="M31 33 q-13 10 -10 30 q2 12 -5 18 q15 3 18 -11 q1 -9 -2 -17 q-1 -11 5 -17 q-3 -4 -6 -3z" fill="#b99cf0" stroke="none"/>
+    <path d="M25 42 q-6 10 -3 22 q1 8 -2 13 q8 -2 9 -11 q0 -8 -2 -13 q-1 -6 -2 -11z" fill="#8fd3f4" stroke="none"/>
+    <g class="eyes" stroke="none">
+      <ellipse cx="45" cy="55" rx="7" ry="8.5" fill="#3b2f4a"/><ellipse cx="75" cy="55" rx="7" ry="8.5" fill="#3b2f4a"/>
+      <circle cx="47.5" cy="51.5" r="2.8" fill="#fff"/><circle cx="77.5" cy="51.5" r="2.8" fill="#fff"/>
+      <circle cx="43" cy="58.5" r="1.3" fill="#fff"/><circle cx="73" cy="58.5" r="1.3" fill="#fff"/>
     </g>
-    <circle cx="30" cy="66" r="5" fill="#ff9ed2" opacity=".6"/><circle cx="90" cy="66" r="5" fill="#ff9ed2" opacity=".6"/>
-    <path d="M54 62 l6 9 l6 -9z" fill="#ffb347"/>
-    <path d="M48 106 l-4 6 M53 107 l0 6 M67 107 l0 6 M72 106 l4 6" stroke="#ffb347" stroke-width="3.5" stroke-linecap="round"/>
+    <ellipse cx="33" cy="67" rx="6" ry="4" fill="#ff9ecb" opacity=".55" stroke="none"/><ellipse cx="87" cy="67" rx="6" ry="4" fill="#ff9ecb" opacity=".55" stroke="none"/>
+    <ellipse cx="60" cy="73" rx="13" ry="8.5" fill="#ffe3ef" stroke="none"/>
+    <circle cx="55.5" cy="71" r="1.2" fill="#e79bbd" stroke="none"/><circle cx="64.5" cy="71" r="1.2" fill="#e79bbd" stroke="none"/>
+    <path d="M54.5 75.5 q5.5 4 11 0" stroke="#d77aa3" stroke-width="1.8" stroke-linecap="round" fill="none"/>
   </g></svg></div>`;
 }
+// which part of the universe she is in (each has its own sky colours)
+function zone(z) { document.body.dataset.zone = z || 'home'; }
 function owlReact(kind) {
   const o = $('.owl'); if (!o) return;
   o.classList.remove('happy', 'think'); void o.offsetWidth; o.classList.add(kind);
@@ -1735,6 +1798,7 @@ function musicStudio() {
 
 // run any activity: art studios have their own screen, everything else goes through the question engine
 async function runAct(a) {
+  if (ACTS[a].studio) { zone(ACTS[a].area); musicMode(a === 'music' ? 'off' : 'calm'); }
   const r = ACTS[a].studio ? ((await ACTS[a].studio()) ? { first: 1, count: 1 } : null) : await runStop(a, ACTS[a].per || S.settings.perStop);
   if (r) recordPlay(a);
   return r;
@@ -2183,6 +2247,7 @@ function askPaper(q, meta) {
 
 async function runStop(act, count) {
   let first = 0;
+  zone((ACTS[act] || {}).area); musicMode('work');
   if ((act === 'add' || act === 'sub') && (S.demoDay || {})[act] !== today()) {
     const ok = await conceptDemo(act);
     if (!ok) { clearIdle(); return null; }
@@ -2230,7 +2295,7 @@ function intro() {
 
 // ================= screens =================
 function home(fromIntro) {
-  stopSpeech(); clearIdle(); applySettings();
+  stopSpeech(); clearIdle(); applySettings(); zone('home'); musicMode('calm');
   if (fromIntro === true) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);   // (back buttons pass a click event — not 'from intro')
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
   app.innerHTML = `<div class="screen home">
@@ -2256,8 +2321,8 @@ function home(fromIntro) {
     speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, S.lang === 'fr' ? 'On parle français !' : "Let's speak English!");
   });
   // tapping Tiko gives a random silly reaction
-  const silly = S.lang === 'fr' ? ['Hou hou !', 'Ça chatouille !', 'Hi hi hi !', 'On joue ?', 'Tu es super !']
-    : ['Hoo hoo!', 'That tickles!', 'Hee hee hee!', "Let's play!", "You're awesome!"];
+  const silly = S.lang === 'fr' ? ['Youpi !', 'Ça chatouille !', 'Hi hi hi !', 'On joue ?', 'Tu es super !', 'Ma corne brille !']
+    : ['Wheee!', 'That tickles!', 'Hee hee hee!', "Let's play!", "You're awesome!", 'Sparkle, sparkle!'];
   $('.owl').onclick = () => {
     const o = $('.owl'), k = pick(['happy', 'dance', 'spin']);
     o.classList.remove('happy', 'dance', 'spin'); void o.offsetWidth; o.classList.add(k); setTimeout(() => o.classList.remove(k), 1600);
@@ -2268,6 +2333,7 @@ function home(fromIntro) {
   $('.corner').onclick = () => parentGate();
 }
 function menu(area) {
+  zone(area); musicMode('calm');
   const ids = Object.keys(ACTS).filter(k => ACTS[k].area === area), sug = suggestIn(area);
   const TAG = { new: '✨', mastered: '🏆', rest: '💤' };
   app.innerHTML = `<div class="screen menu">
@@ -2334,6 +2400,7 @@ function startPath() {
 }
 function showPath() {
   const cur = path.findIndex(s => !s.done);
+  zone('home'); musicMode('calm');
   if (cur === -1) return finale();
   app.innerHTML = `<div class="screen path">
     <div class="topline"><button class="ic back">🏠</button><h2>🗺️ ${L().pathTitle}</h2><div class="stars">⭐ <b>${S.stars}</b></div></div>
@@ -2375,7 +2442,7 @@ async function checkUnlock() {
   return true;
 }
 function journey() {
-  stopSpeech(); clearIdle();
+  stopSpeech(); clearIdle(); zone('read'); musicMode('calm');
   const cur = stageOf(), names = L().journey;
   app.innerHTML = `<div class="screen sub"><div class="topline"><button class="ic back">🏠</button><h2>🗺️ ${L().read.journey}</h2><div style="width:64px"></div></div>
     <div class="map">${STAGES.map((s, i) => {
@@ -2413,6 +2480,7 @@ function journey() {
   const now = $('.isle.now'); if (now) now.scrollIntoView({ block: 'center' });
 }
 function reward() {
+  musicMode('calm');
   return new Promise(res => {
     const left = STICKERS.filter(s => !S.stickers.includes(s));
     const st = left.length ? pick(left) : pick(STICKERS);
@@ -2447,6 +2515,7 @@ function finale() {
 
 // ---------- sticker book + my work ----------
 async function stickerBook(tab = 'stickers') {
+  zone('home'); musicMode('calm');
   const P = L().paper;
   app.innerHTML = `<div class="screen sub"><div class="topline"><button class="ic back">🏠</button>
     <div class="tabs" style="flex:1;justify-content:center"><button data-t="stickers" class="${tab === 'stickers' ? 'on' : ''}">🌟 ${L().stickers}</button>
@@ -2482,6 +2551,7 @@ async function stickerBook(tab = 'stickers') {
 
 // ================= parents =================
 function parentGate() {
+  musicMode('off');
   const a = 3 + rand(6), b = 4 + rand(5), ans = a * b; let val = '';
   app.innerHTML = `<div class="screen gate"><h2>👪 ${L().parents}: ${a} × ${b} = ?</h2><div class="gatein">&nbsp;</div>
     <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '⌫', 0, '✔'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div>
@@ -2570,6 +2640,8 @@ function parents() {
       <label class="set">Focus nudges (Tiko says "Your turn!" after 15 s with no taps) <input type="checkbox" data-s="nudge" ${st.nudge ? 'checked' : ''}></label>
       <label class="set">Sound effects <input type="checkbox" data-s="sfx" ${st.sfx ? 'checked' : ''}></label>
       <label class="set">Intro music <input type="checkbox" data-s="music" ${st.music ? 'checked' : ''}></label>
+      <label class="set">Relaxing music on the home screen, menus, map and drawing (goes quiet when Tiko speaks) <input type="checkbox" data-s="ambient" ${st.ambient ? 'checked' : ''}></label>
+      <label class="set">…and very quietly during the activities too <input type="checkbox" data-s="ambientWork" ${st.ambientWork ? 'checked' : ''}></label>
       <label class="set">Calm mode (less motion and confetti) <input type="checkbox" data-s="calm" ${st.calm ? 'checked' : ''}></label>
       <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:17px">Voice style
         <span><button class="pbtn alt vs" data-p="1.7" data-pf="1.3" data-r="0.95">🫧 Bubbly</button><button class="pbtn alt vs" data-p="1.1" data-pf="1.0" data-r="0.88">🙂 Normal</button><button class="pbtn alt vs" data-p="0.95" data-pf="0.9" data-r="0.8">🌙 Calm</button></span></div>
@@ -2735,7 +2807,7 @@ function worksheet(lang) {
   const seq = [...Array(8)].map((_, i) => s0 + i).map((n, i) => (i % 3 === 1 || i === 5) ? '___' : n).join(', ');
   const el = $('#sheet');
   el.innerHTML = `<div class="sh-close"><button class="pbtn" onclick="window.print()">🖨️ Print / PDF</button><button class="pbtn alt" id="shx">✕</button></div>
-    <div class="sh-head"><h1>🦉 ${sh.title}</h1><span>${sh.name}: ____________ &nbsp; ${sh.date}: ________</span></div>
+    <div class="sh-head"><h1>🦄 ${sh.title}</h1><span>${sh.name}: ____________ &nbsp; ${sh.date}: ________</span></div>
     <div class="sh-sec"><h2>✏️ ${sh.trace}</h2>${letters.map(l => `<div class="sh-trace">${`<span>${esc(l.l)}</span>`.repeat(6)}<span style="font-size:40px;color:#000">${l.e}</span></div><div class="sh-trace"></div>`).join('')}</div>
     <div class="sh-sec"><h2>📖 ${sh.read}</h2><div class="sh-words">${words.map(w => `<div><b>${esc(w.w)}</b></div>`).join('')}</div></div>
     <div class="sh-sec"><h2>🔢 ${sh.sums}</h2><div class="sh-sums">${sums.map(([a, o, b]) => `<div>${a} ${o} ${b} = ____<small>${o === '+' ? dotsOf(a) + ' + ' + dotsOf(b) : dotsOf(a)}</small></div>`).join('')}</div></div>
