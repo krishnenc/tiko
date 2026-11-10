@@ -11,6 +11,9 @@ A calm, fun, bilingual (English / French) reading and maths app for a young lear
 
 ## Updating
 Push changes to `main`. GitHub Pages redeploys in a minute or two, and the tablet picks up the new version the next time the app is opened.
-Bump `VERSION` in `sw.js` when you change files, so the offline cache refreshes.
+Bump `VERSION` in `sw.js` (and `APP_VERSION` in `app.js`) when you change files, so the offline cache refreshes.
+
+## Developing
+See [docs/DEVELOPING.md](docs/DEVELOPING.md) for the architecture, the design rules, how to add an activity, and how to test and ship.
 
 Progress is stored only on the tablet (browser storage). Clearing Chrome's site data resets it.

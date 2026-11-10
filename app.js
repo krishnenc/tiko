@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 25;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 26;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, voiceChat: false, calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -128,7 +128,7 @@ function musicSet() {
     music.g.gain.setTargetAtTime(Math.max(0.0001, want), actx.currentTime, want ? .9 : .07);   // slow fade in, quick duck
   } catch (e) { /* ignore */ }
 }
-function musicMode(m) { music.mode = m; document.body.classList.toggle('work', m === 'work'); musicSet(); }
+function musicMode(m) { music.mode = m; if (m !== 'off') document.body.classList.toggle('work', m === 'work'); musicSet(); }
 document.addEventListener('visibilitychange', musicSet);
 
 // ================= speech =================
@@ -392,7 +392,7 @@ function owl(cls = '') {
     <ellipse cx="33" cy="67" rx="6" ry="4" fill="#ff9ecb" opacity=".55" stroke="none"/><ellipse cx="87" cy="67" rx="6" ry="4" fill="#ff9ecb" opacity=".55" stroke="none"/>
     <ellipse cx="60" cy="73" rx="13" ry="8.5" fill="#ffe3ef" stroke="none"/>
     <circle cx="55.5" cy="71" r="1.2" fill="#e79bbd" stroke="none"/><circle cx="64.5" cy="71" r="1.2" fill="#e79bbd" stroke="none"/>
-    <path d="M54.5 75.5 q5.5 4 11 0" stroke="#d77aa3" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+    <path class="mouth" d="M54.5 75.5 q5.5 4 11 0" stroke="#d77aa3" stroke-width="1.8" stroke-linecap="round" fill="none"/>
   </g></svg></div>`;
 }
 // which part of the universe she is in (each has its own sky colours)
@@ -570,6 +570,8 @@ const BADGES = [
   { id: 'castle', icon: '👑', en: 'Reached Story Castle', fr: 'Arrivée au château', ok: () => ['en', 'fr'].some(lg => stageOf(lg) >= 6) },
   { id: 'explore5', icon: '🔭', en: 'Discovered 5 new games', fr: '5 nouveaux jeux découverts', ok: () => tot('discover') >= 5 },
   { id: 'explore15', icon: '🚀', en: 'Great explorer (15 new games)', fr: 'Grande exploratrice (15 jeux)', ok: () => tot('discover') >= 15 },
+  { id: 'chat5', icon: '💬', en: 'Chatterbox (5 chats with Tiko)', fr: 'Bavarde (5 discussions avec Tiko)', ok: () => tot('chats') >= 5 },
+  { id: 'aloud5', icon: '🎤', en: 'Read aloud 5 times', fr: 'Lu à voix haute 5 fois', ok: () => tot('readAloud') >= 5 },
   { id: 'think5', icon: '🧠', en: '5 thinking games', fr: '5 jeux de réflexion', ok: () => tot('think') >= 5 },
   { id: 'simon5', icon: '🎶', en: 'Copied 5 in a row', fr: 'Imité 5 à la suite', ok: () => tot('simon5') >= 1 },
   { id: 'puzzle3', icon: '🧩', en: '3 jigsaws done', fr: '3 puzzles finis', ok: () => tot('puzzles') >= 3 },
@@ -700,6 +702,7 @@ const ACTS = {
   traceSentence: { icon: '📜', area: 'read', make: mkTraceSentence, per: 1 },
   sentence: { icon: '🛶', area: 'read', make: mkSentence, per: 4 },
   story: { icon: '🏰', area: 'read', make: mkStory, per: 2 },
+  readAloud: { icon: '🎤', area: 'read', make: mkReadAloud, per: 2 },
   count: { icon: '🔢', area: 'math', make: mkCount },
   add: { icon: '➕', area: 'math', make: mkAdd },
   sub: { icon: '➖', area: 'math', make: mkSub },
@@ -751,6 +754,7 @@ Object.assign(T.en.acts, { paint: 'Paint', mirror: 'Magic mirror', readDraw: 'Re
 Object.assign(T.fr.acts, { paint: 'Peinture', mirror: 'Miroir magique', readDraw: 'Lis et dessine', cbn: 'Coloriage magique', mix: 'Mélange les couleurs', music: 'Musique' });
 T.en.acts.sentence = 'Read a sentence'; T.fr.acts.sentence = 'Lire une phrase';
 T.en.acts.story = 'Little stories'; T.fr.acts.story = 'Petites histoires';
+T.en.acts.readAloud = 'Read it to Tiko'; T.fr.acts.readAloud = 'Lis-le à Tiko';
 
 // ================= discovery path =================
 // Parent's wish: she tends to replay the same easy things. Tiko steers her FORWARD instead, building on what she
@@ -760,7 +764,7 @@ T.en.disc = { rest: "You did this one today! Let's discover something new!", mas
 T.fr.disc = { rest: "Tu l'as déjà fait aujourd'hui ! Découvrons autre chose !", mastered: 'Tu es championne ! Essayons quelque chose de nouveau !',
   conquered: 'Tu as conquis cet endroit ! Allons plus loin !', path: "Allons à l'aventure du jour !" };
 // the journey place from which each reading activity makes sense (builds on the one before)
-const READ_UNLOCK = { letters: 0, robot: 0, blend: 0, trace: 0, sight: 0, paper: 1, traceWord: 1, family: 1, spell: 1, sentence: 3, traceSentence: 3, story: 5 };
+const READ_UNLOCK = { letters: 0, robot: 0, blend: 0, trace: 0, sight: 0, paper: 1, traceWord: 1, family: 1, spell: 1, sentence: 3, traceSentence: 3, story: 5, readAloud: 1 };
 const playKey = a => S.lang + ':' + a;
 function recordPlay(a) {
   S.plays = S.plays || {};
@@ -1821,6 +1825,7 @@ function ask(q, meta) {
   if (q.kind === 'trace') return askTrace(q, meta);
   if (q.kind === 'paper') return askPaper(q, meta);
   if (q.kind === 'sentence' || q.kind === 'story') return askReading(q, meta);
+  if (q.kind === 'readAloud') return askReadAloud(q, meta);
   if (q.kind === 'pop') return askPop(q, meta);
   if (q.kind === 'traceText') return askTraceText(q, meta);
   if (q.kind === 'memory') return askMemory(q, meta);
@@ -2263,6 +2268,268 @@ async function runStop(act, count) {
   return { first, count };
 }
 
+// ================= 🎤 Read it to Tiko: she is the reader =================
+// No picture to guess from: she reads a word (later a sentence) out loud, hears herself back, then hears Tiko read it.
+// Her recordings stay on this tablet, for her parents to listen to in the Parent corner.
+T.en.ra = { title: 'Read it to me!', start: 'Start', stop: 'I finished', listen: 'Listen to yourself!', again: 'Again', done: 'I read it!',
+  mine: 'Now listen to me.', noMic: 'Read it out loud to a grown-up!', listening: "I'm listening…" };
+T.fr.ra = { title: 'Lis-le-moi !', start: 'Commencer', stop: "J'ai fini", listen: 'Écoute-toi !', again: 'Encore', done: "Je l'ai lu !",
+  mine: 'Maintenant, écoute-moi.', noMic: 'Lis-le à voix haute à un adulte !', listening: "Je t'écoute…" };
+function mkReadAloud() {
+  const w = pickFresh('readAloud', knownWords());
+  const text = stageOf() >= 3 ? pickFresh('sentenceT', SENTENCES[S.lang].map((f, i) => ({ id: i, f }))).f(w.w) : w.w;
+  return { kind: 'readAloud', title: L().ra.title, speak: [L().ra.title], lines: [text] };
+}
+async function keepReading(blob, text) {
+  try {
+    const k = 'read:' + Date.now(); await idb.set('rec', k, blob);
+    S.readings = S.readings || []; S.readings.unshift({ k, text, lang: S.lang, d: today() });
+    for (const old of S.readings.splice(12)) idb.del('rec', old.k).catch(() => {});
+  } catch (e) { /* storage full or unavailable: the activity still works */ }
+}
+function askReadAloud(q, meta) {
+  return new Promise(resolve => {
+    let done = false, mr = null, stream = null, blob = null, timer = 0;
+    const R = L().ra;
+    const release = () => { clearTimeout(timer); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
+    const finish = v => { if (done) return; done = true; try { if (mr && mr.state === 'recording') mr.stop(); } catch (e) { /* ignore */ } release(); musicMode('work'); stopSpeech(); resolve(v); };
+    app.innerHTML = actFrame(meta, `${promptHTML(q.title)}<div class="visual">${readerHTML(q.lines)}</div>
+      <div class="btnrow ra"><button class="btn primary huge pulse recb">🎤 ${R.start}</button></div>`);
+    const row = $('.ra');
+    wire(meta, finish, () => speak(...q.speak), q.speak);
+    const complete = async () => {
+      if (done || row.dataset.busy) return; row.dataset.busy = 1; row.innerHTML = '';
+      sfx('good'); owlReact('happy'); flyStar($('.reader')); tally('readAloud'); logDay(true);
+      if (blob) await keepReading(blob, q.lines.join(' '));
+      save();
+      await sleep(300); await speak(R.mine, { pause: 200 }, ...q.lines, { pause: 200 }, ...praiseParts());
+      await sleep(300); finish(true);
+    };
+    const review = () => {
+      row.innerHTML = `<button class="btn sun hear">▶ 👂</button><button class="btn again2">🎤 ${R.again}</button><button class="btn teal okb">✅ ${R.done}</button>`;
+      $('.hear').onclick = () => { stopSpeech(); playBlob(blob); }; $('.again2').onclick = start; $('.okb').onclick = complete;
+    };
+    const noMic = () => {
+      release(); row.innerHTML = `<button class="btn teal huge okb">✅ ${R.done}</button>`; $('.okb').onclick = complete;
+      $('.bubble').textContent = R.noMic; speak(R.noMic);
+    };
+    async function start() {
+      stopSpeech();
+      try {
+        if (!navigator.mediaDevices || !window.MediaRecorder) return noMic();
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (done) return release();
+        const chunks = [], rec = mr = new MediaRecorder(stream);
+        rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+        rec.onstop = async () => {
+          release(); if (done) return;
+          blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' }); review();
+          $('.bubble').textContent = R.listen; setIdle(() => nudge([R.done]));
+          await speak(R.listen); if (!done) playBlob(blob);
+        };
+        musicMode('off'); clearIdle(); rec.start();   // nothing else makes a sound while she reads
+        row.innerHTML = `<button class="btn primary huge stopb"><i class="recdot"></i> ${R.stop}</button>`; $('.bubble').textContent = R.listening;
+        $('.stopb').onclick = () => { if (rec.state === 'recording') rec.stop(); };
+        timer = setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, 20000);
+      } catch (e) { noMic(); }
+    }
+    $('.recb').onclick = start;
+    speak(...q.speak);
+  });
+}
+
+// ================= 💬 Chat with Tiko: tiny conversations, in English and in French =================
+// Tiko asks, she answers by tapping a picture-sentence (Tiko says her sentence out loud, as a model to copy), Tiko replies.
+// She can switch language at any moment, or hear any line in the other language. Tiko remembers what she likes.
+// option = [picture, her answer EN, her answer FR, Tiko's reply EN, Tiko's reply FR, what to remember (EN, FR)]
+const CHATS = [
+  { id: 'feel', turns: [
+    { en: 'Hello! How are you today?', fr: "Coucou ! Comment ça va aujourd'hui ?", opts: [
+      ['😊', 'I am happy!', 'Je suis contente !', 'Yay! Me too! My horn is glowing!', 'Youpi ! Moi aussi ! Ma corne brille !'],
+      ['😴', 'I am tired.', 'Je suis fatiguée.', 'Oh! Then we will go gently.', 'Oh ! Alors on y va tout doucement.'],
+      ['😢', 'I am sad.', 'Je suis triste.', 'Oh no. Here is a big unicorn hug.', 'Oh non. Voici un gros câlin de licorne.']] },
+    { en: 'What would you like to do today?', fr: "Qu'est-ce que tu veux faire aujourd'hui ?", opts: [
+      ['📖', 'I want to read.', 'Je veux lire.', 'Great idea! I love reading with you.', "Bonne idée ! J'adore lire avec toi."],
+      ['🎨', 'I want to draw.', 'Je veux dessiner.', 'Ooh! Draw me a rainbow!', 'Oh ! Dessine-moi un arc-en-ciel !'],
+      ['🔢', 'I want to count.', 'Je veux compter.', "One, two, three! Let's go!", "Un, deux, trois ! C'est parti !"]] },
+    { en: 'Shall we be friends for ever?', fr: 'On est amies pour toujours ?', opts: [
+      ['💖', 'Yes! Friends for ever!', 'Oui ! Amies pour toujours !', 'Hooray! Best friends!', 'Hourra ! Meilleures amies !'],
+      ['🤗', 'Yes! Big hug!', 'Oui ! Gros câlin !', 'Mmm! What a lovely hug!', 'Mmm ! Quel beau câlin !']] }] },
+  { id: 'colour', turns: [
+    { en: 'What is your favourite colour?', fr: 'Quelle est ta couleur préférée ?', mem: 'colour', opts: [
+      ['💗', 'I like pink.', "J'aime le rose.", 'Pink! Like my mane!', 'Le rose ! Comme ma crinière !', 'pink', 'le rose'],
+      ['💜', 'I like purple.', "J'aime le violet.", 'Purple is magic!', "Le violet, c'est magique !", 'purple', 'le violet'],
+      ['💙', 'I like blue.', "J'aime le bleu.", 'Blue, like the sky!', 'Bleu, comme le ciel !', 'blue', 'le bleu'],
+      ['💛', 'I like yellow.', "J'aime le jaune.", 'Yellow, like the sun!', 'Jaune, comme le soleil !', 'yellow', 'le jaune']] },
+    { en: 'What colour is the sun?', fr: 'De quelle couleur est le soleil ?', opts: [
+      ['💛', 'The sun is yellow.', 'Le soleil est jaune.', 'Yes! Bright yellow!', 'Oui ! Tout jaune !'],
+      ['💚', 'The sun is green.', 'Le soleil est vert.', 'Hee hee! A green sun! That is funny!', "Hi hi ! Un soleil vert ! C'est rigolo !"]] },
+    { en: 'And what colour is the grass?', fr: "Et de quelle couleur est l'herbe ?", opts: [
+      ['💚', 'The grass is green.', "L'herbe est verte.", 'Yes! I love to eat green grass. Yum!', "Oui ! J'adore manger l'herbe verte. Miam !"],
+      ['💗', 'The grass is pink.', "L'herbe est rose.", 'Pink grass! In my world, maybe!', "De l'herbe rose ! Dans mon monde, peut-être !"]] }] },
+  { id: 'animal', turns: [
+    { en: 'Which animal do you like best?', fr: 'Quel animal préfères-tu ?', mem: 'animal', opts: [
+      ['🐱', 'I like cats.', "J'aime les chats.", 'Meow! Cats are so soft.', 'Miaou ! Les chats sont tout doux.', 'cats', 'les chats'],
+      ['🐶', 'I like dogs.', "J'aime les chiens.", 'Woof! Dogs are good friends.', 'Ouaf ! Les chiens sont de bons amis.', 'dogs', 'les chiens'],
+      ['🐰', 'I like rabbits.', "J'aime les lapins.", 'Hop hop! Rabbits jump like me!', 'Hop hop ! Les lapins sautent comme moi !', 'rabbits', 'les lapins'],
+      ['🐴', 'I like horses.', "J'aime les chevaux.", 'Horses are my cousins!', 'Les chevaux sont mes cousins !', 'horses', 'les chevaux']] },
+    { en: 'Is it big or little?', fr: 'Il est grand ou petit ?', opts: [
+      ['🐘', 'It is big.', 'Il est grand.', 'Wow! So big!', 'Waouh ! Si grand !'],
+      ['🐭', 'It is little.', 'Il est petit.', 'Aww! So little and cute!', 'Oh ! Si petit et mignon !']] },
+    { en: 'Would you like to ride on my back?', fr: 'Tu veux monter sur mon dos ?', opts: [
+      ['🦄', 'Yes, please!', "Oui, s'il te plaît !", 'Hold on tight! We fly over the rainbow!', "Tiens-toi bien ! On vole au-dessus de l'arc-en-ciel !"],
+      ['🙈', 'No, thank you.', 'Non, merci.', 'That is fine. We can walk together.', "D'accord. On peut marcher ensemble."]] }] },
+  { id: 'food', turns: [
+    { en: 'What do you like to eat?', fr: "Qu'est-ce que tu aimes manger ?", mem: 'food', opts: [
+      ['🍕', 'I like pizza.', "J'aime la pizza.", 'Yum! Pizza!', 'Miam ! La pizza !', 'pizza', 'la pizza'],
+      ['🍎', 'I like apples.', "J'aime les pommes.", 'Crunch! I love apples too!', "Croc ! Moi aussi, j'adore les pommes !", 'apples', 'les pommes'],
+      ['🍦', 'I like ice cream.', "J'aime la glace.", 'Brrr! Cold and sweet!', 'Brrr ! Froid et sucré !', 'ice cream', 'la glace'],
+      ['🍌', 'I like bananas.', "J'aime les bananes.", 'Bananas! Like a little monkey!', 'Des bananes ! Comme un petit singe !', 'bananas', 'les bananes']] },
+    { en: 'Do you know what I eat?', fr: 'Tu sais ce que je mange ?', opts: [
+      ['🧁', 'Rainbow cakes?', 'Des gâteaux arc-en-ciel ?', 'Yes! Rainbow cakes are the best!', "Oui ! Les gâteaux arc-en-ciel, c'est le meilleur !"],
+      ['🌱', 'Green grass?', "De l'herbe verte ?", 'Yes! And sometimes a rainbow cake!', 'Oui ! Et parfois un gâteau arc-en-ciel !']] },
+    { en: 'Are you hungry now?', fr: 'Tu as faim maintenant ?', opts: [
+      ['😋', 'Yes, I am hungry.', "Oui, j'ai faim.", 'Me too! We can ask a grown-up for a snack.', 'Moi aussi ! On peut demander un goûter à un adulte.'],
+      ['🙂', 'No, I am fine.', 'Non, ça va.', "Good! Then let's play!", 'Super ! Alors on joue !']] }] },
+  { id: 'weather', turns: [
+    { en: 'Look outside! What is the weather like?', fr: 'Regarde dehors ! Quel temps fait-il ?', opts: [
+      ['☀️', 'It is sunny.', 'Il fait beau.', 'Lovely! The sun makes me sparkle.', 'Chouette ! Le soleil me fait briller.'],
+      ['🌧️', 'It is raining.', 'Il pleut.', 'Rain makes rainbows! I love rainbows.', "La pluie fait des arcs-en-ciel ! J'adore les arcs-en-ciel."],
+      ['☁️', 'It is cloudy.', 'Il y a des nuages.', 'I like to jump on the clouds!', "J'aime sauter sur les nuages !"]] },
+    { en: 'What do you wear when it rains?', fr: "Qu'est-ce que tu mets quand il pleut ?", opts: [
+      ['🥾', 'I wear my boots.', 'Je mets mes bottes.', 'Splash, splash in the puddles!', 'Plouf, plouf dans les flaques !'],
+      ['🧥', 'I wear my coat.', 'Je mets mon manteau.', 'Nice and warm!', 'Bien au chaud !'],
+      ['☂️', 'I take my umbrella.', 'Je prends mon parapluie.', 'Good idea! Stay dry!', 'Bonne idée ! Reste au sec !']] },
+    { en: 'Do you like the snow?', fr: 'Tu aimes la neige ?', opts: [
+      ['⛄', 'Yes! I make a snowman.', 'Oui ! Je fais un bonhomme de neige.', 'Can he have a horn like me?', 'Il peut avoir une corne comme moi ?'],
+      ['🥶', 'No, it is too cold.', 'Non, il fait trop froid.', 'Brrr! You are right.', 'Brrr ! Tu as raison.']] }] },
+  { id: 'ask', turns: [
+    { en: 'Now you can ask me something!', fr: 'Maintenant, pose-moi une question !', opts: [
+      ['🎂', 'How old are you?', 'Tu as quel âge ?', 'I am seven, like a big girl!', "J'ai sept ans, comme une grande !"],
+      ['🏰', 'Where do you live?', 'Tu habites où ?', 'I live in the pink castle, up on the hill.', "J'habite dans le château rose, sur la colline."],
+      ['💤', 'Where do you sleep?', 'Tu dors où ?', 'I sleep on a soft cloud.', 'Je dors sur un nuage tout doux.']] },
+    { en: 'Ask me another one!', fr: 'Pose-moi une autre question !', opts: [
+      ['🌈', 'Can you fly?', 'Tu sais voler ?', 'Yes! I fly over the rainbow.', "Oui ! Je vole au-dessus de l'arc-en-ciel."],
+      ['🎵', 'Can you sing?', 'Tu sais chanter ?', 'La la la! I sing with the birds.', 'La la la ! Je chante avec les oiseaux.'],
+      ['📖', 'Can you read?', 'Tu sais lire ?', 'I am learning, just like you!', "J'apprends, comme toi !"]] },
+    { en: 'One more?', fr: 'Encore une ?', opts: [
+      ['🦄', 'Do you have friends?', 'Tu as des amis ?', 'Yes! You are my best friend.', 'Oui ! Tu es ma meilleure amie.'],
+      ['⭐', 'What do you love?', "Qu'est-ce que tu aimes ?", 'I love stars, books, and you!', "J'aime les étoiles, les livres, et toi !"]] }] },
+  { id: 'swap' },   // the two-languages game, built from CHAT_WORDS
+];
+// the two-languages game: [picture, English, French (with its little word)]
+const CHAT_WORDS = [['🐱', 'cat', 'chat'], ['🐶', 'dog', 'chien'], ['☀️', 'sun', 'soleil'], ['🌙', 'moon', 'lune'], ['🍎', 'apple', 'pomme'], ['🐟', 'fish', 'poisson'],
+  ['🏠', 'house', 'maison'], ['🌸', 'flower', 'fleur'], ['📖', 'book', 'livre'], ['⭐', 'star', 'étoile'], ['🐦', 'bird', 'oiseau'], ['🥛', 'milk', 'lait']];
+T.en.chat = { btn: 'Chat', hello: 'Hello', bye: 'I loved talking with you! See you soon!', tap: 'Tap your answer!', mic: 'Say it', remember: (a, b) => `I remember! You like ${a}${b ? ' and ' + b : ''}!`,
+  swapIntro: "Let's play the two languages game!", swapTeach: (a, b) => [`In French, ${a} is`, b], swapAsk: w => ['What is', w, '?'], swapShow: (a, b, w) => `In French, ${a} is « ${b} ». What is « ${w} »?`,
+  swapYes: (w, a) => ['Yes!', w, `is ${a}! Bravo!`], swapNo: (w, a) => ['Good try!', w, `is ${a}.`], ans: a => cap(a) + '!' };
+T.fr.chat = { btn: 'Parler', hello: 'Coucou', bye: "J'ai adoré parler avec toi ! À bientôt !", tap: 'Touche ta réponse !', mic: 'Dis-le', remember: (a, b) => `Je me souviens ! Tu aimes ${a}${b ? ' et ' + b : ''} !`,
+  swapIntro: 'On joue au jeu des deux langues !', swapTeach: (a, b) => [`En anglais, ${a} se dit`, b], swapAsk: w => ['Que veut dire', w, '?'], swapShow: (a, b, w) => `En anglais, ${a} se dit « ${b} ». Que veut dire « ${w} » ?`,
+  swapYes: (w, a) => ['Oui !', w, `veut dire ${a} ! Bravo !`], swapNo: (w, a) => ['Bien essayé !', w, `veut dire ${a}.`], ans: a => cap(a) + ' !' };
+let chatToken = 0;
+async function chatWithTiko() {
+  stopSpeech(); clearIdle(); zone('home'); musicMode('work');
+  const my = ++chatToken, alive = () => my === chatToken && !!$('.chat');
+  const other = () => (S.lang === 'en' ? 'fr' : 'en');
+  // a different topic every time, whatever the language: each one has its turn before any comes back
+  S.used = S.used || {}; const usedT = S.used.chat = S.used.chat || [];
+  let pool = CHATS.filter(c => !usedT.includes(c.id)); if (!pool.length) { usedT.length = 0; pool = CHATS; }
+  const topic = pick(pool); usedT.push(topic.id); save();
+  app.innerHTML = `<div class="screen chat">
+    <div class="topline"><button class="ic back">🏠</button><div class="langs" style="flex:1;justify-content:center">
+      <button class="lang" data-l="en">🇬🇧</button><button class="lang" data-l="fr">🇫🇷</button></div><div style="width:64px"></div></div>
+    <div class="chatstage">${owl('big')}<div class="tikoline"><div class="bubble tikosay"></div>
+      <div class="chatbtns"><button class="ic again" aria-label="again">🔊</button><button class="ic otherl" aria-label="other language"></button></div></div></div>
+    <div class="bubble me" hidden></div>
+    <div class="replies"></div>
+  </div>`;
+  const leave = () => { chatToken++; stopSpeech(); home(); };
+  $('.back').onclick = leave; exitCurrent = leave;
+  const chips = () => { $$('.chat .lang').forEach(b => b.classList.toggle('on', b.dataset.l === S.lang)); $('.otherl').textContent = other() === 'fr' ? '🇫🇷' : '🇬🇧'; };
+  chips();
+  let line = null, relang = null;   // the line Tiko is saying now: { show: {en, fr}, parts: lang => [...] }
+  const talk = async (l, lang = S.lang) => {
+    line = l; const o = $('.chat .owl'); $('.tikosay').textContent = l.show[lang]; $('.tikosay').classList.remove('pop2'); void $('.tikosay').offsetWidth; $('.tikosay').classList.add('pop2');
+    if (o) o.classList.add('talk');
+    await speak(...l.parts(lang).map(p => typeof p === 'string' ? { text: p, lang } : p));
+    if (o) o.classList.remove('talk');
+  };
+  const plain = (en, fr) => ({ show: { en, fr }, parts: lang => [lang === 'en' ? en : fr] });
+  $('.again').onclick = () => { if (line) { sfx('tap'); talk(line); } };
+  $('.otherl').onclick = () => { if (line) { sfx('tap'); talk(line, other()); } };   // hear the same thing in the other language
+  $$('.chat .lang').forEach(b => b.onclick = () => { if (b.dataset.l === S.lang) return; S.lang = b.dataset.l; save(); applySettings(); sfx('pop'); chips(); if (relang) relang(); });
+  // her answer: a tap on a picture-sentence, or (if a parent switched it on, and it is available) her voice
+  const SR = S.settings.voiceChat && navigator.onLine && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const hear = () => new Promise(res => {
+    try {
+      const r = new SR(); let out = ''; r.lang = S.lang === 'fr' ? 'fr-FR' : 'en-GB'; r.maxAlternatives = 3;
+      r.onresult = e => { out = [...e.results[0]].map(a => a.transcript).join(' ').toLowerCase(); };
+      r.onerror = () => res(''); r.onend = () => res(out); r.start(); setTimeout(() => { try { r.stop(); } catch (e) { /* ignore */ } }, 7000);
+    } catch (e) { res(''); }
+  });
+  const words = s => s.toLowerCase().replace(/[^a-zàâçéèêëîïôûùüœ' ]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !/^(what|that|this|with|like|aime|suis|veux|mets|fait|avec|dans|pour)$/.test(w));
+  const choose = opts => new Promise(res => {
+    const draw = () => {
+      $('.replies').innerHTML = opts.map((o, i) => `<button class="btn reply" data-i="${i}" style="--i:${i}"><span>${o.e}</span><b>${esc(o[S.lang])}</b></button>`).join('') +
+        (SR ? `<button class="btn sun micb">🎤 ${L().chat.mic}</button>` : '');
+      $$('.reply').forEach(b => b.onclick = () => { sfx('pop'); res(opts[+b.dataset.i]); });
+      const m = $('.micb'); if (m) m.onclick = async () => {
+        stopSpeech(); m.classList.add('pulse'); const heard = await hear(); if (!alive()) return; m.classList.remove('pulse');
+        const score = opts.map(o => words(o[S.lang]).filter(w => heard.includes(w)).length), best = Math.max(...score);
+        if (best > 0 && score.filter(x => x === best).length === 1) { sfx('pop'); res(opts[score.indexOf(best)]); } else speak(L().chat.tap);
+      };
+    };
+    relang = () => { draw(); if (line) talk(line); }; draw();
+    setIdle(() => { if (alive()) speak(L().chat.tap); });
+  });
+  const mine = async (o) => {   // her sentence appears on her side and is said out loud for her to copy
+    relang = null; clearIdle(); $('.replies').innerHTML = ''; const me = $('.bubble.me'); me.hidden = false; me.textContent = `${o.e} ${o[S.lang]}`;
+    await speak({ text: o[S.lang], lang: S.lang }); await sleep(250);
+  };
+  await sleep(400); if (!alive()) return;
+  // hello — and Tiko remembers what she said before
+  const mem = S.chat || {}, likes = ['colour', 'animal', 'food'].filter(k => mem[k]);
+  const nm = childName();
+  await talk({ show: { en: `${T.en.chat.hello}${nm ? ', ' + nm : ''}! 👋`, fr: `${T.fr.chat.hello}${nm ? ', ' + nm : ''} ! 👋` }, parts: lang => [T[lang].chat.hello, ...(nm ? [{ name: true, bang: true }] : [])] });
+  if (!alive()) return;
+  if (likes.length) {
+    const a = mem[shuffle(likes)[0]], b = likes.length > 1 ? mem[likes.find(k => mem[k] !== a)] : null;
+    await sleep(300); await talk(plain(T.en.chat.remember(a.en, b && b.en), T.fr.chat.remember(a.fr, b && b.fr))); if (!alive()) return;
+  }
+  if (topic.id === 'swap') {
+    await sleep(300); await talk(plain(T.en.chat.swapIntro, T.fr.chat.swapIntro)); if (!alive()) return;
+    const ws = shuffle(CHAT_WORDS);
+    for (let i = 0; i < 3; i++) {
+      const [A, B, C, D] = ws.slice(i * 4, i * 4 + 4);   // teach A, ask B; C and D are the other choices
+      const far = lang => (lang === 'en' ? 'fr' : 'en'), wd = (x, lang) => x[lang === 'en' ? 1 : 2], fw = (x, lang) => ({ text: wd(x, far(lang)), lang: far(lang) });
+      const show = lang => T[lang].chat.swapShow(`${A[0]} ${wd(A, lang)}`, wd(A, far(lang)), wd(B, far(lang)));
+      const q = { show: { en: show('en'), fr: show('fr') }, parts: lang => { const t = T[lang].chat.swapTeach(wd(A, lang), fw(A, lang)), k = T[lang].chat.swapAsk(fw(B, lang)); return [...t, { pause: 350 }, ...k]; } };
+      await sleep(300); await talk(q); if (!alive()) return;
+      const opts = shuffle([B, C, D]).map(x => ({ e: x[0], en: T.en.chat.ans(x[1]), fr: T.fr.chat.ans(x[2]), x }));
+      const o = await choose(opts); if (!alive()) return;
+      await mine(o); if (!alive()) return;
+      const ok = o.x === B, mk = f => ({ show: { en: `${B[0]} ${B[2]} = ${B[1]}`, fr: `${B[0]} ${B[1]} = ${B[2]}` }, parts: lang => T[lang].chat[f](fw(B, lang), wd(B, lang)) });
+      if (ok) { sfx('good'); owlReact('happy'); burstAt($('.chat .owl'), 20); } await talk(mk(ok ? 'swapYes' : 'swapNo')); if (!alive()) return;
+      $('.bubble.me').hidden = true;
+    }
+  } else {
+    for (const t of topic.turns) {
+      await sleep(300); await talk(plain(t.en, t.fr)); if (!alive()) return;
+      const o = await choose(t.opts.map(([e, en, fr, ren, rfr, men, mfr]) => ({ e, en, fr, ren, rfr, men, mfr }))); if (!alive()) return;
+      if (t.mem && o.men) { S.chat = S.chat || {}; S.chat[t.mem] = { en: o.men, fr: o.mfr }; save(); }
+      await mine(o); if (!alive()) return;
+      owlReact('happy'); await talk(plain(o.ren, o.rfr)); if (!alive()) return;
+      $('.bubble.me').hidden = true;
+    }
+  }
+  // goodbye, with a little present
+  tally('chats'); logDay(true); S.stars += 2; save();
+  sfx('win'); burstAt($('.chat .owl'), 40); const o2 = $('.chat .owl'); if (o2) o2.classList.add('dance');
+  await talk({ show: { en: T.en.chat.bye + ' ⭐⭐', fr: T.fr.chat.bye + ' ⭐⭐' }, parts: lang => [T[lang].chat.bye] }); if (!alive()) return;
+  await sleep(900); if (!alive()) return;
+  chatToken++; await celebrateAwards(); home();
+}
+
 // ================= intro: music + personal welcome =================
 function intro() {
   applySettings();
@@ -2302,7 +2569,7 @@ function home(fromIntro) {
     <button class="ic corner" aria-label="parents">⚙️</button>
     <div class="langs"><button class="lang ${S.lang === 'en' ? 'on' : ''}" data-l="en">🇬🇧 English</button>
       <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr">🇫🇷 Français</button></div>
-    <div class="hero">${owl('big')}<h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
+    <div class="hero">${owl('big')}<button class="chatb">💬 ${L().chat.btn}</button><h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
     <button class="btn primary huge pulse go">▶ ${L().start}</button>
     <div class="row">
       <button class="btn card" data-m="read">📖<span>${L().reading}</span></button>
@@ -2329,6 +2596,7 @@ function home(fromIntro) {
     sfx('pop'); burstAt(o, 20); speak(pick(silly));
   };
   $('.go').onclick = () => { sfx('pop'); startPath(); };
+  $('.chatb').onclick = () => { sfx('pop'); chatWithTiko(); };
   $$('[data-m]').forEach(b => b.onclick = () => { sfx('tap'); const m = b.dataset.m; m === 'stickers' ? stickerBook() : m === 'journey' ? journey() : menu(m); });
   $('.corner').onclick = () => parentGate();
 }
@@ -2636,6 +2904,7 @@ function parents() {
       <label class="set">Questions per stop <select data-s="perStop">${[3, 4, 5, 6, 8].map(n => `<option ${st.perStop === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="set">Movement break mid-path <input type="checkbox" data-s="breaks" ${st.breaks ? 'checked' : ''}></label>
       <label class="set">Fun treat at the end of the path (art or thinking game) <input type="checkbox" data-s="artInPath" ${st.artInPath ? 'checked' : ''}></label>
+      <label class="set">🎤 In "Chat with Tiko", let her answer by voice too (needs internet; her voice is sent to Google's speech service to be understood) <input type="checkbox" data-s="voiceChat" ${st.voiceChat ? 'checked' : ''}></label>
       <label class="set">Discovery mode (mastered activities, or ones played twice today, rest; new ones sparkle) <input type="checkbox" data-s="discovery" ${st.discovery ? 'checked' : ''}></label>
       <label class="set">Focus nudges (Tiko says "Your turn!" after 15 s with no taps) <input type="checkbox" data-s="nudge" ${st.nudge ? 'checked' : ''}></label>
       <label class="set">Sound effects <input type="checkbox" data-s="sfx" ${st.sfx ? 'checked' : ''}></label>
@@ -2665,6 +2934,8 @@ function parents() {
 
     <section><h3>📊 Progress</h3><p>✓ = remembered well (reached box 4 of 5 in spaced repetition). New items come in slowly, a few at a time, and anything she misses comes back more often.</p>
       <div class="progx">${progHTML()}</div></section>
+
+    <section><h3>🎤 Her reading</h3><p>In "Read it to Tiko" she records herself reading. The latest 12 recordings are kept here, on this tablet only.</p><div class="readlist"></div></section>
 
     <section><h3>📷 Her paper work</h3><div class="gallery pg"></div></section>
 
@@ -2760,6 +3031,13 @@ function parents() {
     if (!armed) { armed = true; e.target.textContent = 'Tap again to confirm reset'; setTimeout(() => { armed = false; e.target.textContent = 'Reset all progress'; }, 4000); return; }
     const keep = S.settings; S = structuredClone(DEFAULTS); S.settings = keep; save(); parents();
   };
+  const drawReadings = () => {
+    const box = $('.readlist'), list = S.readings || [];
+    box.innerHTML = list.length ? list.map((r, i) => `<div class="goalrow"><button class="pbtn alt" data-rp="${i}">▶</button><b>${esc(r.text)}</b><span>${r.lang === 'fr' ? '🇫🇷' : '🇬🇧'} ${esc(r.d)}</span><button class="pbtn alt" data-rd="${i}">🗑</button></div>`).join('') : '<p>No recordings yet.</p>';
+    $$('[data-rp]', box).forEach(b => b.onclick = async () => { const bl = await idb.get('rec', list[+b.dataset.rp].k); if (bl) { stopSpeech(); playBlob(bl); } });
+    $$('[data-rd]', box).forEach(b => b.onclick = async () => { const [r] = list.splice(+b.dataset.rd, 1); save(); idb.del('rec', r.k).catch(() => {}); drawReadings(); });
+  };
+  drawReadings();
   (async () => {
     const g = $('.pg'), keys = ((await idb.keys('photos')) || []).sort((a, b) => b - a);
     if (!keys.length) { g.outerHTML = '<p>No photos yet. She can take one with 📷 during paper missions.</p>'; return; }

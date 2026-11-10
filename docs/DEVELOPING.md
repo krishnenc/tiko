@@ -1,0 +1,224 @@
+# Tiko – developer guide
+
+Read this before adding a feature. It describes how the app is put together, the rules that must not be broken, and how to test and ship.
+
+Tiko is an offline, installable web app (PWA) that teaches a young child to read in English and French, plus early maths, drawing and thinking games. It runs in Chrome on an Android tablet and is hosted on GitHub Pages from the root of the `main` branch.
+
+## 1. Ground rules
+
+These come from the parent and from hard-won bugs. Treat them as requirements.
+
+**Learning rules**
+
+- **No repetition.** An item answered right the first time is known for ever and is never shown again. Only items she got wrong come back, at random, until she gets them right. This applies to every new activity that draws on letters, words or magic (sight) words.
+- **Discovery path.** She tends to replay easy things, so the app steers her forward. A mastered activity, or one played twice today, "rests" and cannot be replayed. New activities she is ready for sparkle, and one per menu is suggested. Conquered journey places do not replay.
+- **Difficulty ladders start very easy.** Harder variants belong higher up the ladder, never at level 1.
+- **No time pressure.** Thinking games let her look as long as she wants. Tracing waits for the full trace; nothing finishes on a timer.
+- **Maths is concrete.** Put together, take away, tick and count objects before symbols.
+- **Never shame.** A wrong answer gets a soft sound, a second try, then Tiko shows how. Anything that sends a word back to practice does so silently.
+
+**Look, sound and feel**
+
+- The app is a **unicorn universe**: pink first, with lavender, mint and warm gold, in soft pastels that are easy on the eye. Tiko is a small winged unicorn.
+- Sounds are soft and bell-like. Relaxing music plays on calm screens only and goes silent whenever Tiko speaks.
+- While she is working, the scenery steps back (`body.work`).
+- Honour `body.calm` (parent's "calm mode"): every new animation needs an entry in the calm rules in `styles.css`.
+
+**Privacy**
+
+- The repository is public. **Never put the child's name, photo, voice or any personal detail in the code, tests, commit messages or docs.** Her name is typed on the tablet and stored only there (`S.settings.name`).
+- Recordings and photos stay in IndexedDB on the device.
+- Anything that would send her data off the device (for example speech recognition) must be off by default, behind a parent setting that says plainly what it does.
+
+**Technical**
+
+- Plain HTML, CSS and JavaScript. No build step, no framework, no dependencies. Keep it that way.
+- It must work fully offline after the first load.
+- Target small tablets in both orientations. Test at 601x962 (device scale 2) and 1280x800.
+- Use real touch events when testing anything touch-driven. Synthetic pointer events have passed while the real tablet failed.
+
+## 2. Files
+
+| File | What it holds |
+|---|---|
+| `index.html` | The page shell and the animated background (`.world`: stars, sun, rainbow, clouds, castle, sparkles, hills). |
+| `data.js` | All learning content and all interface text (`DATA`, `SENTENCES`, `SENTENCES2`, `STORIES`, `SOUND_CLIPS`, `FR_SAY`, `T`). Loaded first. |
+| `app.js` | All behaviour, about 3,000 lines, in one file with `// =====` section headers. |
+| `styles.css` | All styling. Theme colours are CSS variables on `:root`. |
+| `sw.js` | Service worker: caching and offline. |
+| `manifest.webmanifest`, `icons/` | Install metadata and icons. |
+| `sounds/<lang>-<unit>.wav` | Pure phonics clips (60 files). |
+
+Scripts are ordinary globals in one scope, so a function in `app.js` can be called from the browser console or a test.
+
+### Sections of `app.js`, in order
+
+helpers → state → IndexedDB → sound effects → relaxing music → speech → her name → intro jingle → combos → confetti and flying stars → mascot → spaced repetition → the literacy journey → achievements → nudges → maths levels → activities (`ACTS`) → discovery path → question makers (`mk…`) → more maths → thinking games → creative arts → question runner (`ask…`) → Read it to Tiko → Chat with Tiko → intro → screens (home, menu, daily path, journey, sticker book) → parents → printable worksheet → boot.
+
+## 3. State
+
+One object, `S`, saved to `localStorage` under `tiko.v1` by `save()`. `DEFAULTS` lists the base shape; `load()` merges saved data over it, so new fields need a default or a `S.x = S.x || …` guard.
+
+| Field | Meaning |
+|---|---|
+| `lang` | `'en'` or `'fr'`. `L()` returns the text table for it. |
+| `boxes`, `due` | Learning state per item, key `lang:set:id`. Box 0 = never met, 1 = missed (in practice), 5 = known. `due` is `'never'` for known items. |
+| `levels`, `streak` | Level and right/wrong run per maths or thinking activity. |
+| `counts[lang]` | Sentences and stories read (used by the journey). |
+| `seenStage[lang]` | Furthest journey place reached. Also the floor for `stageOf()`. |
+| `days[yyyy-mm-dd]` | `{ q, ok }` questions and first-try successes that day. |
+| `totals`, `badges`, `goals`, `stars`, `stickers` | Rewards. `tally(k)` / `tot(k)` read and write `totals`. |
+| `plays[lang:act]` | `{ total, day, n }` for the discovery path. |
+| `used[lang:key]` | Items already handed out by `pickFresh`. |
+| `chat` | What Tiko remembers from chats (`colour`, `animal`, `food`). |
+| `readings` | Metadata for her latest 12 read-aloud recordings. |
+| `settings` | Parent settings. Checkboxes in the parent corner bind by `data-s="<key>"`. |
+
+One-off migrations sit just under `load()`, each guarded by a flag such as `S.memV23`. Add new ones there, never by editing saved data in place elsewhere.
+
+IndexedDB (`idb.get/set/del/keys`) has two stores: `rec` (parent sound recordings keyed `lang:unit`, the name recording `name`, and her readings `read:<timestamp>`) and `photos`.
+
+## 4. Content (`data.js`)
+
+### Words
+
+```js
+['cake', 'c a:ay k _e', '🎂']        // word, units, picture
+['red',  'r e d',       '🔴', 1]     // 4th value: not "a thing"
+```
+
+- **Units** are sounds in English and syllables in French, separated by spaces.
+- `text:sound` shows `text` on the tile and plays `sound` (`a:ay`, `ph:f`, `se:ze`).
+- `_x` is a silent letter: shown grey, never spoken.
+- The unit texts joined together must spell the word.
+- English sounds must exist in `SOUND_CLIPS.en`. French syllables are spoken by the device voice; if a syllable would be misread on its own, add its spoken spelling to `FR_SAY`.
+- The 4th value marks words that do not fit "I see a …" (adjectives, verbs, plurals, uncountables). They are used for blending but kept out of sentences, stories and drawing prompts.
+- Words are listed in teaching order. `tiers` holds the index where each difficulty level ends. Append new words at the end of a level and update `tiers`.
+- Pictures should be unique within a language where possible.
+- New feminine French nouns go in `FR_FEM`; words with an aspirated h go in `FR_HASP`.
+
+Run `node tools/content-check.js` after any content change. It checks spelling of units, clips, duplicates, tiers and every sentence and story pattern.
+
+### Sentences and stories
+
+`SENTENCES[lang]` are functions of one word, `SENTENCES2[lang]` of two, `STORIES[lang]` return `{ lines, q, answer: 'A' | 'B' }`. Use only magic words and simple grammar. Avoid adjectives that change with French gender.
+
+### Interface text
+
+`T.en` and `T.fr` hold every string. Add both languages together. French text addressed to the child uses the feminine.
+
+## 5. How learning works
+
+- `chooseItem(set, items)` applies the no-repetition rule: a missed item 40% of the time when one is waiting, otherwise the first item never met.
+- `gradeItem(set, id, first)` sets box 5 for a first-try success, box 1 otherwise.
+- `WORD_SETS = ['blend', 'oral', 'spell', 'fam']` share knowledge: a word known in one is known in all (`isKnown`).
+- `wordLevel()` follows the journey and moves up early if she knows every word of a level. `wordQueue()` orders new words so her current level comes first.
+- `forgetWord(id)` sends a "known" word back to practice when she cannot read it inside a sentence.
+- `pickFresh(key, list)` hands out each item once before any repeats. Use it for anything that is not graded item by item.
+- `gradeLevel(act, first)` moves maths and thinking levels: up after 3 first-try successes in a row, down after 3 misses. `MATH_MAX` and `THINK_MAX` give the top level of each.
+
+### The journey
+
+`STAGES` is eight places. Word places are won by knowing a fixed number of words of that level, not a share of the list, so adding words never slows her down. `stageOf()` never returns less than `S.seenStage`, so a place reached is never lost.
+
+### Discovery path
+
+`actState(a)` returns `new`, `open`, `rest` or `mastered`. `READ_UNLOCK` gives the journey place from which each reading activity makes sense. `recordPlay(a)` runs when an activity is completed. `freshen(stops)` swaps mastered stops out of the daily path.
+
+## 6. Adding an activity
+
+1. Write a maker, `mkThing()`, returning a question object.
+2. Register it: `ACTS.thing = { icon, area: 'read' | 'math' | 'art' | 'think', make: mkThing, per: <questions per visit> }`.
+3. Name it in both languages: `T.en.acts.thing`, `T.fr.acts.thing`.
+4. Reading activities need a `READ_UNLOCK` entry. Levelled activities need `MATH_MAX` or `THINK_MAX`.
+5. Decide whether it belongs in the daily path (`PLANS`, `MATH_A`, `MATH_B` in `buildPath`).
+6. Teach the regression script to play it (see section 9).
+
+A plain multiple-choice question needs no new runner:
+
+```js
+{ title, speak: [...], visual: '<html>', options: [{ html, val }], answer,
+  correctSpeak: [...], grade: first => gradeItem(set, id, first),
+  optClass, gate, setup(root, unlock), explain(root), retrySpeak, onCorrect }
+```
+
+`askChoice` handles two tries, the hint, stars and praise. `q.wrong` lists the wrong values she tapped. For a different interaction, give the question a `kind` and add an `askKind(q, meta)` branch in `ask()`. A runner returns a promise that resolves `true`/`false` (first try or not) or `null` if she went home; it must call `wire(meta, finish, replay, nudgeParts)` so the home and repeat buttons and the idle nudge work.
+
+Full-screen tools such as painting use `studio: () => promise` instead of `make`.
+
+A feature that is not an activity (for example Chat with Tiko) is a screen function. Call `zone(...)` and `musicMode(...)` at the top, set `exitCurrent`, and guard every `await` with a token so leaving the screen stops the flow.
+
+## 7. Speech and sound
+
+- `speak(...parts)` is the only way Tiko talks. Parts: a string, `{ unit }`, `{ seq, gap }`, `{ pause }`, `{ name: true }`, `{ text, lang }`. It cancels whatever was playing; one sound at a time.
+- `playUnit(unit)` plays a phonics sound: parent recording, then clip, then voice.
+- `sfx('good' | 'oops' | 'tap' | 'pop' | 'win')` are synthesised. Keep them soft.
+- `musicMode('calm' | 'work' | 'off')` sets the background music. Calm screens use `calm`; activities use `work` (silent unless the parent opted in). The music ducks itself during `speak`.
+- Voices differ between devices and can fail to report the end of speech; `say()` has safety timers. Do not rely on exact speech timing.
+
+## 8. Look and feel
+
+- Theme variables are at the top of `styles.css`. Use them instead of new colours.
+- `zone('home' | 'read' | 'math' | 'art' | 'think')` switches the sky colours through `body[data-zone]`.
+- The mascot is drawn by `owl(cls)` (the name is historical). Classes: `big`, `mini`, `happy`, `think`, `dance`, `spin`, `wave`, `talk`.
+- Shared building blocks: `.btn` (+ `primary`, `teal`, `sun`, `grape`, `huge`, `card`), `.ic`, `.bubble`, `.opt`, `.unit`, `.reader`, `.topline`.
+- Size text and tiles with `clamp()` and `vmin`/`vh` so both orientations fit. The home screen must not scroll at 601x962.
+- App icons are generated from the mascot: `node tools/make-icons.js <chrome> tiko/icons`.
+
+## 9. Testing
+
+Tests are Node scripts that drive headless Chrome through the DevTools protocol. They live in `tools/`, next to the repository folder, and are not published.
+
+Start the local server first (it serves the working folder on port 8765):
+
+```
+node tools/serve.js        (run with the repository folder as the working directory)
+```
+
+| Script | Arguments | What it proves |
+|---|---|---|
+| `content-check.js` | none | Content in `data.js` is consistent. No browser needed. |
+| `drive.js` | `<chrome> <outDir>` | Full play-through of every activity in both languages. About 10 minutes; ends with `ERRORS none`. Run it in the background. |
+| `rule-check.js` | `<chrome> <outDir>` | No repeats; only mistakes come back. |
+| `discovery-check.js` | `<chrome> <outDir>` | Rest, mastered, suggestions, conquered places. |
+| `memory-check.js` | `<chrome> <outDir>` | Memory pairs ladder and layout. |
+| `v24-check.js` | `<chrome>` | Journey pace with big word lists, word order, lucky-guess catch, sentences and families. |
+| `chat-check.js` | `<chrome> <outDir>` | Every chat topic in both languages with real touch; read-aloud with a fake microphone. |
+| `music-check.js` | `<chrome>` | Music on calm screens, silent during speech and work. |
+| `audio-check.js` | `<chrome> <outDir>` | Phonics sounds never overlap. |
+| `touch-trace.js`, `slider-touch.js` | `<chrome> <outDir>` | Tracing and the blending slider with real touch at odd tablet sizes. |
+| `menu-shot.js` | `<chrome> <outDir>` | Menu labels fit at three sizes. |
+| `tour-shot.js` | `<chrome> <outDir> [w h dpr] [screens]` | Screenshots of the main screens; reports screens that scroll. Look at the pictures. |
+| `check-live.js` | `<chrome> <url> <screenshot.png>` | The deployed site: cache version, offline, clips. |
+
+When you add a question `kind`, add a branch for it in `drive.js` (`answer` function) or the play-through will hang. When you add a feature, add a check script for it in the same style: clear storage, stub `say` to record what Tiko says, drive with `Input.dispatchTouchEvent`, print one line per fact, end with `JS errors:`.
+
+Useful test hooks: `startJourneyAt(lang, stage)`, `runStop(act, n)`, `runAct(act)`, `menu(area)`, `home()`, `journey()`, `exitCurrent()`.
+
+## 10. Shipping
+
+1. Bump `APP_VERSION` in `app.js` and `VERSION` in `sw.js` to the same number. The service worker only refreshes tablets when `VERSION` changes.
+2. Run the checks that cover what you touched, plus `drive.js`.
+3. Commit and push to `main`. GitHub Pages publishes in about a minute.
+4. Run `check-live.js` against the live URL and confirm the new cache name, offline `true`, and no errors. If it still shows the old version, wait and run it again.
+
+The tablet picks up a new version the next time the app is opened online, and shows the version number at the bottom corner of the home screen.
+
+**Editing on Windows:** never rewrite source files through PowerShell `Get-Content`/`Set-Content` pipelines. PowerShell 5.1 reads UTF-8 without a byte-order mark as ANSI and corrupts every emoji and accent. Use an editor or tool that preserves UTF-8.
+
+## 11. Known limits
+
+- The device voice cannot be tested headlessly. French syllable pronunciation and voice/music interplay need a listen on the real tablet. Parents can check and re-record any sound in the parent corner.
+- Voice answers in chat rely on the browser's online speech recognition and are untested on the tablet.
+- Progress lives in `localStorage` on one device.
+- Emoji are the pictures. Some newer emoji may not exist on old Android versions.
+
+## 12. Version history
+
+| Version | Change |
+|---|---|
+| v22 | "Known once, never again" rule. |
+| v23 | Gentler Memory pairs ladder; discovery path. |
+| v24 | Word lists grown to 370 (English) and 280 (French); more sentences and stories; journey won by word counts; lucky-guess catch. |
+| v25 | Unicorn universe: new mascot, pastel theme, living sky, relaxing music, softer sounds. |
+| v26 | Chat with Tiko (English and French); Read it to Tiko with recordings for parents. |
