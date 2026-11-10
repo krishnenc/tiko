@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 36;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 37;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -210,19 +210,16 @@ async function playUnitNow(unit, lang = S.lang, rate) {
     if (blob) return playBlob(blob);
   }
   // the clip; if it can't load (e.g. offline right after an update) fall back to the voice rather than silence
-  // rate 'clear' (robot talk): the clip exactly as it was recorded — no speeding up, no slowing down, no pitch change.
-  // (Slowing a clip down makes the tablet stretch it, and a stretched half-second sound comes out garbled.)
-  const clear = rate === 'clear'; if (clear) rate = 0;
-  if ((SOUND_CLIPS[lang] || []).includes(snd) && await playUrl(`sounds/${lang}-${snd}.wav`, clear ? 1 : rate && rate > 1 ? 1.15 : 1, !clear && lang === 'en') !== false) return;
+  // A clip ALWAYS plays exactly as it was recorded: no speeding up, no slowing down, no pitch change (v37).
+  // Sped up without pitch correction it came out as a squeaky "baby voice"; slowed down, the tablet stretched it into mush.
+  if (rate === 'clear') rate = 0;
+  if ((SOUND_CLIPS[lang] || []).includes(snd) && await playUrl(`sounds/${lang}-${snd}.wav`) !== false) return;
   // letter sounds stay close to natural pitch so they remain clear
   return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(langPitch(lang), 1.4));
 }
-function playUrl(url, rate = 1, bright = false) {
+function playUrl(url) {
   return new Promise(res => {
-    // English clips: a little faster WITHOUT pitch correction, so they come out brighter; French clips play as recorded
     const a = new Audio(url); curAudio = a; liveAudio.add(a);
-    if (bright) { a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; }
-    a.playbackRate = rate * (bright ? 1.08 : 1);
     // resolves true when it played, false when the file couldn't be played (so the caller can fall back)
     let done = false; const fin = a.__fin = (ok = true) => { if (!done) { done = true; liveAudio.delete(a); res(ok); } };
     a.onended = () => fin(true); a.onerror = () => fin(false); a.play().catch(err => fin(err && err.name === 'AbortError'));
