@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 33;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 34;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -210,9 +210,11 @@ async function playUnitNow(unit, lang = S.lang, rate) {
     if (blob) return playBlob(blob);
   }
   // the clip; if it can't load (e.g. offline right after an update) fall back to the voice rather than silence
-  if ((SOUND_CLIPS[lang] || []).includes(snd) && await playUrl(`sounds/${lang}-${snd}.wav`, rate && rate > 1 ? 1.15 : 1, lang === 'en') !== false) return;
+  // rate 'clear' (robot talk): each sound a little slower and at its natural pitch, so it is as easy to hear as possible
+  const clear = rate === 'clear'; if (clear) rate = 0;
+  if ((SOUND_CLIPS[lang] || []).includes(snd) && await playUrl(`sounds/${lang}-${snd}.wav`, clear ? .88 : rate && rate > 1 ? 1.15 : 1, !clear && lang === 'en') !== false) return;
   // letter sounds stay close to natural pitch so they remain clear
-  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(langPitch(lang), 1.4));
+  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * (clear ? 0.8 : 0.9), Math.min(langPitch(lang), clear ? 1.2 : 1.4));
 }
 function playUrl(url, rate = 1, bright = false) {
   return new Promise(res => {
@@ -255,9 +257,10 @@ async function speakParts(parts) {
     // fast (gap < 450) = back-to-back, slightly quicker, so they run together; slow = "robot talk" with a pause between
     else if (p.seq) {
       const fast = (p.gap || 650) < 450;
-      for (const u of p.seq) {
+      for (const [i, u] of p.seq.entries()) {
         if (t !== speakToken) return; if (u.startsWith('_')) continue;
-        await playUnit(u, p.lang || S.lang, fast ? 1.15 : 1);
+        if (p.onUnit) p.onUnit(i);                       // e.g. light a dot for the sound being said
+        await playUnit(u, p.lang || S.lang, p.clear ? 'clear' : fast ? 1.15 : 1);
         if (!fast) await sleep(Math.max(150, (p.gap || 650) - 450));
       }
       await sleep(250);
@@ -402,31 +405,33 @@ MASCOTS.dino = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120"
     <path class="mouth" d="M52 74 q8 5.5 16 0" stroke="#2f7f6a" stroke-width="2" stroke-linecap="round" fill="none"/>
     <path d="M64.5 75.2 l1.6 3 l1.6 -3.6z" fill="#fff" stroke="none"/>
   </g></svg></div>`;
-// a small, round dinosaur: plates down the back, short arms (they are the "wings" for the animations), a chunky tail
+// a little triceratops (nothing like the dragon): a big frill behind the head, two brow horns and a nose horn, a beak,
+// warm orange instead of green, no wings — its short arms carry the "wing" classes so the animations still work
 MASCOTS.rex = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
   <ellipse cx="60" cy="115" rx="30" ry="4.5" fill="#0000001a"/>
-  <g class="owl-body" stroke="#57a04a" stroke-width="1.2" stroke-linejoin="round">
-    <path d="M80 100 q26 6 28 -16 q6 20 -8 28 q-12 5 -20 -4z" fill="#86cf6a"/>
-    <path d="M97 97 l6 -7 l2 9z M104 88 l6 -5 l0 8z" fill="#ffa552" stroke="#e58530"/>
-    <rect x="43" y="98" width="13" height="16" rx="6" fill="#86cf6a"/><rect x="64" y="98" width="13" height="16" rx="6" fill="#86cf6a"/>
+  <g class="owl-body" stroke="#d98a34" stroke-width="1.2" stroke-linejoin="round">
+    <path d="M80 103 q18 3 21 -9 q4 13 -6 19 q-9 3 -15 -4z" fill="#ffb760"/>
+    <rect x="43" y="98" width="13" height="16" rx="6" fill="#ffb760"/><rect x="64" y="98" width="13" height="16" rx="6" fill="#ffb760"/>
     <path d="M45 113 h2 M49.500 113.500 h1 M53 113 h1 M66 113 h2 M70.500 113.500 h1 M74 113 h1" stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none"/>
-    <ellipse cx="60" cy="92" rx="25" ry="18" fill="#86cf6a"/>
-    <ellipse cx="60" cy="95" rx="15" ry="13" fill="#fff6d6" stroke="none"/>
-    <path class="wing l" d="M38 84 q-12 -2 -15 8 q3 -1 4 2 q3 -2 5 1 q5 -2 8 -5z" fill="#86cf6a"/>
-    <path class="wing r" d="M82 84 q12 -2 15 8 q-3 -1 -4 2 q-3 -2 -5 1 q-5 -2 -8 -5z" fill="#86cf6a"/>
-    <path d="M40 27 l3 -13 l9 9z M53 22 l7 -14 l7 14z M68 23 l9 -9 l3 13z" fill="#ffa552" stroke="#e58530"/>
-    <ellipse cx="60" cy="54" rx="36" ry="31" fill="#98dc7c"/>
-    <g stroke="none" fill="#6fbf58" opacity=".7"><circle cx="34" cy="40" r="3.500"/><circle cx="42" cy="33" r="2.200"/><circle cx="86" cy="40" r="3.500"/><circle cx="78" cy="33" r="2.200"/></g>
+    <ellipse cx="60" cy="93" rx="24" ry="17" fill="#ffb760"/>
+    <ellipse cx="60" cy="96" rx="14" ry="12" fill="#fff6d6" stroke="none"/>
+    <path class="wing l" d="M38 86 q-11 -1 -13 8 q3 -1 4 2 q3 -2 5 1 q4 -2 7 -5z" fill="#ffb760"/>
+    <path class="wing r" d="M82 86 q11 -1 13 8 q-3 -1 -4 2 q-3 -2 -5 1 q-4 -2 -7 -5z" fill="#ffb760"/>
+    <ellipse cx="60" cy="40" rx="47" ry="34" fill="#ffd98a" stroke="#e8a23c"/>
+    <ellipse cx="60" cy="43" rx="37" ry="26" fill="#ffc15e" stroke="none"/>
+    <g fill="#ff8f5a" stroke="#e0703c" stroke-width=".8"><circle cx="15" cy="34" r="4"/><circle cx="24" cy="18" r="4"/><circle cx="41" cy="8" r="4"/><circle cx="60" cy="5" r="4"/><circle cx="79" cy="8" r="4"/><circle cx="96" cy="18" r="4"/><circle cx="105" cy="34" r="4"/></g>
+    <ellipse cx="60" cy="60" rx="31" ry="26" fill="#ffc474"/>
+    <path d="M43 42 q-7 -13 -4 -25 q9 8 14 21z M77 42 q7 -13 4 -25 q-9 8 -14 21z" fill="#fffaf0" stroke="#cdbb95"/>
     <g class="eyes" stroke="none">
-      <ellipse cx="45" cy="52" rx="7.500" ry="9" fill="#fff"/><ellipse cx="75" cy="52" rx="7.500" ry="9" fill="#fff"/>
-      <ellipse cx="46" cy="53" rx="5" ry="6.400" fill="#33473a"/><ellipse cx="74" cy="53" rx="5" ry="6.400" fill="#33473a"/>
-      <circle cx="48" cy="50" r="2.200" fill="#fff"/><circle cx="76" cy="50" r="2.200" fill="#fff"/>
+      <ellipse cx="45" cy="57" rx="7" ry="8.500" fill="#fff"/><ellipse cx="75" cy="57" rx="7" ry="8.500" fill="#fff"/>
+      <ellipse cx="46" cy="58" rx="4.800" ry="6" fill="#4a3526"/><ellipse cx="74" cy="58" rx="4.800" ry="6" fill="#4a3526"/>
+      <circle cx="48" cy="55" r="2.100" fill="#fff"/><circle cx="76" cy="55" r="2.100" fill="#fff"/>
     </g>
-    <ellipse cx="31" cy="64" rx="6" ry="4" fill="#ff9f8a" opacity=".5" stroke="none"/><ellipse cx="89" cy="64" rx="6" ry="4" fill="#ff9f8a" opacity=".5" stroke="none"/>
-    <ellipse cx="60" cy="72" rx="19" ry="11" fill="#b9eba2" stroke="none"/>
-    <circle cx="53" cy="67.500" r="1.500" fill="#57a04a" stroke="none"/><circle cx="67" cy="67.500" r="1.500" fill="#57a04a" stroke="none"/>
-    <path class="mouth" d="M50 75 q10 6.500 20 0" stroke="#3f7f36" stroke-width="2" stroke-linecap="round" fill="none"/>
-    <path d="M54.500 76.600 l1.500 2.800 l1.500 -2.200z M62.500 77.200 l1.500 2.800 l1.500 -3.400z" fill="#fff" stroke="none"/>
+    <ellipse cx="33" cy="69" rx="5.500" ry="3.600" fill="#ff8f7a" opacity=".5" stroke="none"/><ellipse cx="87" cy="69" rx="5.500" ry="3.600" fill="#ff8f7a" opacity=".5" stroke="none"/>
+    <ellipse cx="60" cy="77" rx="17" ry="10" fill="#ffe2ad" stroke="none"/>
+    <path d="M54 72 q6 -18 12 0z" fill="#fffaf0" stroke="#cdbb95"/>
+    <circle cx="53" cy="77" r="1.400" fill="#c9792c" stroke="none"/><circle cx="67" cy="77" r="1.400" fill="#c9792c" stroke="none"/>
+    <path class="mouth" d="M52 81 q8 5 16 0" stroke="#a85f1f" stroke-width="2" stroke-linecap="round" fill="none"/>
   </g></svg></div>`;
 MASCOTS.owl = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
   <ellipse cx="60" cy="114" rx="32" ry="5" fill="#0000001a"/>
@@ -886,6 +891,10 @@ function mastered(a) {
   if (max) return lvl(a) >= max && ((S.streak[a] || {}).ok || 0) >= 3;
   return false;
 }
+// Tracks a parent can hide (parent corner → "What she sees"). Hidden = not on the home screen and not on the daily path.
+const AREAS = ['read', 'math', 'art', 'think'];
+const TRACKS = [['read', '📖', 'Reading'], ['math', '🔢', 'Maths'], ['art', '🎨', 'Art'], ['think', '🧠', 'Thinking'], ['journey', '🗺️', 'My journey (the reading map)'], ['stickers', '🌟', 'My stickers'], ['chat', '💬', 'Chat with Tiko']];
+const hid = k => !!(S.settings.hide || {})[k];
 const readyFor = a => ACTS[a].area !== 'read' || (READ_UNLOCK[a] ?? 9) <= stageOf();
 function actState(a) {
   if (!S.settings.discovery) return 'open';
@@ -1054,8 +1063,12 @@ function mkRobot() {
   const { item, isNew } = chooseItem('oral', wordQueue());
   const sounds = item.units.filter(u => !u.startsWith('_'));
   return {
-    title: '🤖 ' + L().bl.robot, speak: [L().bl.robot, { pause: 250 }, { seq: sounds, gap: 700 }],
-    visual: `<div class="robot"><span>🤖</span><div class="waves"><i></i><i></i><i></i></div></div>`,
+    // Said twice so it is easy to catch: first each sound on its own — slow, clear, with a dot lighting up for each
+    // one (so she can see how many sounds there are) — then the same sounds closer together, the way they blend.
+    title: '🤖 ' + L().bl.robot, speak: [L().bl.robot, { pause: 250 },
+      { seq: sounds, gap: 1000, clear: true, onUnit: i => $$('.rdots i').forEach((d, j) => d.classList.toggle('on', j === i)) }, { pause: 300 },
+      { seq: sounds, gap: 380, onUnit: i => $$('.rdots i').forEach((d, j) => d.classList.toggle('on', j <= i)) }],
+    visual: `<div class="robowrap"><div class="robot"><span>🤖</span><div class="waves"><i></i><i></i><i></i></div></div><div class="rdots">${sounds.map(() => '<i></i>').join('')}</div></div>`,
     options: pictureOptions(item, wordsNow()), answer: item.w,
     retrySpeak: [L().bl.sayFast, { seq: sounds, gap: 380 }],
     correctSpeak: [{ seq: sounds, gap: 300 }, item.w], grade: f => gradeItem('oral', item.id, f, isNew),
@@ -2966,7 +2979,7 @@ function weekReport() {
       if (l === lg && v > 0 && v < 5 && !isKnown(set, id) && !practise[kind(set)].includes(id)) practise[kind(set)].push(id); }
     const mix = {}; for (const e of ev) if (e[2] === 'miss' && e[5] && !e[5].includes('+')) { const k = `${e[4]} → ${e[5]}`; mix[k] = (mix[k] || 0) + 1; }
     const acts = Object.keys(ACTS), P = S.plays || {}, played = acts.filter(a => inWeek.has((P[lg + ':' + a] || {}).day)).map(a => actName(a));
-    let never = acts.filter(a => !(P[lg + ':' + a] || {}).total && readyFor(a) && ACTS[a].area !== 'art').map(a => actName(a));
+    let never = acts.filter(a => !(P[lg + ':' + a] || {}).total && readyFor(a) && ACTS[a].area !== 'art' && !hid(ACTS[a].area)).map(a => actName(a));
     if (never.length > 8) never = [...never.slice(0, 8), `+${never.length - 8} more`];
     const st = stageOf(lg);
     R.langs[lg] = { any: wk.length > 0 || played.length > 0, stage: `${Math.min(st + 1, STAGES.length)}/${STAGES.length} ${st >= STAGES.length ? '(complete)' : T.en.journey[st]}`, learned, practise,
@@ -3075,15 +3088,10 @@ function home(fromIntro) {
     <button class="ic themepick" aria-label="theme">🎨</button>
     <div class="langs"><button class="lang ${S.lang === 'en' ? 'on' : ''}" data-l="en">🇬🇧 English</button>
       <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr">🇫🇷 Français</button></div>
-    <div class="hero">${owl('big')}<button class="chatb">💬 ${L().chat.btn}</button><h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
+    <div class="hero">${owl('big')}${hid('chat') ? '' : `<button class="chatb">💬 ${L().chat.btn}</button>`}<h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
     <button class="btn primary huge pulse go">▶ ${L().start}</button>
-    <div class="row">
-      <button class="btn card" data-m="read">📖<span>${L().reading}</span></button>
-      <button class="btn card" data-m="math">🔢<span>${L().maths}</span></button>
-      <button class="btn card" data-m="art">🎨<span>${L().artName}</span></button>
-      <button class="btn card" data-m="think">🧠<span>${L().thinkName}</span></button>
-      <button class="btn card" data-m="journey">🗺️<span>${L().read.journey}</span></button>
-      <button class="btn card" data-m="stickers">🌟<span>${L().stickers}</span></button>
+    <div class="row">${[['read', '📖', L().reading], ['math', '🔢', L().maths], ['art', '🎨', L().artName], ['think', '🧠', L().thinkName], ['journey', '🗺️', L().read.journey], ['stickers', '🌟', L().stickers]]
+      .filter(([k]) => !hid(k)).map(([k, ic, n]) => `<button class="btn card" data-m="${k}">${ic}<span>${n}</span></button>`).join('')}
     </div>
     <div class="row" style="align-items:center;gap:12px"><div class="starcount">⭐ ${S.stars} &nbsp; 🌟 ${S.stickers.length} &nbsp; 🏅 ${Object.keys(S.badges).length}</div>
     ${goalBarHTML()}</div>
@@ -3102,7 +3110,7 @@ function home(fromIntro) {
     sfx('pop'); burstAt(o, 20); speak(pick(silly));
   };
   $('.go').onclick = () => { sfx('pop'); startPath(); };
-  $('.chatb').onclick = () => { sfx('pop'); chatWithTiko(); };
+  if ($('.chatb')) $('.chatb').onclick = () => { sfx('pop'); chatWithTiko(); };
   $('.themepick').onclick = () => { sfx('pop'); themePicker(); };
   $$('[data-m]').forEach(b => b.onclick = () => { sfx('tap'); const m = b.dataset.m; m === 'stickers' ? stickerBook() : m === 'journey' ? journey() : menu(m); });
   $('.corner').onclick = () => parentGate();
@@ -3158,10 +3166,19 @@ function buildPath() {
     ['blend', 'story', 'A', odd ? 'spell' : 'traceSentence', 'B', 'sentence', 'paper', 'traceWord'],
   ];
   const order = PLANS[Math.min(stageOf(), PLANS.length - 1)].map(x => x === 'A' ? mathA : x === 'B' ? mathB : x);
-  const stops = order.slice(0, S.settings.stops);
-  // a fun treat at the end of every path: art one day, a thinking game the next
-  if (S.settings.artInPath) stops.push(dayNo % 2 ? ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw'][Math.floor(dayNo / 2) % 6]
+  // tracks the parent has hidden never appear on the path
+  const stops = order.filter(a => !hid(ACTS[a].area)).slice(0, S.settings.stops);
+  // a fun treat at the end of every path: art one day, a thinking game the next (whichever of the two is not hidden)
+  const artDay = hid('think') || (dayNo % 2 && !hid('art'));
+  if (S.settings.artInPath && !(hid('art') && hid('think'))) stops.push(artDay ? ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw'][Math.floor(dayNo / 2) % 6]
     : ['memory', 'simon', 'jigsaw', 'kim', 'odd'][Math.floor(dayNo / 2) % 5]);
+  // with reading or maths hidden the plan runs short: top it up from the tracks she does see (new things first)
+  const want = S.settings.stops + (S.settings.artInPath && !(hid('art') && hid('think')) ? 1 : 0);
+  if (stops.length < want) {
+    const extra = shuffle(Object.keys(ACTS).filter(k => !hid(ACTS[k].area) && readyFor(k) && !mastered(k) && !stops.includes(k) && k !== 'books'));
+    extra.sort((x, y) => playedEver(x) - playedEver(y));
+    stops.push(...extra.slice(0, want - stops.length));
+  }
   // discovery: anything she has mastered is swapped for something fresh she is ready for
   stops.splice(0, stops.length, ...freshen(stops));
   const seq = [];
@@ -3386,9 +3403,10 @@ function parents() {
       ${installEvt ? '<button class="pbtn inst">Install Tiko now</button>' : ''}</section>
 
     <section><h3>🖨️ Paper worksheets (blended learning)</h3>
-      <p>A worksheet made from what she's learning right now: letters to trace, words to read and draw, sums at her current level.
-      Print it or save it as a PDF. Every daily path also includes a <b>paper mission</b>. She works on paper, then taps ✅ or uses 📷 to show Tiko her work.</p>
-      <button class="pbtn ws" data-l="en">🇬🇧 English worksheet</button><button class="pbtn ws" data-l="fr">🇫🇷 Fiche en français</button></section>
+      <p>A <b>library of ${SHEETS.length} kinds of worksheet</b> for reading, writing and maths. Every sheet is one page, is made fresh each time, and follows where she is <b>right now</b>: her place on the journey (now ${stageOf('en') + 1} of ${STAGES.length + 1} in English, ${stageOf('fr') + 1} in French), the letters and words she is still learning, and her maths levels (adding ${lvl('add')}, taking away ${lvl('sub')}, counting ${lvl('count')}).
+      Open a sheet, or a whole pack, then <b>print it</b>, <b>save it as a PDF</b>, or <b>download</b> it as a file you can open and print from any device.
+      Every daily path also includes a <b>paper mission</b>. She works on paper, then taps ✅ or uses 📷 to show Tiko her work.</p>
+      <button class="pbtn wsopen" data-l="en">📚 Open the worksheet library</button><button class="pbtn alt wsopen" data-l="fr">🇫🇷 Fiches en français</button></section>
 
     <section><h3>🧒 The child's name</h3>
       <p>Tiko welcomes the child by name and sometimes uses it in praise. It's stored only on this tablet, never online.
@@ -3420,6 +3438,11 @@ function parents() {
       <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;font-size:17px;flex-wrap:wrap">🧠 All thinking games to level
         <span>${[1, 2, 3].map(n => `<button class="pbtn alt tset" data-n="${n}">${n}</button>`).join('')}</span></div>
       <p class="diffmsg" style="color:var(--teal-d);font-weight:600"></p></section>
+
+    <section><h3>👁️ What she sees</h3>
+      <p>Untick a track to hide it. A hidden track disappears from the home screen and from the daily path; her progress in it is kept, and ticking it again brings it straight back.</p>
+      <div class="tracks">${TRACKS.map(([k, ic, n]) => `<label class="trackb ${hid(k) ? '' : 'on'}"><input type="checkbox" data-track="${k}" ${hid(k) ? '' : 'checked'}> ${ic} ${n}</label>`).join('')}</div>
+      <p class="trackmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
     <section><h3>⚙️ Session</h3>
       <label class="set">Stops on the daily path <select data-s="stops">${[3, 4, 5, 6, 7, 8].map(n => `<option ${st.stops === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -3515,7 +3538,7 @@ function parents() {
     st.pitch = +b.dataset.p; st.pitch_fr = +b.dataset.pf; st.rate = +b.dataset.r; save();
     $('[data-s="pitch"]').value = st.pitch; $('[data-s="pitch_fr"]').value = st.pitch_fr; $('[data-s="rate"]').value = st.rate; vinfo(); demo(S.lang);
   });
-  $$('.ws').forEach(b => b.onclick = () => worksheet(b.dataset.l));
+  $$('.wsopen').forEach(b => b.onclick = () => worksheetLibrary(b.dataset.l));
   // difficulty controls
   const diffMsg = t => { $('.diffmsg').textContent = t; };
   $$('.jstart').forEach(sel => sel.onchange = () => {
@@ -3593,6 +3616,14 @@ function parents() {
     };
   })();
   $('[data-s="frBoy"]').addEventListener('change', () => setTimeout(() => location.reload(), 150));   // the French texts are prepared when the app starts
+  $$('[data-track]').forEach(c => c.addEventListener('change', () => {
+    const h = S.settings.hide = S.settings.hide || {}, k = c.dataset.track;
+    if (!c.checked && AREAS.includes(k) && AREAS.every(a => a === k || h[a])) {   // something to learn must stay
+      c.checked = true; $('.trackmsg').textContent = 'At least one of Reading, Maths, Art and Thinking has to stay.'; return;
+    }
+    if (c.checked) delete h[k]; else h[k] = true;
+    c.closest('.trackb').classList.toggle('on', c.checked); $('.trackmsg').textContent = ''; path = null; save();
+  }));
   $$('.themeb').forEach(b => b.onclick =() => { S.settings.theme = b.dataset.theme; save(); applySettings(); parents(); });
   // a little more time today: from wherever she is now, 10 more minutes
   $('.moretime').onclick = () => {
@@ -3645,31 +3676,8 @@ async function record(key, btn, after) {
 }
 
 // ================= printable worksheet =================
-function worksheet(lang) {
-  const d = DATA[lang], t = T[lang], sh = t.sheet, q = t.q;
-  const box = set => id => S.boxes[`${lang}:${set}:${id}`] || 0;
-  const lb = box('letter'), wb = box('blend');
-  let letters = d.letters.filter(x => lb(x.id) > 0).sort((a, b) => lb(a.id) - lb(b.id)).slice(0, 4);
-  if (letters.length < 4) letters = [...letters, ...d.letters.filter(x => !letters.includes(x))].slice(0, 4);
-  let words = shuffle(d.words.filter(x => wb(x.id) > 0)).slice(0, 3);
-  if (words.length < 3) words = [...words, ...d.words.filter(x => !words.includes(x))].slice(0, 3);
-  const la = lvl('add'), ls = lvl('sub'), max = n => [5, 10, 20, 30][n - 1];
-  const sums = [];
-  for (let i = 0; i < 3; i++) { const s = 2 + rand(max(la) - 1), a = 1 + rand(Math.min(s - 1, 10)); sums.push([a, '+', s - a]); }
-  for (let i = 0; i < 3; i++) { const a = 2 + rand(max(ls) - 1), b = 1 + rand(a - 1); sums.push([a, '−', b]); }
-  const dotsOf = n => n <= 10 ? '○'.repeat(n) : '';
-  const nmax = [20, 50, 100][lvl('next') - 1], s0 = 1 + rand(nmax - 8);
-  const seq = [...Array(8)].map((_, i) => s0 + i).map((n, i) => (i % 3 === 1 || i === 5) ? '___' : n).join(', ');
-  const el = $('#sheet');
-  el.innerHTML = `<div class="sh-close"><button class="pbtn" onclick="window.print()">🖨️ Print / PDF</button><button class="pbtn alt" id="shx">✕</button></div>
-    <div class="sh-head"><h1>🦄 ${sh.title}</h1><span>${sh.name}: ____________ &nbsp; ${sh.date}: ________</span></div>
-    <div class="sh-sec"><h2>✏️ ${sh.trace}</h2>${letters.map(l => `<div class="sh-trace">${`<span>${esc(l.l)}</span>`.repeat(6)}<span style="font-size:40px;color:#000">${l.e}</span></div><div class="sh-trace"></div>`).join('')}</div>
-    <div class="sh-sec"><h2>📖 ${sh.read}</h2><div class="sh-words">${words.map(w => `<div><b>${esc(w.w)}</b></div>`).join('')}</div></div>
-    <div class="sh-sec"><h2>🔢 ${sh.sums}</h2><div class="sh-sums">${sums.map(([a, o, b]) => `<div>${a} ${o} ${b} = ____<small>${o === '+' ? dotsOf(a) + ' + ' + dotsOf(b) : dotsOf(a)}</small></div>`).join('')}</div></div>
-    <div class="sh-sec"><h2>➡️ ${sh.line}</h2><div class="sh-line">${seq}</div></div>`;
-  el.classList.add('preview');
-  $('#shx').onclick = () => { el.classList.remove('preview'); el.innerHTML = ''; };
-}
+// The worksheet library lives in sheets.js (worksheetLibrary, worksheetShow): a catalogue of one-page sheets for
+// reading, writing and maths, each made fresh from where she is now.
 
 // ================= she picks her own world: the theme chooser on the home screen =================
 T.en.theme = { ask: 'Who is Tiko today?', unicorn: 'Unicorn', dino: 'Dragon', rex: 'Dinosaur', owl: 'Owl', iam: n => `I am Tiko the ${n.toLowerCase()}!` };

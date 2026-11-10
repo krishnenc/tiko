@@ -609,8 +609,12 @@ body[data-zone="think"] { --bg1: #d6d9f6; --bgm: #e4daf7; --bg2: #f8eef8; --hill
   body { overflow: visible; background: #fff; height: auto; }
   .world, #app, #fx { display: none !important; }
   #sheet { display: block !important; color: #000; font-family: var(--font); }
+  html { height: auto; overflow: visible; }
+  body #sheet.preview { position: static; overflow: visible; padding: 0; inset: auto; }   /* must beat the preview rule below, or only the first page prints */
 }
-#sheet.preview { display: block; position: fixed; inset: 0; z-index: 60; overflow: auto; background: #fff; padding: 76px 20px 20px; }
+#sheet.preview { display: block; position: fixed; inset: 0; z-index: 60; overflow: auto; background: #fff; padding: 84px 20px 20px; }
+@media (max-width: 760px) { #sheet.preview { padding-top: 112px; } .sh-close .pbtn { font-size: 14px; padding: 9px 10px; margin: 2px 4px 2px 0; } }
+.sh-msg { font-size: 14px; color: var(--teal-d); font-weight: 600; flex-basis: 100%; text-align: right; }
 .center .prize { font-size: clamp(100px, 22vh, 230px); }
 .center .owl.big { width: clamp(90px, 18vh, 200px); height: clamp(90px, 18vh, 200px); }
 .sh-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #000; padding-bottom: 6px; font-size: 18px; }
@@ -627,7 +631,7 @@ body[data-zone="think"] { --bg1: #d6d9f6; --bgm: #e4daf7; --bg2: #f8eef8; --hill
 .sh-sums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 30px; font-size: 32px; }
 .sh-sums small { display: block; font-size: 20px; letter-spacing: 3px; color: #555; }
 .sh-line { font-size: 30px; letter-spacing: 2px; margin: 8px 0; }
-.sh-close { position: fixed; top: 12px; right: 12px; z-index: 61; }
+.sh-close { position: fixed; top: 0; right: 0; left: 0; z-index: 61; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; padding: 10px 12px 6px; background: #fffffff2; border-bottom: 1px solid #eee; }
 @media print { .sh-close { display: none; } }
 
 /* ---------- journey map ---------- */
@@ -897,6 +901,13 @@ body[data-theme="owl"][data-zone="think"] { --bg1: #dbe1ee; --bgm: #e6eaec; --bg
 .themec.on { border-color: var(--sun); box-shadow: 0 0 0 5px var(--sun), 0 0 24px 6px #ffd58099, 0 8px 0 var(--line); }
 /* theme picker in the parent corner */
 .themes { display: flex; gap: 12px; flex-wrap: wrap; }
+.robowrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.rdots { display: flex; gap: 14px; } .rdots i { width: 26px; height: 26px; border-radius: 50%; border: 4px solid var(--teal); background: #fff; transition: background .15s, scale .15s; }
+.rdots i.on { background: var(--teal); scale: 1.25; }
+.tracks { display: flex; gap: 10px; flex-wrap: wrap; }
+.trackb { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 16px; border: 3px solid #eee; background: #fafafa; font-size: 17px; font-weight: 700; color: #999; cursor: pointer; }
+.trackb.on { border-color: var(--teal); background: #f2fbf8; color: inherit; }
+.trackb input { width: 22px; height: 22px; }
 .themeb { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 16px; border-radius: 18px; border: 4px solid #eee; background: #fff; font-size: 16px; font-weight: 700; min-width: 130px; }
 .themeb.on { border-color: var(--teal); background: #f2fbf8; } .themeb .owl { width: 84px; height: 84px; } .themeb small { font-weight: 400; color: #666; }
 /* slow sparkles drifting up, everywhere: the air of this world glitters a little */
