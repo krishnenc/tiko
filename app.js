@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 30;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 31;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -898,13 +898,20 @@ function mkSentence() {
     const pair = (p, q2) => ({ html: `<span class="pair">${p.e}${q2.e}</span>`, val: p.w + '+' + q2.w });
     return { kind: 'sentence', title: R.find, speak: [R.find], lines: [s], optClass: '',
       options: shuffle([pair(w, b), pair(w, c), pair(d, b)]), answer: w.w + '+' + b.w, correctSpeak: [s],
+      onMiss: r => cueWords(r, [w.w, b.w]), retrySpeak: [{ seq: soundsOf(w), gap: 330 }, { pause: 400 }, { seq: soundsOf(b), gap: 330 }],
       // a wrong pair shows which of the two words she could not read
       grade(f) { if (f) bumpCount('sentence'); else (this.wrong || []).forEach(v => { const [p, q2] = v.split('+'); if (p !== w.w) forgetWord(w.id); if (q2 !== b.w) forgetWord(b.id); }); } };
   }
   const s = pickFresh('sentenceT', SENTENCES[S.lang].map((f, i) => ({ id: i, f }))).f(w.w);
   return { kind: 'sentence', title: R.find, speak: [R.find], lines: [s], optClass: '',
     options: pictureOptions(w, DATA[S.lang].words), answer: w.w, correctSpeak: [s],
+    // after a miss: the word that matters pulses and Tiko says its sounds one by one (she still blends it herself)
+    onMiss: r => cueWords(r, [w.w]), retrySpeak: [{ seq: soundsOf(w), gap: 330 }],
     grade: f => { if (f) bumpCount('sentence'); else forgetWord(w.id); } };
+}
+const soundsOf = w => w.units.filter(u => !u.startsWith('_'));
+function cueWords(root, words) {
+  $$('.reader .w', root).forEach(s => { const t = (s.dataset.w || '').toLowerCase().replace(/^(l'|d')/, ''); if (words.some(x => t === x.toLowerCase())) s.classList.add('cue'); });
 }
 function mkStory() {
   const R = L().read, ws = shuffle(knownWords()), A = pickFresh('story', ws), B = ws.find(x => x.e !== A.e);
@@ -912,6 +919,8 @@ function mkStory() {
   const C = shuffle(DATA[S.lang].words.filter(x => x.e !== A.e && x.e !== B.e))[0];
   return { kind: 'story', title: R.story, speak: [R.story], lines: st.lines, q: st.q, optClass: '',
     options: shuffle([A, B, C]).map(x => ({ html: x.e, val: x.w })), answer: ans.w, correctSpeak: [ans.w],
+    // after a miss: the line of the story that holds the answer lights up, so she knows where to read again
+    onMiss: r => [].concat(st.cue == null ? [] : st.cue).forEach(i => { const p = $$('.reader p', r)[i]; if (p) p.classList.add('cue'); }),
     grade: f => { if (f) bumpCount('story'); } };
 }
 
@@ -1200,8 +1209,11 @@ function mkNext() {
   const before = l > 1 && Math.random() < .4;
   const n = before ? 2 + rand(max - 1) : 1 + rand(max - 1), ans = before ? n - 1 : n + 1;
   const vis = before ? `<div class="track"><b class="q">?</b><span>➜</span><b>${n}</b></div>` : `<div class="track"><b>${n}</b><span>➜</span><b class="q">?</b></div>`;
-  return { title: before ? q.before(n) : q.after(n), speak: [before ? q.before(n) : q.after(n)], visual: vis, optClass: 'num',
-    options: numOpts(ans, 0, max + 1), answer: ans, correctSpeak: [String(ans)], grade: f => gradeMath('next', f) };
+  return { title: before ? q.before(n) : q.after(n), speak: [before ? q.before(n) : q.after(n)], visual: vis, optClass: 'num', drop: '.track b.q',
+    options: numOpts(ans, 0, max + 1), answer: ans, correctSpeak: [String(ans)], grade: f => gradeMath('next', f),
+    // after a miss: a little number line with its neighbours, so she can count her way to it
+    onMiss: r => { if ($('.numline', r)) return; const lo = Math.max(0, Math.min(n, ans) - 2);
+      $('.visual', r).insertAdjacentHTML('beforeend', `<div class="numline">${Array.from({ length: 5 }, (_, i) => lo + i).map(x => `<b class="${x === ans ? 'q' : x === n ? 'me' : ''}">${x === ans ? '?' : x}</b>`).join('')}</div>`); } };
 }
 function mkCompare() {
   const l = lvl('compare'), q = L().q;
@@ -1214,9 +1226,12 @@ function mkCompare() {
   }
   const max = l === 2 ? 50 : 100;
   let a = 1 + rand(max), b = 1 + rand(max); while (b === a) b = 1 + rand(max);
+  const opts = shuffle([{ html: a, val: a }, { html: b, val: b }]);
   return { title: q.bigger, speak: [q.bigger], visual: '', optClass: 'num',
-    options: shuffle([{ html: a, val: a }, { html: b, val: b }]), answer: Math.max(a, b),
-    correctSpeak: [String(Math.max(a, b))], grade: f => gradeMath('compare', f) };
+    options: opts, answer: Math.max(a, b),
+    correctSpeak: [String(Math.max(a, b))], grade: f => gradeMath('compare', f),
+    // after a miss: both numbers built from tens and ones, so she can SEE which is more
+    onMiss: r => { if ($('.cmpcue', r)) return; $('.visual', r).innerHTML = `<div class="cmpcue">${opts.map(o => `<div><b>${o.val}</b>${pvHTML(o.val)}</div>`).join('')}</div>`; } };
 }
 // ================= more maths =================
 const SHAPE_COLORS = ['#ff7a6b', '#20b2a0', '#9b7fd1', '#ffc94a', '#5bb8f5', '#4cc47c', '#ff9ed2'];
@@ -1225,7 +1240,7 @@ const BASIC_SHAPES = ['circle', 'square', 'triangle', 'rectangle', 'star', 'hear
 const ALL_SHAPES = [...BASIC_SHAPES, 'oval', 'diamond', 'pentagon', 'hexagon'];
 const regPoly = (n, r = 44, rot = -90) => Array.from({ length: n }, (_, i) => { const a = (rot + i * 360 / n) * Math.PI / 180; return `${(50 + r * Math.cos(a)).toFixed(1)},${(52 + r * Math.sin(a)).toFixed(1)}`; }).join(' ');
 const starPts = () => Array.from({ length: 10 }, (_, i) => { const r = i % 2 ? 19 : 46, a = (-90 + i * 36) * Math.PI / 180; return `${(50 + r * Math.cos(a)).toFixed(1)},${(53 + r * Math.sin(a)).toFixed(1)}`; }).join(' ');
-function shapeSVG(name, color, size = 120) {
+function shapeSVG(name, color, size = 120, extra = '') {
   const body = {
     circle: '<circle cx="50" cy="50" r="42"/>', square: '<rect x="10" y="10" width="80" height="80" rx="3"/>',
     triangle: '<polygon points="50,6 95,90 5,90"/>', rectangle: '<rect x="3" y="25" width="94" height="50" rx="3"/>',
@@ -1233,16 +1248,25 @@ function shapeSVG(name, color, size = 120) {
     heart: '<path d="M50 90 C 8 62 2 32 24 17 C 38 9 48 18 50 30 C 52 18 62 9 76 17 C 98 32 92 62 50 90 Z"/>',
     diamond: '<polygon points="50,3 88,50 50,97 12,50"/>', pentagon: `<polygon points="${regPoly(5)}"/>`, hexagon: `<polygon points="${regPoly(6, 45, 0)}"/>`,
   }[name];
-  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" style="fill:${color};stroke:#00000022;stroke-width:3;stroke-linejoin:round;overflow:visible">${body}</svg>`;
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" style="fill:${color};stroke:#00000022;stroke-width:3;stroke-linejoin:round;overflow:visible">${body}${extra}</svg>`;
 }
+// the corners of the straight-sided shapes, so each side can be tapped and counted
+const sidePts = t => ({ triangle: '50,6 95,90 5,90', square: '10,10 90,10 90,90 10,90', rectangle: '3,25 97,25 97,75 3,75', diamond: '50,3 88,50 50,97 12,50',
+  pentagon: regPoly(5), hexagon: regPoly(6, 45, 0) }[t].split(' ').map(p => p.split(',')));
+const sideLines = t => { const p = sidePts(t); return p.map(([x, y], i) => { const [x2, y2] = p[(i + 1) % p.length]; return `<line class="side" x1="${x}" y1="${y}" x2="${x2}" y2="${y2}"/>`; }).join(''); };
 const M = () => L().m;
 
 function mkShapes() {
   const l = lvl('shapes'), m = M();
   if (l >= 3 && Math.random() < .5) {
     const t = pick(Object.keys(SIDES)), n = SIDES[t];
-    return { title: m.sides, speak: [m.sides], visual: `<div class="bob">${shapeSVG(t, pick(SHAPE_COLORS), 170)}</div>`, optClass: 'num',
-      options: numOpts(n, 3, 8), answer: n, correctSpeak: [m.sidesAns(m.shapes[t], n)], grade: f => gradeMath('shapes', f) };
+    // she can tap each side to mark it as counted (no number is spoken: she counts, the marks keep track)
+    return { title: m.sides, speak: [m.sides], visual: `<div class="sidesvg">${shapeSVG(t, pick(SHAPE_COLORS), 190, sideLines(t))}</div>`, optClass: 'num',
+      options: numOpts(n, 3, 8), answer: n, correctSpeak: [m.sidesAns(m.shapes[t], n)], grade: f => gradeMath('shapes', f),
+      setup: r => $$('.side', r).forEach(s => s.addEventListener('pointerdown', () => { s.classList.toggle('counted'); sfx('tap'); })),
+      // second miss: Tiko counts the sides one by one
+      explain: async r => { const tok = speakToken, ss = $$('.side', r); ss.forEach(s => s.classList.remove('counted'));
+        for (const [i, s] of ss.entries()) { if (tok !== speakToken) return; s.classList.add('counted'); sfx('tap'); await say(String(i + 1), S.lang, 1.05); } } };
   }
   const pool = l === 1 ? BASIC_SHAPES : ALL_SHAPES, t = pick(pool);
   const opts = shuffle([t, ...shuffle(pool.filter(s => s !== t)).slice(0, 2)]), cols = shuffle(SHAPE_COLORS);
@@ -1255,23 +1279,31 @@ function mkPatterns() {
   const l = lvl('patterns'), m = M();
   if (l >= 3 && Math.random() < .5) {
     const k = pick([1, 2, 5, 10]), s = k * (1 + rand(4)), seq = [0, 1, 2, 3].map(i => s + i * k), ans = s + 4 * k;
-    return { title: m.nextPattern, speak: [m.nextPattern], optClass: 'num', answer: ans, correctSpeak: [String(ans)],
+    return { title: m.nextPattern, speak: [m.nextPattern], optClass: 'num', answer: ans, correctSpeak: [String(ans)], drop: '.seq b.q',
       visual: `<div class="seq">${seq.map((x, i) => `<b style="--i:${i}">${x}</b>`).join('')}<b class="q" style="--i:4">?</b></div>`,
-      options: numOpts(ans, 0, 120), grade: f => gradeMath('patterns', f) };
+      options: numOpts(ans, 0, 120), grade: f => gradeMath('patterns', f), onMiss: r => hopCue(r, '.seq b', `+${k}`) };
   }
   const set = pick(PATTERN_SETS), unit = l === 1 ? [0, 1] : pick([[0, 1, 2], [0, 0, 1], [0, 1, 1]]);
   const seq = Array.from({ length: 6 }, (_, i) => set[unit[i % unit.length]]), ans = set[unit[6 % unit.length]];
-  return { title: m.nextPattern, speak: [m.nextPattern], answer: ans, correctSpeak: [],
+  return { title: m.nextPattern, speak: [m.nextPattern], answer: ans, correctSpeak: [], drop: '.seq b.q',
     visual: `<div class="seq">${seq.map((x, i) => `<b style="--i:${i}">${x}</b>`).join('')}<b class="q" style="--i:6">?</b></div>`,
-    options: shuffle(set).map(x => ({ html: x, val: x })), grade: f => gradeMath('patterns', f) };
+    options: shuffle(set).map(x => ({ html: x, val: x })), grade: f => gradeMath('patterns', f),
+    // after a miss: the part that repeats bounces group by group, like clapping the rhythm
+    onMiss: r => { const s = $('.seq', r); s.classList.remove('beat'); void s.offsetWidth;
+      $$('b', s).forEach((b, i) => { if (!b.classList.contains('q')) b.style.animationDelay = `${i * 170 + Math.floor(i / unit.length) * 420}ms`; b.classList.toggle('gap', i > 0 && i % unit.length === 0); }); s.classList.add('beat'); } };
+}
+// after a miss in a number pattern: the size of each jump appears between the numbers
+function hopCue(root, sel, label) {
+  if ($('.hopk', root)) return;
+  $$(sel, root).slice(0, -1).forEach(b => b.insertAdjacentHTML('beforeend', `<i class="hopk">${label}</i>`));   // sits under the gap to the next number
 }
 function clockSVG(h, mi) {
   const ha = ((h % 12) + mi / 60) * 30, ma = mi * 6;
-  const nums = Array.from({ length: 12 }, (_, i) => { const n = i + 1, a = (n * 30 - 90) * Math.PI / 180; return `<text x="${(100 + 74 * Math.cos(a)).toFixed(1)}" y="${(100 + 74 * Math.sin(a)).toFixed(1)}">${n}</text>`; }).join('');
+  const nums = Array.from({ length: 12 }, (_, i) => { const n = i + 1, a = (n * 30 - 90) * Math.PI / 180; return `<text data-n="${n}" x="${(100 + 74 * Math.cos(a)).toFixed(1)}" y="${(100 + 74 * Math.sin(a)).toFixed(1)}">${n}</text>`; }).join('');
   const ticks = Array.from({ length: 60 }, (_, i) => `<line x1="100" y1="${i % 5 ? 12 : 10}" x2="100" y2="${i % 5 ? 16 : 22}" transform="rotate(${i * 6} 100 100)" stroke="${i % 5 ? '#c9c2da' : '#9b7fd1'}" stroke-width="${i % 5 ? 2 : 4}"/>`).join('');
   return `<svg class="clock" viewBox="0 0 200 200"><circle cx="100" cy="100" r="96" fill="#fff" stroke="#9b7fd1" stroke-width="8"/>${ticks}
     <g font-size="22" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="#2d3142" font-family="Andika, sans-serif">${nums}</g>
-    <line x1="100" y1="100" x2="100" y2="52" stroke="#ff7a6b" stroke-width="9" stroke-linecap="round" transform="rotate(${ha} 100 100)"/>
+    <line class="hh" x1="100" y1="100" x2="100" y2="52" stroke="#ff7a6b" stroke-width="9" stroke-linecap="round" transform="rotate(${ha} 100 100)"/>
     <line x1="100" y1="100" x2="100" y2="26" stroke="#20b2a0" stroke-width="6" stroke-linecap="round" transform="rotate(${ma} 100 100)"/>
     <circle cx="100" cy="100" r="8" fill="#2d3142"/></svg>`;
 }
@@ -1285,7 +1317,10 @@ function mkClock() {
   return { title: m.whatTime, speak: [m.whatTime], visual: clockSVG(h, mi), optClass: 'word',
     // French children read "3 h 00" rather than "3:00"
     options: shuffle([...set.keys()]).map(k => ({ html: `<span class="digital">${S.lang === 'fr' ? k.replace(':', ' h ') : k}</span>`, val: k })), answer: dig(h, mi),
-    correctSpeak: [say(h, mi)], grade: f => gradeMath('clock', f) };
+    correctSpeak: [say(h, mi)], grade: f => gradeMath('clock', f),
+    // after a miss: the short hand and the number it shows light up, and Tiko says so
+    retrySpeak: [L().cue.shortHand(h)],
+    onMiss: r => { const hh = $('.clock .hh', r), tx = $(`.clock text[data-n="${h}"]`, r); if (hh) hh.classList.add('cue'); if (tx) tx.classList.add('cue'); } };
 }
 function mkDoubles() {
   const m = M(), n = 1 + rand(lvl('doubles') >= 2 ? 10 : 5), spots = Array.from({ length: n }, (_, i) => `<span class="obj spot" style="--i:${i}">●</span>`).join('');
@@ -1298,12 +1333,12 @@ function mkMissing() {
   const l = lvl('missing'), m = M(), q = L().q, max = [5, 10, 20][l - 1], e = pick(OBJECTS);
   if (l >= 3 && Math.random() < .4) {
     const a = 3 + rand(max - 2), ans = 1 + rand(a - 1), r = a - ans;
-    return { title: `${a} − ? = ${r}`, speak: [m.missingSub(a, r)], optClass: 'num', visual: `<div class="eq">${a} − <span class="q">?</span> = ${r}</div>`,
+    return { title: `${a} − ? = ${r}`, speak: [m.missingSub(a, r)], optClass: 'num', drop: '.eq .q', visual: `<div class="eq">${a} − <span class="q">?</span> = ${r}</div>`,
       options: numOpts(ans, 0, max), answer: ans, correctSpeak: [`${a} ${q.minus} ${ans} ${q.equals} ${r}`], grade: f => gradeMath('missing', f, 3) };
   }
   const s = 2 + rand(max - 1), a = 1 + rand(s - 1), ans = s - a;
   const ghosts = l < 3 ? `<span class="sign">+</span><div class="objs"><div class="five">${Array.from({ length: ans }, (_, i) => `<span class="obj ghost" style="--i:${a + i}">${e}</span>`).join('')}</div></div>` : '';
-  return { title: `${a} + ? = ${s}`, speak: [m.missingAdd(a, s)], optClass: 'num',
+  return { title: `${a} + ? = ${s}`, speak: [m.missingAdd(a, s)], optClass: 'num', drop: '.eq .q',
     visual: `<div style="display:flex;flex-direction:column;align-items:center;gap:14px"><div class="eq">${a} + <span class="q">?</span> = ${s}</div>
       ${l < 3 ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center">${objsHTML(a, e)}${ghosts}</div>` : ''}</div>`,
     options: numOpts(ans, 0, max), answer: ans, correctSpeak: [`${a} ${q.plus} ${ans} ${q.equals} ${s}`], setup: r => tapToCount(r), grade: f => gradeMath('missing', f),
@@ -1320,7 +1355,8 @@ function mkSkip() {
     const s = l === 1 ? 10 : k * (1 + rand(l === 2 ? 2 : 5));
     seq = [s, s + k, s + 2 * k]; ans = s + 3 * k; prompt = m.frog(k);
   }
-  return { title: prompt, speak: [prompt], optClass: 'num', answer: ans, correctSpeak: [String(ans)],
+  return { title: prompt, speak: [prompt], optClass: 'num', answer: ans, correctSpeak: [String(ans)], drop: '.pad.q',
+    onMiss: r => hopCue(r, '.pad', k ? `+${k}` : '−1'),
     visual: `<div class="pads">${seq.map((x, i) => `<span class="pad" style="--i:${i}">${x}${i === 2 ? '<i class="frog">🐸</i>' : ''}</span>`).join('')}<span class="pad q" style="--i:3">?</span></div>`,
     options: numOpts(ans, 0, 130), grade: f => gradeMath('skip', f),
     onCorrect: r => { const fr = $('.frog', r), qp = $('.pad.q', r); if (fr && qp) { qp.textContent = ans; qp.appendChild(fr); fr.classList.add('hop'); } } };
@@ -1342,6 +1378,8 @@ function mkTens() {
     } };
 }
 // ---------- bigger maths: numbers to 99 with tens and ones, coins, and "groups of" ----------
+T.en.cue = { shortHand: h => `Look at the short hand. It shows the hour: ${h}.` };
+T.fr.cue = { shortHand: h => `Regarde la petite aiguille. Elle montre l'heure : ${h}.` };
 T.en.m2 = { bigAdd: (a, b) => `${a} plus ${b}. Count the tens, then the ones!`, bigSub: (a, b) => `${a} take away ${b}. Count what is left: the tens, then the ones!`,
   money: 'How much money? Tap each coin to count.', groups: (g, k) => `${g} groups of ${k}. How many in all?`, groupsRule: (g, k, n) => `${g} groups of ${k} make ${n}.` };
 T.fr.m2 = { bigAdd: (a, b) => `${a} plus ${b}. Compte les dizaines, puis les unités !`, bigSub: (a, b) => `${a} moins ${b}. Compte ce qui reste : les dizaines, puis les unités !`,
@@ -1547,7 +1585,7 @@ function askMemory(q, meta) {
       c.classList.add('up'); sfx('tap'); open.push(c);
       if (open.length < 2) {
         // easy levels: stuck after two wrong tries → the partner card glows to help her find it
-        if (q.help && missRun >= 2) {
+        if ((q.help && missRun >= 2) || missRun >= 3) {   // bigger boards help too, one wrong try later
           const mate = cards.find(x => x !== c && q.cards[+x.dataset.i] === q.cards[+c.dataset.i]);
           if (mate) { mate.classList.remove('hint'); void mate.offsetWidth; mate.classList.add('hint'); setTimeout(() => mate.classList.remove('hint'), 1800); }
         }
@@ -1576,7 +1614,10 @@ function askSimon(q, meta) {
       <button class="btn sun againb" hidden>👀 ${esc(TH().showAgain)}</button>`);
     wire(meta, finish, () => playSeq(), [TH().simonYou]);
     const pads = $$('.spad');
-    let len = Math.max(2, Math.min(7, S.simonLen || 2)), round = 0, seq = [], pos = 0, accepting = false, misses = 0, fails = 0;
+    let len = Math.max(2, Math.min(7, S.simonLen || 2)), round = 0, seq = [], pos = 0, accepting = false, misses = 0, fails = 0, cueNext = false;
+    // one dot per sound; each fills in as she copies it, so she can see how far along she is
+    const dots = () => { $('.slen').innerHTML = seq.map((_, i) => `<i class="${i < pos ? 'on' : ''}"></i>`).join(''); };
+    const uncue = () => pads.forEach(p => p.classList.remove('cue'));
     const light = async (i, ms = 520) => {
       pads[i].classList.add('lit');
       try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); tone(SIMON_PADS[i][2], actx.currentTime, .45, 'triangle', .16); } catch (e) { /* ignore */ }
@@ -1584,22 +1625,23 @@ function askSimon(q, meta) {
     };
     const playSeq = async () => {
       if (done) return;   // she left the game
-      accepting = false; $('.againb').hidden = true; $('.bubble').textContent = TH().simonWatch; await sleep(300);
+      accepting = false; uncue(); pos = 0; dots(); $('.againb').hidden = true; $('.bubble').textContent = TH().simonWatch; await sleep(300);
       for (const i of seq) { if (done) return; await light(i); }
       $('.bubble').textContent = TH().simonYou; pos = 0; accepting = true; $('.againb').hidden = false; speak(TH().simonYou);
+      if (cueNext) { cueNext = false; pads[seq[0]].classList.add('cue'); }   // after a miss: the first one pulses to get her started
     };
     // watch the sequence again as many times as she likes — never counts as a mistake
     $('.againb').onclick = () => { if (accepting) { sfx('tap'); playSeq(); } };
-    const newRound = async () => { if (done) return; seq = Array.from({ length: len }, () => rand(4)); $('.slen').innerHTML = '●'.repeat(len); await speak(TH().simonWatch); await playSeq(); };
+    const newRound = async () => { if (done) return; seq = Array.from({ length: len }, () => rand(4)); pos = 0; dots(); await speak(TH().simonWatch); await playSeq(); };
     pads.forEach((p, i) => p.addEventListener('pointerdown', async () => {
       if (!accepting) return;
-      light(i, 280);
+      light(i, 280); uncue();
       if (i !== seq[pos]) {
-        accepting = false; misses++; fails++; sfx('oops'); owlReact('think'); await sleep(500); await speak(TH().simonAgain);
+        accepting = false; misses++; fails++; cueNext = true; sfx('oops'); owlReact('think'); await sleep(500); await speak(TH().simonAgain);
         if (fails >= 2) { fails = 0; if (len > 2) len--; return newRound(); }   // twice wrong: a new, shorter sequence
         return playSeq();                                                       // first miss: watch the same one again
       }
-      pos++;
+      pos++; dots();
       if (pos === seq.length) {
         accepting = false; fails = 0; sfx('good'); burstAt($('.simon'), 30); owlReact('happy'); round++;
         if (len >= 5) tally('simon5');
@@ -1666,22 +1708,49 @@ function askJigsaw(q, meta) {
     app.innerHTML = actFrame(meta, `${promptHTML(TH().jigsaw)}<div class="jigrow"><div class="jig" style="width:${W}px;height:${H}px;grid-template-columns:repeat(${q.cols},1fr)"></div>
       <img class="jigref" src="${img}" alt=""></div>`);
     wire(meta, finish, () => speak(TH().jigsaw), [TH().jigsaw]);
-    const jig = $('.jig'); let sel = null, moves = 0;
+    const jig = $('.jig'); let sel = null, moves = 0, bad = 0, dragT = 0;
+    const solved = () => jig.classList.contains('solved');
+    // swap two places. Three swaps in a row that put nothing home → one piece and its home glow together
+    const swap = async (a, b) => {
+      [order[a], order[b]] = [order[b], order[a]]; sel = null; moves++; sfx('pop');
+      bad = (order[a] === a || order[b] === b) ? 0 : bad + 1; draw();
+      [a, b].forEach(s => { if (order[s] === s) burstAt($$('.piece', jig)[s], 12); });
+      if (order.every((v, i) => v === i)) {
+        jig.classList.add('solved'); sfx('win'); rain(); owlReact('happy');
+        gradeLevel('jigsaw', true); tally('think'); tally('puzzles'); logDay(true); flyStar(jig); save();
+        await speak(...praiseParts()); await sleep(700); finish(true);
+      } else if (bad >= 3) {
+        bad = 0; const s = order.findIndex((p, i) => p !== i), ps = $$('.piece', jig);
+        [ps[s], ps[order[s]]].forEach(x => x.classList.add('hint')); setTimeout(() => $$('.piece.hint', jig).forEach(x => x.classList.remove('hint')), 3000);
+      }
+    };
     const draw = () => {
       jig.innerHTML = order.map((p, slot) => { const px = p % q.cols, py = Math.floor(p / q.cols);
         return `<button class="piece ${p === slot ? 'ok' : ''}" data-s="${slot}" style="background-image:url(${img});background-size:${W}px ${H}px;background-position:${-px * W / q.cols}px ${-py * H / q.rows}px"></button>`; }).join('');
-      $$('.piece', jig).forEach(b => b.onclick = async () => {
-        if (jig.classList.contains('solved')) return;   // solved: no more swaps during the praise
-        const s = +b.dataset.s;
-        if (sel === null) { sel = s; b.classList.add('sel'); sfx('tap'); return; }
-        if (sel === s) { sel = null; b.classList.remove('sel'); return; }
-        [order[sel], order[s]] = [order[s], order[sel]]; sel = null; moves++; sfx('pop'); draw();
-        if (order[s] === s) burstAt($$('.piece', jig)[s], 12);
-        if (order.every((v, i) => v === i)) {
-          jig.classList.add('solved'); sfx('win'); rain(); owlReact('happy');
-          gradeLevel('jigsaw', true); tally('think'); tally('puzzles'); logDay(true); flyStar(jig); save();
-          await speak(...praiseParts()); await sleep(700); finish(true);
-        }
+      $$('.piece', jig).forEach(b => {
+        // tap two pieces to swap them …
+        b.onclick = () => {
+          if (solved() || Date.now() - dragT < 500) return;   // solved: no more swaps during the praise
+          const s = +b.dataset.s;
+          if (sel === null) { sel = s; b.classList.add('sel'); sfx('tap'); return; }
+          if (sel === s) { sel = null; b.classList.remove('sel'); return; }
+          swap(sel, s);
+        };
+        // … or drag a piece onto the place she wants it
+        let id = null, sx = 0, sy = 0, drag = false;
+        b.addEventListener('pointerdown', e => { if (solved() || id !== null) return; id = e.pointerId; sx = e.clientX; sy = e.clientY; drag = false; try { b.setPointerCapture(id); } catch (err) { /* ignore */ } });
+        b.addEventListener('pointermove', e => {
+          if (e.pointerId !== id) return; const dx = e.clientX - sx, dy = e.clientY - sy;
+          if (!drag && Math.hypot(dx, dy) > 12) { drag = true; b.classList.add('dragging'); $$('.piece.sel', jig).forEach(x => x.classList.remove('sel')); sel = null; sfx('tap'); }
+          if (drag) b.style.translate = `${dx}px ${dy}px`;
+        });
+        const end = (e, cancelled) => {
+          if (e.pointerId !== id) return; id = null; if (!drag) return;
+          drag = false; dragT = Date.now(); b.classList.remove('dragging'); b.style.translate = '';
+          const t = cancelled || solved() ? null : $$('.piece', jig).find(p => { if (p === b) return false; const r = p.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; });
+          if (t) swap(+b.dataset.s, +t.dataset.s);
+        };
+        b.addEventListener('pointerup', e => end(e, false)); b.addEventListener('pointercancel', e => end(e, true));
       });
     };
     draw(); speak(TH().jigsaw);
@@ -2066,7 +2135,7 @@ function askChoice(q, meta, container) {
         busy = true; b.classList.add('correct'); btns.forEach(x => { if (x !== b) x.disabled = true; });
         const at = (q.drop && $(q.drop, root)) || b;   // drag games: the picture lands in its place, so the party is there
         if (q.drop) b.classList.add('placed');
-        if (q.onCorrect) q.onCorrect(root);
+        if (q.onCorrect) q.onCorrect(root); else if (q.drop && at !== b) { at.innerHTML = o.html; at.classList.remove('over'); at.classList.add('filled'); }
         const first = attempts === 0;
         stopSpeech(); sfx('good'); burstAt(at, first ? 50 : 20); owlReact('happy');
         if (first) flyStar(at); else tally('retryOk');
@@ -2077,6 +2146,7 @@ function askChoice(q, meta, container) {
         await sleep(350); finish(first);
       } else {
         attempts++; const mine = attempts; (q.wrong = q.wrong || []).push(String(o.val)); b.classList.add('wrong'); b.disabled = true; stopSpeech(); sfx('oops'); owlReact('think');
+        if (q.onMiss) q.onMiss(root, attempts);   // a cue that only ever appears after a miss (so it can't turn a guess into "known")
         await sleep(350);   // the soft "oops" first, then Tiko
         if (mine !== attempts || busy || done) return;   // she already tapped again (or got it right) — that tap takes over
         if (attempts === 1 && btns.length > 2) speak(L().retry, { pause: 150 }, ...(q.retrySpeak || q.speak));
@@ -2175,13 +2245,13 @@ function askTrace(q, meta) {
     const size = Math.floor(Math.min(innerWidth * 0.8 - (q.hint ? 110 : 0), innerHeight * 0.52, 520));   // room for the picture beside it
     app.innerHTML = actFrame(meta, `${promptHTML(P.trace)}
       <div style="display:flex;align-items:center;gap:20px">${q.hint ? `<div class="pic bob" style="font-size:80px">${q.hint}</div>` : ''}
-      <div class="tracebox" style="width:${size}px;height:${size}px"><canvas class="guide"></canvas><canvas class="ink"></canvas></div></div>
+      <div class="tracebox" style="width:${size}px;height:${size}px"><canvas class="guide"></canvas><canvas class="cue"></canvas><canvas class="ink"></canvas></div></div>
       <div class="meter"><i></i></div>
       <div class="btnrow"><button class="btn again">🔄 ${P.clear}</button><button class="btn teal tracedone" hidden>✅ ${esc(P.done)}</button></div>`);
     wire(meta, finish, () => speak(P.trace, ...q.say), [P.trace]);
     try { await document.fonts.load(`700 ${Math.round(size * .8)}px Andika`); } catch (e) { /* fallback font */ }
-    const box = $('.tracebox'), gC = $('.guide'), iC = $('.ink'), dpr = devicePixelRatio || 1;
-    [gC, iC].forEach(c => { c.width = size * dpr; c.height = size * dpr; c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0); });
+    const box = $('.tracebox'), gC = $('.guide'), iC = $('.ink'), cC = $('canvas.cue'), dpr = devicePixelRatio || 1;
+    [gC, iC, cC].forEach(c => { c.width = size * dpr; c.height = size * dpr; c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0); });
     const g = gC.getContext('2d'), ink = iC.getContext('2d');
     const font = `700 ${Math.round(size * (q.glyph.length > 1 ? .62 : .8))}px Andika, 'Comic Sans MS', sans-serif`;
     g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -2205,6 +2275,28 @@ function askTrace(q, meta) {
       if (covered / pts.length >= .6) $('.tracedone').hidden = false;   // backup only when she's nearly there
     };
     const enough = () => covered / pts.length >= GOAL;
+    // Cue 1: a green "start here" dot where the pencil first touches down (it goes away once she starts).
+    const startPt = (() => {
+      const ch = q.glyph[0], all = pts.length ? pts : null; if (!all) return null;
+      const x0 = Math.min(...all.map(p => p.x)), x1 = Math.max(...all.map(p => p.x)), wAll = x1 - x0;
+      const mine = q.glyph.length > 1 ? all.filter(p => p.x <= x0 + wAll / q.glyph.length) : all; if (!mine.length) return null;
+      const a = Math.min(...mine.map(p => p.x)), b = Math.max(...mine.map(p => p.x)), t = Math.min(...mine.map(p => p.y)), u = Math.max(...mine.map(p => p.y)), w = b - a, h = u - t;
+      // where a child starts each shape: round letters at the top right of the curve, most others at the top left
+      const [fx, fy] = 'acgoqsf0689'.includes(ch) ? [.85, .1] : ch === 'd' ? [.7, .42] : ch === 'e' ? [.15, .5] : 'ij'.includes(ch) ? [.3, .38] : [0, 0];
+      const tx = a + w * fx, ty = t + h * fy;
+      return mine.reduce((m, p) => ((p.x - tx) ** 2 + (p.y - ty) ** 2 < (m.x - tx) ** 2 + (m.y - ty) ** 2 ? p : m));
+    })();
+    if (startPt) box.insertAdjacentHTML('beforeend', `<i class="startdot" style="left:${startPt.x}px;top:${startPt.y}px"></i>`);
+    // Cue 2: if she stops part-way, the bits not traced yet glow softly for a moment. It never finishes the letter for her.
+    const cg = cC.getContext('2d'); let stallT = null;
+    const hideCue = () => { clearTimeout(stallT); cC.classList.remove('show'); };
+    const showCue = () => {
+      if (done || success || drawing || !covered) return;
+      cg.clearRect(0, 0, size, size); cg.fillStyle = '#ff8fb8';
+      pts.forEach(p => { if (!p.c) { cg.beginPath(); cg.arc(p.x, p.y, step * .75, 0, 7); cg.fill(); } });
+      cC.classList.add('show'); stallT = setTimeout(() => cC.classList.remove('show'), 3500);
+    };
+    iC.addEventListener('pointerdown', () => { hideCue(); const d = $('.startdot', box); if (d) d.remove(); });
     iC.addEventListener('pointerdown', e => { if (success) return; drawing = true; last = pos(e); try { iC.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } mark(last); });
     iC.addEventListener('pointermove', e => {
       if (!drawing) return; const p = pos(e);
@@ -2222,9 +2314,9 @@ function askTrace(q, meta) {
       await askPaperStep(P.nowPaper, `<div class="wordbig">${esc(q.glyph)}</div>`);
       finish(true);
     };
-    const up = () => { if (!drawing) return; drawing = false; if (!success && enough()) succeed(); };
+    const up = () => { if (!drawing) return; drawing = false; if (!success && enough()) succeed(); else if (!success) { clearTimeout(stallT); stallT = setTimeout(showCue, 6000); } };
     iC.addEventListener('pointerup', up); iC.addEventListener('pointercancel', up);
-    $('.again').onclick = () => { sfx('tap'); resets++; reset(); };
+    $('.again').onclick = () => { sfx('tap'); resets++; hideCue(); reset(); };
     $('.tracedone').onclick = () => { sfx('tap'); succeed(); };
     speak(P.trace, ...q.say);
   });
