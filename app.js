@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 35;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 36;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -252,6 +252,7 @@ async function speakParts(parts) {
     // normal-length speech goes out as one smooth piece; only very long text is split into sentences
     if (typeof p === 'string') { for (const s of (p.length > 160 ? p.split(/(?<=[.!?])\s+/) : [p])) { if (t !== speakToken) return; await say(s); } }
     else if (p.pause) await sleep(p.pause);
+    else if (p.run) p.run();                             // something to show at this point of the talk (e.g. light the picture being named)
     else if (p.unit !== undefined) await playUnit(p.unit, p.lang || S.lang, p.rate);
     else if (p.name) await sayName(p.bang);
     // a run of sound units, each one finishing before the next starts (never on top of each other):
@@ -795,7 +796,7 @@ const liveObjs = r => $$('.obj', r).filter(o => !o.classList.contains('gone') &&
 const ACTS = {
   letters: { icon: '🔤', area: 'read', make: mkLetters },
   sight: { icon: '✨', area: 'read', make: mkSight },
-  robot: { icon: '🤖', area: 'read', make: mkRobot },
+  robot: { icon: '👂', area: 'read', make: mkFirstSound },   // key kept from the old Robot talk, so her play history carries over
   blend: { icon: '🧩', area: 'read', make: mkBlend },
   family: { icon: '🏠', area: 'read', make: mkFamily },
   spell: { icon: '🧱', area: 'read', make: mkSpell },
@@ -852,8 +853,8 @@ Object.assign(T.fr.acts, { shapes: 'Les formes', patterns: 'Les suites', clock: 
   skip: 'Sauts de grenouille', tens: 'Dizaines et unités', measure: 'Mesurer', flash: 'Coup d’œil', pop: 'Éclate les bulles', mathStory: 'Histoires de maths' });
 Object.assign(T.en.acts, { memory: 'Memory pairs', simon: 'Copy me', kim: "What's missing?", odd: 'Odd one out', jigsaw: 'Jigsaw' });
 Object.assign(T.fr.acts, { memory: 'Les paires', simon: 'Imite-moi', kim: "Qu'est-ce qui manque ?", odd: "L'intrus", jigsaw: 'Puzzle' });
-Object.assign(T.en.acts, { robot: 'Robot talk', family: 'Word families' });
-Object.assign(T.fr.acts, { robot: 'Le robot parle', family: 'Les syllabes' });
+Object.assign(T.en.acts, { robot: 'Same sound', family: 'Word families' });
+Object.assign(T.fr.acts, { robot: 'Le même son', family: 'Les syllabes' });
 Object.assign(T.en.acts, { traceWord: 'Listen and trace a word', traceSentence: 'Listen and trace a sentence' });
 Object.assign(T.fr.acts, { traceWord: 'Écoute et trace un mot', traceSentence: 'Écoute et trace une phrase' });
 Object.assign(T.en.acts, { paint: 'Paint', mirror: 'Magic mirror', readDraw: 'Read and draw', cbn: 'Colour by number', mix: 'Mix colours', music: 'Music' });
@@ -1059,19 +1060,49 @@ function mkBlend() {
     setup(root, unlock) { blendSlider(root, item.units, async () => { unlock(); await unitChain; speak(q.whichPic); }); },   // let every sound finish first
   };
 }
-// 🤖 Robot talk: oral blending — no letters at all, just listen to the sounds and find the picture
-function mkRobot() {
-  const { item, isNew } = chooseItem('oral', wordQueue());
-  const sounds = item.units.filter(u => !u.startsWith('_'));
+// 👂 Same first sound (took the place of Robot talk in v36, whose single-sound clips were not clear on the tablet).
+// Listening only, and WHOLE WORDS only, said by the normal voice: Tiko says a word, names the three pictures one by one
+// (each lights up as it is named), and she finds the one that starts with the same sound. No isolated sounds anywhere.
+const SND_SAME = { c: 'k', ck: 'k', q: 'kw' };
+// sounds too close to tell apart by ear are never offered against each other (s/z, m/n, b/p, d/t, g/k, f/v/th…)
+const SND_GROUP = { s: 1, z: 1, sh: 2, ch: 2, j: 2, m: 3, n: 3, b: 4, p: 4, d: 5, t: 5, g: 6, k: 6, kw: 6, f: 7, v: 7, th: 7 };
+// the sound a word starts with ('' = not usable here; French vowels are all 'V' and are only ever wrong choices)
+function firstSound(w, lg = S.lang) {
+  if (lg === 'fr') {
+    const s = w.w.toLowerCase();
+    if (/^[hxwy]/.test(s)) return '';
+    if (/^[aeiouàâéèêëîïôûœ]/.test(s)) return 'V';
+    if (s.startsWith('ch')) return 'ch'; if (s.startsWith('ph')) return 'f';
+    if (/^(c[eiyéèê]|ç)/.test(s)) return 's'; if (/^[ckq]/.test(s)) return 'k';
+    if (/^g[eiyéèê]/.test(s)) return 'j';
+    return s[0];
+  }
+  const s = unitSound(w.units.find(u => !u.startsWith('_')));
+  return SND_SAME[s] || s;
+}
+const sndGroup = s => /^[aeiouV]/.test(s) ? 'V' : SND_GROUP[s] || s;
+// the letters that write the first sound (shown only once she has found the answer)
+const headLen = (w, lg) => lg === 'fr' ? (/^(ch|ph|qu|gu)/.test(w.w) ? 2 : 1) : unitText(w.units[0]).length;
+function mkFirstSound() {
+  const lg = S.lang, all = wordsNow().filter(w => firstSound(w, lg));
+  const matesOf = w => all.filter(x => x.e !== w.e && x.w !== w.w && firstSound(x, lg) === firstSound(w, lg));
+  const ok = w => firstSound(w, lg) && firstSound(w, lg) !== 'V' && matesOf(w).length;
+  let pool = wordQueue().filter(ok); if (!pool.length) pool = all.filter(ok);
+  const { item } = chooseItem('first', pool);
+  const mate = pick(matesOf(item)), g = sndGroup(firstSound(item, lg)), others = [];
+  for (const x of shuffle(all)) { if (others.length === 2) break; if (sndGroup(firstSound(x, lg)) !== g && ![item, mate, ...others].some(o => o.e === x.e)) others.push(x); }
+  const opts = shuffle([mate, ...others]);
+  const light = i => $$('.options .opt').forEach((b, j) => b.classList.toggle('say', j === i));
+  const names = [...opts.flatMap((o, i) => [{ run: () => light(i) }, o.w, { pause: 250 }]), { run: () => light(-1) }];
+  const written = w => `<span><b>${esc(w.w.slice(0, headLen(w, lg)))}</b>${esc(w.w.slice(headLen(w, lg)))}</span>`;
   return {
-    // Each sound once, on its own, exactly as recorded, with a dot lighting up for each one (so she can see how many
-    // sounds there are). A first miss replays them closer together (retrySpeak), as before.
-    title: '🤖 ' + L().bl.robot, speak: [L().bl.robot, { pause: 250 },
-      { seq: sounds, gap: 800, clear: true, onUnit: i => $$('.rdots i').forEach((d, j) => d.classList.toggle('on', j === i)) }],
-    visual: `<div class="robowrap"><div class="robot"><span>🤖</span><div class="waves"><i></i><i></i><i></i></div></div><div class="rdots">${sounds.map(() => '<i></i>').join('')}</div></div>`,
-    options: pictureOptions(item, wordsNow()), answer: item.w,
-    retrySpeak: [L().bl.sayFast, { seq: sounds, gap: 380 }],
-    correctSpeak: [{ seq: sounds, gap: 300 }, item.w], grade: f => gradeItem('oral', item.id, f, isNew),
+    title: '👂 ' + L().bl.firstT, speak: [L().bl.first(item.w), { pause: 250 }, ...names],
+    visual: `<div class="fsbox"><div class="pic bob">${item.e}</div><div class="fsw"></div></div>`,
+    options: opts.map(x => ({ html: x.e, val: x.w })), answer: mate.w,
+    retrySpeak: [item.w, { pause: 350 }, ...names],
+    correctSpeak: [item.w, { pause: 150 }, mate.w], grade: f => gradeItem('first', item.id, f),
+    // only now the two words are written, with the letters of the shared sound lit: the ear first, then the eye
+    onCorrect(root) { light(-1); const b = $('.fsw', root); if (b) { b.innerHTML = written(item) + written(mate); b.classList.add('on'); } },
   };
 }
 // 🏠 Word families (English): only the first sound changes — cat, hat, bat, rat.

@@ -545,6 +545,10 @@ body[data-zone="think"] { --bg1: #d6d9f6; --bgm: #e4daf7; --bg2: #f8eef8; --hill
 .unit.onset { background: #ffe1dc; } .unit.rime { background: #e3f6ff; }
 .famhouse { font-size: 34px; font-weight: 700; background: #fff; padding: 6px 24px; border-radius: 20px; box-shadow: 0 5px 0 var(--line); }
 .merged-demo { display: flex; align-items: center; gap: 12px; }
+.fsbox { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.fsw { display: flex; gap: 26px; min-height: 52px; font-size: clamp(30px, 6vmin, 46px); font-weight: 700; opacity: 0; transition: opacity .4s; }
+.fsw.on { opacity: 1; } .fsw b { color: var(--coral); }
+.opt.say { transform: scale(1.14); box-shadow: 0 9px 0 var(--teal-d, #2a9d8f), 0 0 0 6px var(--teal); transition: transform .2s; }
 .robot { position: relative; font-size: clamp(110px, 22vmin, 170px); line-height: 1; animation: robo 1.2s ease-in-out infinite; }
 @keyframes robo { 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
 .robot .waves { position: absolute; right: -60px; top: 30%; display: flex; gap: 6px; }
