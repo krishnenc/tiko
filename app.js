@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 34;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 35;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -210,11 +210,12 @@ async function playUnitNow(unit, lang = S.lang, rate) {
     if (blob) return playBlob(blob);
   }
   // the clip; if it can't load (e.g. offline right after an update) fall back to the voice rather than silence
-  // rate 'clear' (robot talk): each sound a little slower and at its natural pitch, so it is as easy to hear as possible
+  // rate 'clear' (robot talk): the clip exactly as it was recorded — no speeding up, no slowing down, no pitch change.
+  // (Slowing a clip down makes the tablet stretch it, and a stretched half-second sound comes out garbled.)
   const clear = rate === 'clear'; if (clear) rate = 0;
-  if ((SOUND_CLIPS[lang] || []).includes(snd) && await playUrl(`sounds/${lang}-${snd}.wav`, clear ? .88 : rate && rate > 1 ? 1.15 : 1, !clear && lang === 'en') !== false) return;
+  if ((SOUND_CLIPS[lang] || []).includes(snd) && await playUrl(`sounds/${lang}-${snd}.wav`, clear ? 1 : rate && rate > 1 ? 1.15 : 1, !clear && lang === 'en') !== false) return;
   // letter sounds stay close to natural pitch so they remain clear
-  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * (clear ? 0.8 : 0.9), Math.min(langPitch(lang), clear ? 1.2 : 1.4));
+  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(langPitch(lang), 1.4));
 }
 function playUrl(url, rate = 1, bright = false) {
   return new Promise(res => {
@@ -1063,11 +1064,10 @@ function mkRobot() {
   const { item, isNew } = chooseItem('oral', wordQueue());
   const sounds = item.units.filter(u => !u.startsWith('_'));
   return {
-    // Said twice so it is easy to catch: first each sound on its own — slow, clear, with a dot lighting up for each
-    // one (so she can see how many sounds there are) — then the same sounds closer together, the way they blend.
+    // Each sound once, on its own, exactly as recorded, with a dot lighting up for each one (so she can see how many
+    // sounds there are). A first miss replays them closer together (retrySpeak), as before.
     title: '🤖 ' + L().bl.robot, speak: [L().bl.robot, { pause: 250 },
-      { seq: sounds, gap: 1000, clear: true, onUnit: i => $$('.rdots i').forEach((d, j) => d.classList.toggle('on', j === i)) }, { pause: 300 },
-      { seq: sounds, gap: 380, onUnit: i => $$('.rdots i').forEach((d, j) => d.classList.toggle('on', j <= i)) }],
+      { seq: sounds, gap: 800, clear: true, onUnit: i => $$('.rdots i').forEach((d, j) => d.classList.toggle('on', j === i)) }],
     visual: `<div class="robowrap"><div class="robot"><span>🤖</span><div class="waves"><i></i><i></i><i></i></div></div><div class="rdots">${sounds.map(() => '<i></i>').join('')}</div></div>`,
     options: pictureOptions(item, wordsNow()), answer: item.w,
     retrySpeak: [L().bl.sayFast, { seq: sounds, gap: 380 }],
