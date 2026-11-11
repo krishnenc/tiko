@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 41;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 42;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -94,8 +94,17 @@ async function removeProfile(id) {
     for (const k of (await idb.keys('photos')) || []) { const p = await idb.get('photos', k); if (p && (p.pid || 'main') === id) await idb.del('photos', k); }
   } catch (e) { /* ignore */ }
 }
+// calm = the parent's "calm mode", or the device's own "reduce motion" setting: nothing moves without end, less confetti
+const reduceMotion = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+const isCalm = () => !!S.settings.calm || reduceMotion.matches;
+// pinch-zoom is locked where the child plays (a stray pinch would break dragging and tracing) and free in the
+// grown-ups' pages, where the text is small
+function zoomable(on) {
+  const m = document.querySelector('meta[name="viewport"]');
+  if (m) m.content = 'width=device-width, initial-scale=1, viewport-fit=cover' + (on ? ', maximum-scale=5, user-scalable=yes' : ', maximum-scale=1, user-scalable=no');
+}
 function applySettings() {
-  document.body.classList.toggle('calm', !!S.settings.calm); document.documentElement.lang = S.lang;
+  document.body.classList.toggle('calm', isCalm()); document.documentElement.lang = S.lang;
   // the theme a parent chose: colours and scenery come from body[data-theme] in styles.css, the mascot from MASCOTS
   const th = themeName(); document.body.dataset.theme = th;
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = THEMES[th][2];
@@ -383,7 +392,7 @@ function sizeFx() { const d = devicePixelRatio || 1; fx.width = innerWidth * d; 
 addEventListener('resize', sizeFx); sizeFx();
 const FX_COLORS = ['#f9a8c9', '#ffd580', '#8fdccb', '#b9a0ee', '#9ed0f5', '#a6e3bd', '#ffc2dd'];
 function burst(x, y, n = 40, spread = 1) {
-  if (S.settings.calm) n = Math.min(n, 10);
+  if (isCalm()) n = Math.min(n, 10);
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, sp = (3 + Math.random() * 7) * spread;
     parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 4, g: .25, r: 5 + Math.random() * 7, rot: Math.random() * 6,
@@ -407,6 +416,7 @@ function fxTick() {
 }
 function flyStar(fromEl) {
   const target = $('.stars'); if (!fromEl || !target) return addStar();
+  target.classList.add('show');          // the star counter stays out of the way during a question and appears when a star is earned
   const a = fromEl.getBoundingClientRect(), b = target.getBoundingClientRect();
   const s = document.createElement('div'); s.className = 'flystar'; s.textContent = '⭐';
   s.style.left = (a.left + a.width / 2 - 22) + 'px'; s.style.top = (a.top + a.height / 2 - 22) + 'px';
@@ -422,8 +432,10 @@ function flyStar(fromEl) {
 function addStar() {
   S.stars++; save();
   const el = $('.stars'); if (!el) return;
-  el.querySelector('b').textContent = S.stars; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+  el.querySelector('b').textContent = S.stars; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump', 'show');
+  clearTimeout(starHideT); starHideT = setTimeout(() => el.classList.remove('show'), 2600);
 }
+let starHideT = null;
 
 // ================= mascot =================
 // Tiko changes with the theme a parent picks: a winged unicorn, a little dragon, a dinosaur, or an owl. Every mascot is an SVG
@@ -852,9 +864,9 @@ const liveObjs = r => $$('.obj', r).filter(o => !o.classList.contains('gone') &&
 const ACTS = {
   letters: { icon: '🔤', area: 'read', make: mkLetters },
   sight: { icon: '✨', area: 'read', make: mkSight },
-  robot: { icon: '👂', area: 'read', make: mkFirstSound },   // key kept from the old Robot talk, so her play history carries over
-  blend: { icon: '🧩', area: 'read', make: mkBlend },
-  family: { icon: '🏠', area: 'read', make: mkFamily },
+  robot: { icon: '👄', area: 'read', make: mkFirstSound },   // key kept from the old Robot talk, so her play history carries over
+  blend: { icon: '🔗', area: 'read', make: mkBlend },
+  family: { icon: '👪', area: 'read', make: mkFamily },
   spell: { icon: '🧱', area: 'read', make: mkSpell },
   trace: { icon: '✍️', area: 'read', make: mkTrace, per: 2 },
   paper: { icon: '📝', area: 'read', make: mkPaperRead, per: 2 },
@@ -873,10 +885,10 @@ const ACTS = {
   shapes: { icon: '🔷', area: 'math', make: mkShapes },
   patterns: { icon: '🔁', area: 'math', make: mkPatterns },
   clock: { icon: '🕐', area: 'math', make: mkClock },
-  doubles: { icon: '🦋', area: 'math', make: mkDoubles },
+  doubles: { icon: '👯', area: 'math', make: mkDoubles },
   missing: { icon: '❓', area: 'math', make: mkMissing },
   skip: { icon: '🐸', area: 'math', make: mkSkip },
-  tens: { icon: '🧱', area: 'math', make: mkTens },
+  tens: { icon: '🔟', area: 'math', make: mkTens },
   money: { icon: '🪙', area: 'math', make: mkMoney },
   groups: { icon: '🧺', area: 'math', make: mkGroups },
   measure: { icon: '📏', area: 'math', make: mkMeasure },
@@ -891,7 +903,7 @@ const ACTS = {
   jigsaw: { icon: '🧩', area: 'think', make: mkJigsaw, per: 2 },
   paint: { icon: '🖌️', area: 'art', studio: () => paintStudio({}) },
   mirror: { icon: '🦋', area: 'art', studio: () => paintStudio({ mirror: true }) },
-  readDraw: { icon: '✏️', area: 'art', studio: () => paintStudio({ word: true }) },
+  readDraw: { icon: '🖍️', area: 'art', studio: () => paintStudio({ word: true }) },
   cbn: { icon: '🖍️', area: 'art', studio: () => colourByNumber() },
   mix: { icon: '🧪', area: 'art', make: mkMix, per: 4 },
   music: { icon: '🎵', area: 'art', studio: () => musicStudio() },
@@ -899,7 +911,7 @@ const ACTS = {
   // the science track lives in science.js (pure curiosity: nothing is graded)
   space: { icon: '🪐', area: 'sci', studio: () => spaceExplorer() },
   rocket: { icon: '🚀', area: 'sci', studio: () => rocketLaunch() },
-  constel: { icon: '✨', area: 'sci', studio: () => starPictures() },
+  constel: { icon: '🌠', area: 'sci', studio: () => starPictures() },
   zoom: { icon: '🔭', area: 'sci', studio: () => zoomOut() },
   wonder: { icon: '💡', area: 'sci', studio: () => wonderCards() },
 };
@@ -1020,7 +1032,7 @@ function mkStory() {
   const st = pickFresh('storyT', STORIES[S.lang].map((f, i) => ({ id: i, f }))).f(A.w, B.w), ans = st.answer === 'A' ? A : B;
   const C = shuffle(DATA[S.lang].words.filter(x => x.e !== A.e && x.e !== B.e))[0];
   return { kind: 'story', title: R.story, speak: [R.story], lines: st.lines, q: st.q, optClass: '',
-    options: shuffle([A, B, C]).map(x => ({ html: x.e, val: x.w })), answer: ans.w, correctSpeak: [ans.w],
+    options: shuffle([A, B, C]).map(x => ({ html: x.e, val: x.w, name: x.w })), answer: ans.w, correctSpeak: [ans.w],
     // after a miss: the line of the story that holds the answer lights up, so she knows where to read again
     onMiss: r => [].concat(st.cue == null ? [] : st.cue).forEach(i => { const p = $$('.reader p', r)[i]; if (p) p.classList.add('cue'); }),
     grade: f => { if (f) bumpCount('story'); } };
@@ -1059,7 +1071,7 @@ function unitsHTML(units, cls = '') {
 function pictureOptions(item, pool) {
   const others = [];
   for (const x of shuffle(pool)) if (x.e !== item.e && !others.some(o => o.e === x.e)) { others.push(x); if (others.length === 2) break; }
-  return shuffle([item, ...others]).map(x => ({ html: x.e, val: x.w }));
+  return shuffle([item, ...others]).map(x => ({ html: x.e, val: x.w, name: x.w }));
 }
 // Slide-to-blend: dragging along the arrow plays each sound as the finger passes under its tile,
 // so a quick slide runs the sounds together — the physical feeling of blending.
@@ -1163,7 +1175,7 @@ function mkFirstSound() {
   return {
     title: '👂 ' + L().bl.firstT, speak: [L().bl.first(item.w), { pause: 250 }, ...names],
     visual: `<div class="fsbox"><div class="pic bob">${item.e}</div><div class="fsw"></div></div>`,
-    options: opts.map(x => ({ html: x.e, val: x.w })), answer: mate.w,
+    options: opts.map(x => ({ html: x.e, val: x.w, name: x.w })), answer: mate.w,
     retrySpeak: [item.w, { pause: 350 }, ...names],
     correctSpeak: [item.w, { pause: 150 }, mate.w], grade: f => gradeItem('first', item.id, f),
     // only now the two words are written, with the letters of the shared sound lit: the ear first, then the eye
@@ -1200,7 +1212,7 @@ function mkFamily() {
     title: `🏠 -${rime}`, speak: [L().bl.familyIntro, { seq: rimeUnits, gap: 280 }, { pause: 200 }, L().bl.slideNow], gate: true,
     visual: `<div class="blendbox"><div class="famhouse">🏠 <b>-${esc(rime)}</b></div>
       <div class="units"><button class="unit onset">${esc(unitText(onset))}</button><button class="unit rime">${esc(rime)}</button></div>${sliderHTML()}</div>`,
-    options: shuffle([item, ...others]).map(x => ({ html: x.e, val: x.w })), answer: item.w,
+    options: shuffle([item, ...others]).map(x => ({ html: x.e, val: x.w, name: x.w })), answer: item.w,
     retrySpeak: [L().bl.sayFast, { seq: [onset, ...rimeUnits], gap: 330 }],
     correctSpeak: [{ seq: [onset, ...rimeUnits], gap: 300 }, item.w], grade: f => gradeItem('fam', item.id, f), onCorrect: mergeTiles,
     // the "-at" tile plays its sounds run together, as one chunk
@@ -2292,7 +2304,8 @@ function askChoice(q, meta, container) {
       wire(meta, finish, () => speak(...q.speak), q.speak);
     }
     const root = $('.stage'), box = container || $('.options', root);
-    box.innerHTML = q.options.map((o, i) => `<button class="opt ${q.optClass || ''}" data-i="${i}" style="--i:${i}">${o.html}</button>`).join('');
+    // a picture-only answer gets a spoken name for screen readers when the question provides one (o.name)
+    box.innerHTML = q.options.map((o, i) => `<button class="opt ${q.optClass || ''}" data-i="${i}" style="--i:${i}"${o.name ? ` aria-label="${esc(o.name)}"` : ''}>${o.html}</button>`).join('');
     const btns = $$('.opt', box);
     let attempts = 0, busy = false;
     const choose = async b => {
@@ -3082,7 +3095,7 @@ function weekReportText(R = weekReport()) {
     if (x.played.length) L2.push(`Played this week: ${x.played.join(', ')}`);
     if (x.never.length) L2.push(`Ready but never tried: ${x.never.join(', ')}`);
   }
-  if (R.caught) L2.push('', `${R.caught} word(s) she seemed to know but could not read in a sentence went back to practice.`);
+  if (R.caught) L2.push('', `${R.caught} word(s) that seemed known but could not be read in a sentence went back to practice.`);
   return L2.join('\n');
 }
 // ---------- backup: everything she has learned, in one small file ----------
@@ -3176,13 +3189,11 @@ function profilePicker(then) {
 function home(fromIntro) {
   dayStars();
   if (sessionOver()) return calmEnding();
-  stopSpeech(); clearIdle(); applySettings(); zone('home'); musicMode('calm');
+  stopSpeech(); clearIdle(); applySettings(); zoomable(false); zone('home'); musicMode('calm');
   if (fromIntro === true) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);   // (back buttons pass a click event — not 'from intro')
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
   app.innerHTML = `<div class="screen home">
     <button class="ic corner" aria-label="parents">⚙️</button>
-    <button class="ic themepick" aria-label="theme">🎨</button>
-    ${PROFILES.list.length > 1 ? `<button class="ic whob" aria-label="who is playing">${curProfile().avatar || AVATARS[0]}</button>` : ''}
     <div class="langs"><button class="lang ${S.lang === 'en' ? 'on' : ''}" data-l="en">🇬🇧 English</button>
       <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr">🇫🇷 Français</button></div>
     <div class="hero">${owl('big')}${hid('chat') ? '' : `<button class="chatb">💬 ${L().chat.btn}</button>`}<h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
@@ -3193,7 +3204,12 @@ function home(fromIntro) {
     <div class="row" style="align-items:center;gap:12px"><div class="starcount">⭐ ${S.stars} &nbsp; 🌟 ${S.stickers.length} &nbsp; 🏅 ${Object.keys(S.badges).length}</div>
     ${goalBarHTML()}</div>
     <div class="ver">v${APP_VERSION}</div>
+    <button class="ic themepick" aria-label="${S.lang === 'fr' ? "changer l'ami et le décor" : 'change the friend and the world'}">${owl('tp')}</button>
+    ${PROFILES.list.length > 1 ? `<button class="whob" aria-label="${esc(L().who)}"><i>${curProfile().avatar || AVATARS[0]}</i><span>${esc(profName(curProfile()))}</span></button>` : ''}
+    <button class="ic soundb" aria-label="${S.lang === 'fr' ? 'musique' : 'music'}">${S.settings.ambient ? '🎵' : '🔇'}</button>
   </div>`;
+  // the music has its own button, so she can switch it off herself
+  $('.soundb').onclick = () => { S.settings.ambient = !S.settings.ambient; save(); musicSet(); $('.soundb').textContent = S.settings.ambient ? '🎵' : '🔇'; if (S.settings.ambient) sfx('pop'); };
   $$('.lang').forEach(b => b.onclick = () => {
     S.lang = b.dataset.l; save(); sfx('pop'); home(); owlReact('happy');
     speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, S.lang === 'fr' ? 'On parle français !' : "Let's speak English!");
@@ -3201,8 +3217,8 @@ function home(fromIntro) {
   // tapping Tiko gives a random silly reaction
   const silly = S.lang === 'fr' ? ['Youpi !', 'Ça chatouille !', 'Hi hi hi !', 'On joue ?', 'Tu es super !', 'Ça brille !']
     : ['Wheee!', 'That tickles!', 'Hee hee hee!', "Let's play!", "You're awesome!", 'Sparkle, sparkle!'];
-  $('.owl').onclick = () => {
-    const o = $('.owl'), k = pick(['happy', 'dance', 'spin']);
+  $('.hero .owl').onclick = () => {
+    const o = $('.hero .owl'), k = pick(['happy', 'dance', 'spin']);
     o.classList.remove('happy', 'dance', 'spin'); void o.offsetWidth; o.classList.add(k); setTimeout(() => o.classList.remove(k), 1600);
     sfx('pop'); burstAt(o, 20); speak(pick(silly));
   };
@@ -3218,11 +3234,17 @@ function menu(area) {
   zone(area); musicMode('calm');
   const ids = Object.keys(ACTS).filter(k => ACTS[k].area === area), sug = suggestIn(area);
   const TAG = { new: '✨', mastered: '🏆', rest: '💤' };
+  // few choices at a time: a long menu shows the suggested activity and the next ones she can play (six in all);
+  // the others wait behind one "More" card
+  const playable = ids.filter(k => !['rest', 'mastered'].includes(actState(k)));
+  const shown = new Set(ids.length > 8 ? [...new Set([...(sug ? [sug] : []), ...playable, ...ids])].slice(0, 6) : ids);
   app.innerHTML = `<div class="screen menu">
-    <div class="topline"><button class="ic back">🏠</button><h2>${area === 'read' ? '📖 ' + L().reading : area === 'art' ? '🎨 ' + L().artName : area === 'think' ? '🧠 ' + L().thinkName : area === 'sci' ? '🚀 ' + L().sciName : '🔢 ' + L().maths}</h2><div style="width:64px"></div></div>
+    <div class="topline"><button class="ic back" aria-label="home">🏠</button><h2>${area === 'read' ? '📖 ' + L().reading : area === 'art' ? '🎨 ' + L().artName : area === 'think' ? '🧠 ' + L().thinkName : area === 'sci' ? '🚀 ' + L().sciName : '🔢 ' + L().maths}</h2><div style="width:64px"></div></div>
     <div class="grid">${ids.map((k, i) => { const s = actState(k);
-      return `<button class="btn card st-${s} ${k === sug ? 'suggest' : ''}" data-a="${k}" style="--i:${i}">${ACTS[k].icon}<span>${esc(actName(k))}</span>${TAG[s] && (s !== 'new' || k === sug) ? `<i class="tag">${TAG[s]}</i>` : ''}</button>`; }).join('')}</div></div>`;
+      return `<button class="btn card st-${s} ${k === sug ? 'suggest' : ''} ${shown.has(k) ? '' : 'xtra'}" data-a="${k}" style="--i:${i}">${ACTS[k].icon}<span>${esc(actName(k))}</span>${TAG[s] && (s !== 'new' || k === sug) ? `<i class="tag">${TAG[s]}</i>` : ''}</button>`; }).join('')}
+      ${shown.size < ids.length ? `<button class="btn card morec">➕<span>${S.lang === 'fr' ? 'Encore' : 'More'}</span></button>` : ''}</div></div>`;
   $('.back').onclick = home;
+  if ($('.morec')) $('.morec').onclick = () => { sfx('pop'); $('.grid').classList.add('all'); $('.morec').remove(); };
   // Tiko points her to something new to discover
   const point = () => { const s = $('.card.suggest'); if (!s) return false; s.classList.remove('wobble'); void s.offsetWidth; s.classList.add('wobble'); s.scrollIntoView({ block: 'nearest' }); return true; };
   if (sug && actState(sug) === 'new') setTimeout(point, 900);
@@ -3463,8 +3485,9 @@ function parentGate() {
 let installEvt = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
 
+let parentTab = 'prog';
 function parents() {
-  stopSpeech();
+  stopSpeech(); zoomable(true);
   const st = S.settings;
   const voiceOpts = lang => `<option value="">(auto)</option>` + voicesFor(lang).map(v => `<option ${st['voice_' + lang] === v.name ? 'selected' : ''}>${esc(v.name)}</option>`).join('');
   const pr = (label, set, items) => { const n = items.length, m = items.filter(i => S.boxes[`${lg}:${set}:${i.id}`] >= 4).length, s = items.filter(i => S.boxes[`${lg}:${set}:${i.id}`] > 0).length;
@@ -3491,7 +3514,7 @@ function parents() {
 
     <section><h3>📊 This week</h3><div class="wkrep"></div>
       <button class="pbtn sharerep">📤 Share / copy this report</button> <span class="repmsg" style="font-size:14px;color:var(--teal-d)"></span>
-      <p style="font-size:13px">The report has no name in it. It is made on this tablet from what she did here; nothing is sent anywhere unless you share it.</p></section>
+      <p style="font-size:13px">The report has no name in it. It is made on this tablet from what was played here; nothing is sent anywhere unless you share it.</p></section>
 
     <section><h3>🎨 Theme</h3><p>Choose the world and the friend Tiko is. Everything else (activities, progress, stars) stays the same.</p>
       <div class="themes">${Object.entries(THEMES).map(([k, [n, d]]) => `<button class="themeb ${themeName() === k ? 'on' : ''}" data-theme="${k}">${owl('', k)}${n}<small>${d}</small></button>`).join('')}</div></section>
@@ -3501,9 +3524,9 @@ function parents() {
       ${installEvt ? '<button class="pbtn inst">Install Tiko now</button>' : ''}</section>
 
     <section><h3>🖨️ Paper worksheets (blended learning)</h3>
-      <p>A <b>library of ${SHEETS.length} kinds of worksheet</b> for reading, writing and maths. Every sheet is one page, is made fresh each time, and follows where she is <b>right now</b>: her place on the journey (now ${stageOf('en') + 1} of ${STAGES.length + 1} in English, ${stageOf('fr') + 1} in French), the letters and words she is still learning, and her maths levels (adding ${lvl('add')}, taking away ${lvl('sub')}, counting ${lvl('count')}).
+      <p>A <b>library of ${SHEETS.length} kinds of worksheet</b> for reading, writing and maths. Every sheet is one page, is made fresh each time, and follows where your child is <b>right now</b>: the place on the journey (now ${stageOf('en') + 1} of ${STAGES.length + 1} in English, ${stageOf('fr') + 1} in French), the letters and words still being learned, and the maths levels (adding ${lvl('add')}, taking away ${lvl('sub')}, counting ${lvl('count')}).
       Open a sheet, or a whole pack, then <b>print it</b>, <b>save it as a PDF</b>, or <b>download</b> it as a file you can open and print from any device.
-      Every daily path also includes a <b>paper mission</b>. She works on paper, then taps ✅ or uses 📷 to show Tiko her work.</p>
+      Every daily path also includes a <b>paper mission</b>. Your child works on paper, then taps ✅ or uses 📷 to show Tiko the work.</p>
       <button class="pbtn wsopen" data-l="en">📚 Open the worksheet library</button><button class="pbtn alt wsopen" data-l="fr">🇫🇷 Fiches en français</button></section>
 
     <section><h3>👧🧒 Children on this tablet</h3>
@@ -3524,8 +3547,8 @@ function parents() {
       <button class="pbtn alt nm-test">▶ Hear it</button><button class="pbtn nm-rec">⏺ Record the name</button>
       <button class="pbtn alt nm-del" ${recKeys.has(pkey('name')) ? '' : 'hidden'}>🗑 Delete recording</button></section>
 
-    <section><h3>🎁 Rewards she's working towards</h3>
-      <p>Set a real-world reward and a star price. Stars count from the moment you add it. Her progress bar shows on the home screen, and Tiko celebrates when she gets there.
+    <section><h3>🎁 Rewards to work towards</h3>
+      <p>Set a real-world reward and a star price. Stars count from the moment you add it. The progress bar shows on the home screen, and Tiko celebrates when your child gets there.
       Small, quick rewards (10–30 stars) work best at first. Stars only come from first-try answers, so a typical path earns about 15–25.</p>
       <div class="goals"></div>
       <div class="goalform">
@@ -3536,7 +3559,7 @@ function parents() {
       </div></section>
 
     <section><h3>🎚️ Difficulty</h3>
-      <p>Tiko makes things harder by itself as she succeeds (and easier if she struggles). If she is ready for harder work already, move her ahead here.
+      <p>Tiko makes things harder by itself as your child succeeds (and easier after a struggle). If your child is ready for harder work already, move ahead here.
       It keeps adjusting automatically afterwards.</p>
       ${['en', 'fr'].map(lg => `<label class="set">${lg === 'en' ? '🇬🇧 English' : '🇫🇷 French'} reading — start the journey at
         <select class="jstart" data-lg="${lg}">${STAGES.map((s, i) => `<option value="${i}" ${i === stageOf(lg) ? 'selected' : ''} ${i < stageOf(lg) ? 'disabled' : ''}>${s.icon} ${esc(T[lg].journey[i])}</option>`).join('')}</select></label>`).join('')}
@@ -3546,8 +3569,8 @@ function parents() {
         <span>${[1, 2, 3].map(n => `<button class="pbtn alt tset" data-n="${n}">${n}</button>`).join('')}</span></div>
       <p class="diffmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
-    <section><h3>👁️ What she sees</h3>
-      <p>Untick a track to hide it. A hidden track disappears from the home screen and from the daily path; her progress in it is kept, and ticking it again brings it straight back.</p>
+    <section><h3>👁️ What your child sees</h3>
+      <p>Untick a track to hide it. A hidden track disappears from the home screen and from the daily path; the progress in it is kept, and ticking it again brings it straight back.</p>
       <div class="tracks">${TRACKS.map(([k, ic, n]) => `<label class="trackb ${hid(k) ? '' : 'on'}"><input type="checkbox" data-track="${k}" ${hid(k) ? '' : 'checked'}> ${ic} ${n}</label>`).join('')}</div>
       <p class="trackmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
@@ -3577,25 +3600,25 @@ function parents() {
       <label class="set">French voice <select data-s="voice_fr">${voiceOpts('fr')}</select></label>
       <button class="pbtn alt tv" data-l="en">▶ Test English</button><button class="pbtn alt tv" data-l="fr">▶ Tester le français</button>
       <h4 style="margin:16px 0 4px">🎧 Find the most fun voice</h4>
-      <p style="font-size:14px">Every voice on this tablet. Tap ▶ to hear Tiko in that voice, then <b>Use</b> on the one she likes best. Voices marked "online" need internet and can be slower.</p>
+      <p style="font-size:14px">Every voice on this tablet. Tap ▶ to hear Tiko in that voice, then <b>Use</b> on the one your child likes best. Voices marked "online" need internet and can be slower.</p>
       <div class="voicelist"></div>
       <p>No French voice listed? On the tablet go to <b>Settings → General management → Text-to-speech → Google → Install voice data</b> and download English (UK) and French (France). Then they work offline too.</p></section>
 
     <section><h3>🎙️ Record letter sounds in your voice (recommended)</h3>
-      <p>Tiko has built-in pure phonics sounds ("sss", "mmm", "t" not "tuh"). Tap ▶ to hear them. If you'd rather she hears your voice or your accent, record a sound (about 1 second) and Tiko will use your recording instead.</p>
+      <p>Tiko has built-in pure phonics sounds ("sss", "mmm", "t" not "tuh"). Tap ▶ to hear them. If you'd rather your child hears your voice or your accent, record a sound (about 1 second) and Tiko will use your recording instead.</p>
       <div class="tabs" style="margin-bottom:10px"><button class="rl on" data-l="en">🇬🇧 sounds</button><button class="rl" data-l="fr">🇫🇷 sons</button><button class="rl" data-l="fr" data-syl="1">🇫🇷 syllabes</button></div>
       <p class="sylnote" hidden style="font-size:14px">The French syllables Tiko says while blending (pa, mo, teau…). Tap ▶ to check each one; if one sounds wrong, record it in your voice and Tiko will use that.</p>
       <div class="recgrid"></div></section>
 
-    <section><h3>📊 Progress</h3><p>✓ = remembered well (reached box 4 of 5 in spaced repetition). New items come in slowly, a few at a time, and anything she misses comes back more often.</p>
+    <section><h3>📊 Progress</h3><p>✓ = remembered well (reached box 4 of 5 in spaced repetition). New items come in slowly, a few at a time, and anything missed comes back more often.</p>
       <div class="progx">${progHTML()}</div></section>
 
-    <section><h3>🎤 Her reading</h3><p>In "Read it to Tiko" she records herself reading. The latest 12 recordings are kept here, on this tablet only.</p><div class="readlist"></div></section>
+    <section><h3>🎤 Read-aloud recordings</h3><p>In "Read it to Tiko" your child records their own reading. The latest 12 recordings are kept here, on this tablet only.</p><div class="readlist"></div></section>
 
-    <section><h3>📷 Her paper work</h3><div class="gallery pg"></div></section>
+    <section><h3>📷 Paper work</h3><div class="gallery pg"></div></section>
 
     <section><h3>💾 Backup</h3>
-      <p>Her progress lives only in this tablet's browser storage. Save a backup file now and then (it goes to Downloads); you can restore it here, or on a new tablet. Voice recordings and photos are not included.${S.lastBackup ? ` Last backup: <b>${esc(S.lastBackup)}</b>.` : ' <b>No backup yet.</b>'}</p>
+      <p>This child's progress lives only in this tablet's browser storage. Save a backup file now and then (it goes to Downloads); you can restore it here, or on a new tablet. Voice recordings and photos are not included.${S.lastBackup ? ` Last backup: <b>${esc(S.lastBackup)}</b>.` : ' <b>No backup yet.</b>'}</p>
       <button class="pbtn bkup">💾 Save a backup file</button> <button class="pbtn alt rstr">📂 Restore from a backup file</button><input type="file" class="bkfile" accept=".json,application/json" hidden>
       <p class="bkmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
@@ -3606,6 +3629,15 @@ function parents() {
     <section><h3>🧹 Reset</h3><button class="pbtn warn rst">Reset all progress</button></section>
   </div></div>`;
   $('.back').onclick = home;
+  // the parent corner is long: its sections sit behind five tabs (the one last open is remembered while the app is open)
+  const TABS = [['prog', '📊 Progress', /This week|Progress|Read-aloud|Paper work$/], ['child', '🧒 Child', /Children|name|Theme|Rewards|Difficulty|sees/],
+    ['play', '⚙️ Session and voice', /Session|Record letter/], ['paper', '🖨️ Worksheets', /worksheets/], ['data', '🔒 Tablet and data', /Install|Backup|Privacy|Reset/]];
+  const secs = $$('.parent section');
+  secs.forEach(s => { const h = s.querySelector('h3').textContent; s.dataset.tab = (TABS.find(t => t[2].test(h)) || TABS[0])[0]; });
+  $('.parent .topline').insertAdjacentHTML('afterend', `<div class="ptabs" role="tablist">${TABS.map(([k, n]) => `<button class="ptab" role="tab" data-t="${k}">${n}</button>`).join('')}</div>`);
+  const showTab = k => { parentTab = k; secs.forEach(s => { s.hidden = s.dataset.tab !== k; }); $$('.ptab').forEach(b => { b.classList.toggle('on', b.dataset.t === k); b.setAttribute('aria-selected', b.dataset.t === k); }); };
+  $$('.ptab').forEach(b => b.onclick = () => { showTab(b.dataset.t); $('.parent').scrollTop = 0; });
+  showTab(parentTab);
   $$('[data-s]').forEach(el => el.onchange = el.oninput = () => {
     const k = el.dataset.s; st[k] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : /^\d+$/.test(el.value) ? +el.value : el.value;
     save(); applySettings();
@@ -3728,7 +3760,7 @@ function parents() {
         ${x.played.length ? `<p><b>▶ Played this week:</b> ${esc(x.played.join(', '))}</p>` : ''}
         ${x.never.length ? `<p><b>🙈 Ready but never tried:</b> ${esc(x.never.join(', '))}</p>` : ''}`; }
     if (!R.langs.en.any && !R.langs.fr.any) h += '<p>No activity recorded this week yet. (Details such as mix-ups are collected from version 27 on.)</p>';
-    if (R.caught) h += `<p>🎣 <b>${R.caught}</b> word(s) she seemed to know but could not read inside a sentence went back to practice.</p>`;
+    if (R.caught) h += `<p>🎣 <b>${R.caught}</b> word(s) that seemed known but could not be read inside a sentence went back to practice.</p>`;
     $('.wkrep').innerHTML = h;
     $('.sharerep').onclick = async () => {
       const text = weekReportText(R), msg = $('.repmsg');
@@ -3770,7 +3802,7 @@ function parents() {
   };
   (async () => {
     const g = $('.pg'), keys = ((await idb.keys('photos')) || []).sort((a, b) => b - a);
-    if (!keys.length) { g.outerHTML = '<p>No photos yet. She can take one with 📷 during paper missions.</p>'; return; }
+    if (!keys.length) { g.outerHTML = '<p>No photos yet. Your child can take one with 📷 during paper missions.</p>'; return; }
     for (const k of keys) {
       const p = await idb.get('photos', k); if (!p || (p.pid || 'main') !== PROFILES.current) continue;
       const w = document.createElement('div'); w.style.position = 'relative';
@@ -3838,6 +3870,14 @@ function frenchForBoy() {
 if (S.settings.frBoy) frenchForBoy();
 
 // ================= boot =================
+// picture-only buttons get a spoken name, for screen readers and switch access
+const ICON_NAMES = { '🏠': ['home', 'accueil'], '🔊': ['say it again', 'répéter'], '⌫': ['delete', 'effacer'], '✔': ['OK', 'OK'], '▶': ['next', 'suivant'], '◀': ['back', 'retour'],
+  '✅': ['done', 'terminé'], '🪐': ['back to the map', 'retour à la carte'], '🗑': ['delete', 'supprimer'], '🔄': ['again', 'encore'], '👀': ['look again', 'regarder encore'], '📷': ['take a photo', 'prendre une photo'] };
+let nameT = 0;
+new MutationObserver(() => { if (nameT) return; nameT = requestAnimationFrame(() => { nameT = 0;
+  for (const b of app.querySelectorAll('button:not([aria-label])')) { const n = ICON_NAMES[b.textContent.trim().replace(/️/g, '')] || ICON_NAMES[b.textContent.trim()]; if (n) b.setAttribute('aria-label', n[S.lang === 'fr' ? 1 : 0]); } }); })
+  .observe(app, { childList: true, subtree: true });
+reduceMotion.addEventListener && reduceMotion.addEventListener('change', applySettings);
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeech(); });
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {

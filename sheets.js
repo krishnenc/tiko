@@ -442,7 +442,7 @@ const WSLIB_CSS = `
 function wsPageHTML(sh, lang) {
   const keep = S.lang; let r; S.lang = lang;                       // the helpers read "her language"; put it back straight after
   try { r = sh.make(); r.place = sh.track === 'math' ? (r.level || '') : sh.track === 'sci' ? '' : wsPlace();
-    r.made = sh.track === 'sci' ? tr('Made by Tiko for curious minds', 'Préparé par Tiko pour les curieux') : tr('Made by Tiko for her level today', 'Préparé par Tiko pour son niveau du jour'); r.ansLabel = tr('Answers, for the grown-up', "Réponses, pour l'adulte"); r.nd = tr('Name', 'Prénom'); }
+    r.made = sh.track === 'sci' ? tr('Made by Tiko for curious minds', 'Préparé par Tiko pour les curieux') : tr("Made by Tiko for today's level", 'Préparé par Tiko pour son niveau du jour'); r.ansLabel = tr('Answers, for the grown-up', "Réponses, pour l'adulte"); r.nd = tr('Name', 'Prénom'); }
   finally { S.lang = keep; }
   return `<div class="ws" data-sheet="${sh.id}"><div class="ws-head"><h1>${sh.icon} Tiko · ${sh[lang]}</h1><span>${r.nd}: ____________ &nbsp; Date: ________</span></div>
     ${r.secs.map(([h, body], i) => `<div class="ws-sec"><h2><b class="n">${i + 1}</b>${h}</h2>${body}</div>`).join('')}
@@ -458,11 +458,11 @@ function worksheetLibrary(lang) {
     cards = WS_TRACKS.map(([k, ic, en, fr]) => { const list = SHEETS.filter(s => s.track === k);
       return `<h2><span>${ic} ${lg === 'fr' ? fr : en} <small style="font-weight:400;font-size:15px;color:#777">· ${list.length} sheets</small></span><button class="pbtn alt wspack" data-track="${k}">📦 Whole pack (${list.length} pages)</button></h2>
         <div class="wscards">${list.map(s => { const ah = s.ahead && s.ahead(st), dn = s.done && s.done(st);
-          return `<button class="wscard ${ah ? 'ahead' : ''} ${dn ? 'done' : ''}" data-id="${s.id}">${s.icon}<b>${esc(s[lg])}</b><small>${ah ? '⏳ a little ahead of her' : dn ? '✓ she is past this' : ''}</small></button>`; }).join('')}</div>`; }).join('');
+          return `<button class="wscard ${ah ? 'ahead' : ''} ${dn ? 'done' : ''}" data-id="${s.id}">${s.icon}<b>${esc(s[lg])}</b><small>${ah ? '⏳ a little ahead' : dn ? '✓ already past this' : ''}</small></button>`; }).join('')}</div>`; }).join('');
   } finally { S.lang = keep; }
   el.innerHTML = `<style>${WSLIB_CSS}</style><div class="sh-close"><span class="wslang"><button class="pbtn ${lg === 'en' ? 'on' : ''}" data-l="en">🇬🇧 English</button><button class="pbtn ${lg === 'fr' ? 'on' : ''}" data-l="fr">🇫🇷 Français</button></span><button class="pbtn alt" id="shx">✕ Close</button></div>
     <div class="wslib"><h1>📚 Worksheet library</h1>
-    <p>${SHEETS.length} kinds of sheet for pen and paper. Each one is a single page, is <b>made fresh every time</b> you open it, and follows where she is today: her place on the reading journey, the letters and words she is still learning, and her maths levels. Tap a sheet to see it, then print it, save it as a PDF, or download it. "Whole pack" gives you every sheet of a track in one go.</p>
+    <p>${SHEETS.length} kinds of sheet for pen and paper. Each one is a single page, is <b>made fresh every time</b> you open it, and follows where your child is today: the place on the reading journey, the letters and words still being learned, and the maths levels. Tap a sheet to see it, then print it, save it as a PDF, or download it. "Whole pack" gives you every sheet of a track in one go.</p>
     ${cards}</div>`;
   el.classList.add('preview'); el.scrollTop = 0;
   $('#shx').onclick = close;
