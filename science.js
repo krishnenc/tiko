@@ -1,7 +1,8 @@
 // Tiko – the science track (v38). Loaded after app.js.
 // Pure curiosity: nothing here is marked right or wrong, nothing is tested and nothing "comes back to practise".
-// Four places: 🪐 Space explorer (the Sun, the Moon and the eight planets), 🚀 Rocket launch, 🔭 Zoom out (from her
-// to the galaxies) and 💡 I wonder (question cards: guess first, then find out, then often something to try for real).
+// Five places: 🪐 Space explorer (the Sun, the Moon and the eight planets), 🚀 Rocket launch, ✨ Star pictures (join
+// the stars of a constellation), 🔭 Zoom out (from her to the galaxies) and 💡 I wonder (question cards: guess first,
+// then find out, then often something to try for real). The science worksheets are in sheets.js.
 // What she has discovered is kept in S.sci ("<lang>:<id>" → day), so new things are offered first and something
 // already seen today rests (the same discovery rule as the little library).
 'use strict';
@@ -11,6 +12,7 @@ const sciSeen = id => (S.sci || {})[sciKey(id)];
 const sciToday = id => sciSeen(id) === today();
 function sciMark(id) { S.sci = S.sci || {}; if (!S.sci[sciKey(id)]) tally('sciNew'); S.sci[sciKey(id)] = today(); tally('sci'); S.stars += 1; save(); }
 const sciAllPlanets = () => ['en', 'fr'].some(lg => SPACE.every(b => (S.sci || {})[lg + ':space:' + b.id]));
+const sciAllSkies = () => ['en', 'fr'].some(lg => SKIES.every(c => (S.sci || {})[lg + ':st:' + c.id]));
 
 // ---------- words ----------
 const TS = {
@@ -23,6 +25,7 @@ const TS = {
     zoomBtn: 'Zoom out', zoomSay: 'Tap the telescope to zoom out!', zoomEnd: 'Space is enormous. And you are part of it!',
     wonderSay: 'What are you wondering about? Pick a card!', think: 'What do you think?', or: 'or', yes: 'Yes! Good thinking!', letsSee: "Good guess! Let's find out!",
     tryIt: 'Try it for real!', wonderDone: 'Now you know! Keep wondering!',
+    stSay: 'Long ago, people joined the stars to make pictures. Pick a star picture!', stJoin: 'Join the stars! Touch the star that shines.',
   },
   fr: {
     spaceSay: 'Où va-t-on ? Touche le Soleil, la Lune ou une planète !', found: n => `Tu as découvert ${n} !`, next: 'Touche la flèche pour en savoir plus !',
@@ -33,6 +36,7 @@ const TS = {
     zoomBtn: 'Recule', zoomSay: 'Touche le télescope pour reculer !', zoomEnd: "L'espace est immense. Et tu en fais partie !",
     wonderSay: 'Qu’est-ce que tu te demandes ? Choisis une carte !', think: "Qu'en penses-tu ?", or: 'ou', yes: 'Oui ! Bien pensé !', letsSee: 'Bonne idée ! Allons voir !',
     tryIt: 'Essaie pour de vrai !', wonderDone: 'Maintenant tu sais ! Continue à te poser des questions !',
+    stSay: "Il y a très longtemps, les gens ont relié les étoiles pour faire des dessins. Choisis un dessin d'étoiles !", stJoin: "Relie les étoiles ! Touche l'étoile qui brille.",
   },
 };
 const TSL = () => TS[S.lang];
@@ -336,7 +340,157 @@ const WONDER = [
       a: 'Your heart is a muscle about as big as your fist. It pumps blood all around your body, all day and all night, without ever stopping.', y: 'Put your hand on your chest. Now jump ten times. Is your heart beating faster?' },
     fr: { t: 'Ton cœur', q: 'À quoi sert ton cœur ?', g: [['🩸', 'Il pompe ton sang'], ['💭', 'Il réfléchit pour toi']],
       a: "Ton cœur est un muscle gros comme ton poing. Il pompe le sang dans tout ton corps, jour et nuit, sans jamais s'arrêter.", y: 'Pose ta main sur ta poitrine. Maintenant saute dix fois. Ton cœur bat-il plus vite ?' } },
+  // ----- v39: fourteen more -----
+  { id: 'sky', pic: '🌤️', en: { t: 'The sky', q: 'Why is the sky blue?', g: [['☀️', 'Sunlight bounces around in the air'], ['🌊', 'The sky copies the sea']],
+      a: 'Sunlight has all the colours inside it. The blue light bounces around in the air the most. So when you look up, you see blue everywhere!', y: 'Look at the sky when the Sun goes down. What colours can you see now?' },
+    fr: { t: 'Le ciel', q: 'Pourquoi le ciel est-il bleu ?', g: [['☀️', "La lumière du Soleil rebondit dans l'air"], ['🌊', 'Le ciel copie la mer']],
+      a: "La lumière du Soleil contient toutes les couleurs. La lumière bleue est celle qui rebondit le plus dans l'air. Alors quand tu lèves la tête, tu vois du bleu partout !", y: 'Regarde le ciel quand le Soleil se couche. Quelles couleurs vois-tu maintenant ?' } },
+  { id: 'rain', pic: '🌧️', en: { t: 'Rain', q: 'Where does rain come from?', g: [['☁️', 'From tiny drops of water in the clouds'], ['🚿', 'From a giant shower in the sky']],
+      a: 'The Sun warms the water of the sea. The water rises into the sky, and makes clouds of tiny drops. When the drops get big and heavy, they fall. That is rain!', y: 'Put a little water in a saucer, in the sunshine. Look again tomorrow. Where did the water go?' },
+    fr: { t: 'La pluie', q: "D'où vient la pluie ?", g: [['☁️', "De toutes petites gouttes d'eau dans les nuages"], ['🚿', 'D’une douche géante dans le ciel']],
+      a: "Le Soleil chauffe l'eau de la mer. L'eau monte dans le ciel et forme des nuages de toutes petites gouttes. Quand les gouttes deviennent grosses et lourdes, elles tombent. C'est la pluie !", y: "Mets un peu d'eau dans une soucoupe, au soleil. Regarde encore demain. Où est passée l'eau ?" } },
+  { id: 'shadow', pic: '🔦', en: { t: 'Shadows', q: 'What makes your shadow?', g: [['🧍', 'Your body stops the light'], ['👻', 'A dark friend follows you']],
+      a: 'Light travels in straight lines. It cannot go through you! So behind you there is a dark shape where the light could not go. That is your shadow.', y: 'Look at your shadow in the morning, and again at noon. When is it long? When is it short?' },
+    fr: { t: 'Les ombres', q: "Qu'est-ce qui fait ton ombre ?", g: [['🧍', 'Ton corps arrête la lumière'], ['👻', 'Un ami tout noir te suit']],
+      a: "La lumière avance tout droit. Elle ne peut pas te traverser ! Alors derrière toi, il y a une forme sombre, là où la lumière n'a pas pu passer. C'est ton ombre.", y: 'Regarde ton ombre le matin, puis encore à midi. Quand est-elle longue ? Quand est-elle courte ?' } },
+  { id: 'float', pic: '🍏', en: { t: 'Float or sink', q: 'You drop an apple in water. What happens?', g: [['🛟', 'It floats'], ['⚓', 'It sinks']],
+      a: 'An apple floats! It has lots of tiny pockets of air inside. A coin is small, but it is heavy for its size, so it sinks.', y: 'Fill a bowl with water. Try a coin, a spoon, a leaf and a pencil. Guess first: float or sink?' },
+    fr: { t: 'Flotte ou coule', q: "Tu lâches une pomme dans l'eau. Que se passe-t-il ?", g: [['🛟', 'Elle flotte'], ['⚓', 'Elle coule']],
+      a: "Une pomme flotte ! Elle a plein de toutes petites poches d'air à l'intérieur. Une pièce est petite, mais elle est lourde pour sa taille, alors elle coule.", y: "Remplis un bol d'eau. Essaie une pièce, une cuillère, une feuille et un crayon. Devine d'abord : flotte ou coule ?" } },
+  { id: 'butterfly', pic: '🦋', en: { t: 'Butterflies', q: 'What was a butterfly before it had wings?', g: [['🐛', 'A caterpillar'], ['🌸', 'A flower']],
+      a: 'A butterfly starts as a tiny egg. Out comes a caterpillar, which eats and eats. Then it wraps itself up, and changes inside. Out comes a butterfly!' },
+    fr: { t: 'Les papillons', q: "Qu'était un papillon avant d'avoir des ailes ?", g: [['🐛', 'Une chenille'], ['🌸', 'Une fleur']],
+      a: "Un papillon commence par être un tout petit œuf. Il en sort une chenille, qui mange, qui mange. Puis elle s'enferme dans une chrysalide et se transforme. Et il en sort un papillon !" } },
+  { id: 'bee', pic: '🐝', en: { t: 'Bees', q: 'Why do bees visit flowers?', g: [['🍯', 'To drink their sweet juice'], ['👃', 'Just to smell them']],
+      a: 'Bees drink the sweet juice of flowers. It is called nectar, and they turn it into honey. Bees also carry a yellow dust from flower to flower. That helps plants make seeds.' },
+    fr: { t: 'Les abeilles', q: 'Pourquoi les abeilles vont-elles sur les fleurs ?', g: [['🍯', 'Pour boire leur jus sucré'], ['👃', 'Juste pour les sentir']],
+      a: "Les abeilles boivent le jus sucré des fleurs. On l'appelle le nectar, et elles en font du miel. Elles portent aussi une poussière jaune de fleur en fleur. Ça aide les plantes à faire des graines." } },
+  { id: 'whale', pic: '🐋', en: { t: 'Whales', q: 'Is a whale a fish?', g: [['💨', 'No. It breathes air, like you'], ['🐟', 'Yes. It is a giant fish']],
+      a: 'A whale is not a fish! It comes up to the top of the sea to breathe air, through a hole on its head. And a baby whale drinks its mother’s milk.' },
+    fr: { t: 'Les baleines', q: 'La baleine est-elle un poisson ?', g: [['💨', "Non. Elle respire de l'air, comme toi"], ['🐟', "Oui. C'est un poisson géant"]],
+      a: "La baleine n'est pas un poisson ! Elle remonte à la surface de la mer pour respirer de l'air, par un trou sur sa tête. Et le bébé baleine boit le lait de sa maman." } },
+  { id: 'bones', pic: '🦴', en: { t: 'Your bones', q: 'What are your bones for?', g: [['🧍', 'They hold you up'], ['🥁', 'They make music']],
+      a: 'You have more than two hundred bones! Together they make your skeleton. It holds you up and protects your insides. Without bones, you would be floppy like jelly.', y: 'Feel your elbow, your knee and your head. Can you feel the hard bones under your skin?' },
+    fr: { t: 'Tes os', q: 'À quoi servent tes os ?', g: [['🧍', 'Ils te tiennent debout'], ['🥁', 'Ils font de la musique']],
+      a: "Tu as plus de deux cents os ! Ensemble, ils forment ton squelette. Il te tient debout et protège l'intérieur de ton corps. Sans os, tu serais tout mou, comme de la gelée.", y: 'Touche ton coude, ton genou et ta tête. Sens-tu les os durs sous ta peau ?' } },
+  { id: 'sound', pic: '🔔', en: { t: 'Sounds', q: 'What is a sound?', g: [['〰️', 'The air is shaking'], ['🎈', 'Tiny balloons that pop']],
+      a: 'When something shakes very fast, it makes the air shake too. The shaking travels through the air into your ears. That is how you hear!', y: 'Put your hand on your throat and hum a song. Can you feel it shaking?' },
+    fr: { t: 'Les sons', q: "Qu'est-ce qu'un son ?", g: [['〰️', "L'air qui tremble"], ['🎈', 'Des petits ballons qui éclatent']],
+      a: "Quand une chose tremble très vite, elle fait trembler l'air aussi. Ce tremblement voyage dans l'air jusqu'à tes oreilles. C'est comme ça que tu entends !", y: 'Pose ta main sur ta gorge et fredonne une chanson. Sens-tu que ça tremble ?' } },
+  { id: 'sea', pic: '🌊', en: { t: 'The sea', q: 'Why is the sea salty?', g: [['🏞️', 'Rivers bring salt from the rocks'], ['🧂', 'Somebody dropped the salt pot']],
+      a: 'Rain and rivers wash tiny bits of salt out of the rocks, and carry them to the sea. The water goes back up to the sky, but the salt stays. So the sea is salty!' },
+    fr: { t: 'La mer', q: 'Pourquoi la mer est-elle salée ?', g: [['🏞️', 'Les rivières apportent le sel des roches'], ['🧂', "Quelqu'un a renversé la salière"]],
+      a: "La pluie et les rivières arrachent de tout petits grains de sel aux roches, et les emportent jusqu'à la mer. L'eau remonte dans le ciel, mais le sel reste. Alors la mer est salée !" } },
+  { id: 'comet', pic: '☄️', en: { t: 'Comets', q: 'What is a comet?', g: [['🧊', 'A ball of ice and dust'], ['🔥', 'A ball of fire']],
+      a: 'A comet is a big ball of ice and dust that travels around the Sun. When it comes near the Sun, it warms up and grows a long, shining tail.' },
+    fr: { t: 'Les comètes', q: "Qu'est-ce qu'une comète ?", g: [['🧊', 'Une boule de glace et de poussière'], ['🔥', 'Une boule de feu']],
+      a: "Une comète est une grosse boule de glace et de poussière qui voyage autour du Soleil. Quand elle s'approche du Soleil, elle se réchauffe et il lui pousse une longue queue brillante." } },
+  { id: 'station', pic: '🛰️', en: { t: 'Living in space', q: 'Do people live in space?', g: [['🧑‍🚀', 'Yes, in a house that flies around the Earth'], ['🚫', 'No, nobody at all']],
+      a: 'Yes! Astronauts live in a space station. It flies around the Earth sixteen times every day. Up there they float, and they even eat floating food!', y: 'Sometimes you can see the space station in the evening sky. It looks like a bright star that moves. Ask a grown-up to help you find it.' },
+    fr: { t: "Vivre dans l'espace", q: "Est-ce que des gens vivent dans l'espace ?", g: [['🧑‍🚀', 'Oui, dans une maison qui vole autour de la Terre'], ['🚫', 'Non, personne']],
+      a: "Oui ! Des astronautes vivent dans une station spatiale. Elle fait seize fois le tour de la Terre chaque jour. Là-haut ils flottent, et même leur repas flotte !", y: "Parfois, on peut voir la station spatiale dans le ciel du soir. On dirait une étoile brillante qui avance. Demande à un adulte de t'aider à la trouver." } },
+  { id: 'teeth', pic: '🦷', en: { t: 'Your teeth', q: 'Why do baby teeth fall out?', g: [['🦷', 'Bigger teeth push them out'], ['😴', 'They are tired']],
+      a: 'You are growing, and so is your mouth! Bigger teeth are growing under your baby teeth. They push the little ones out. You will keep your big teeth all your life, so brush them well.', y: 'Look in a mirror and count your teeth. How many have you got today?' },
+    fr: { t: 'Tes dents', q: 'Pourquoi les dents de lait tombent-elles ?', g: [['🦷', 'Des dents plus grosses les poussent'], ['😴', 'Elles sont fatiguées']],
+      a: "Tu grandis, et ta bouche aussi ! Des dents plus grosses poussent sous tes dents de lait. Elles poussent les petites dehors. Tu garderas tes grandes dents toute ta vie, alors brosse-les bien.", y: "Regarde-toi dans un miroir et compte tes dents. Combien en as-tu aujourd'hui ?" } },
+  { id: 'air', pic: '🎈', en: { t: 'Air', q: 'Is an empty glass really empty?', g: [['💨', 'No. It is full of air'], ['⭕', 'Yes. There is nothing in it']],
+      a: 'The glass is full of air! You cannot see air, but it is all around you. You breathe it, and when it moves, you feel it: that is the wind.', y: 'Push a glass upside down into a bowl of water. Does the water get in? The air is taking up the room!' },
+    fr: { t: "L'air", q: 'Un verre vide est-il vraiment vide ?', g: [['💨', "Non. Il est plein d'air"], ['⭕', "Oui. Il n'y a rien dedans"]],
+      a: "Le verre est plein d'air ! L'air ne se voit pas, mais il est tout autour de toi. Tu le respires, et quand il bouge, tu le sens : c'est le vent.", y: "Enfonce un verre à l'envers dans un bol d'eau. L'eau entre-t-elle ? L'air prend toute la place !" } },
 ];
+
+// ---------- ✨ Star pictures: join the stars of a constellation ----------
+// p: the stars [x, y, size, colour] in a 100×100 sky, in the order she joins them. l: the lines between them;
+// a line is drawn as soon as both of its stars are lit. Nothing can go wrong: only the shining star answers.
+const SKIES = [
+  { id: 'dipper', pic: '🍳', en: ['the Big Dipper', 'The Big Dipper'], fr: ['la Grande Casserole', 'La Grande Casserole'],
+    p: [[8, 30], [24, 24], [38, 30], [52, 38], [56, 58], [80, 60], [84, 38]], l: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [3, 6]],
+    f: { en: ['Seven bright stars make a giant saucepan in the sky.', 'It is part of a bigger star picture: the Great Bear.'],
+      fr: ['Sept étoiles brillantes dessinent une casserole géante dans le ciel.', "Elle fait partie d'un dessin plus grand : la Grande Ourse."] } },
+  { id: 'orion', pic: '🏹', en: ['Orion the hunter', 'Orion, the hunter'], fr: ['Orion le chasseur', 'Orion, le chasseur'],
+    p: [[30, 16, 1.4, '#ffb070'], [68, 22], [41, 49], [50, 46], [59, 43], [34, 82], [72, 80, 1.4, '#cfe0ff']], l: [[0, 1], [0, 2], [2, 3], [3, 4], [1, 4], [2, 5], [4, 6]],
+    f: { en: ['Three stars in a row make his belt. They are easy to find in the night sky!', 'The orange star on his shoulder is a giant. It is much, much bigger than our Sun.'],
+      fr: ['Trois étoiles bien alignées forment sa ceinture. Elles sont faciles à trouver dans le ciel !', "L'étoile orange sur son épaule est une géante. Elle est bien plus grosse que notre Soleil."] } },
+  { id: 'cross', pic: '🧭', en: ['the Southern Cross', 'The Southern Cross'], fr: ['la Croix du Sud', 'La Croix du Sud'],
+    p: [[48, 12, 1.2, '#ffc9a0'], [54, 88, 1.4, '#cfe0ff'], [20, 50, 1.3, '#cfe0ff'], [78, 40]], l: [[0, 1], [2, 3]],
+    f: { en: ['Four bright stars make a little cross. It is the smallest star picture of all!', 'Long ago, sailors looked at it to find their way across the sea.'],
+      fr: ["Quatre étoiles brillantes dessinent une petite croix. C'est le plus petit de tous les dessins d'étoiles !", 'Il y a longtemps, les marins la regardaient pour trouver leur chemin sur la mer.'] } },
+  { id: 'cassiopeia', pic: '👑', en: ['Cassiopeia the queen', 'Cassiopeia, the queen'], fr: ['Cassiopée la reine', 'Cassiopée, la reine'],
+    p: [[10, 30], [28, 64], [48, 42], [66, 70], [90, 34]], l: [[0, 1], [1, 2], [2, 3], [3, 4]],
+    f: { en: ['Five stars make a zigzag, like the letter W.', 'In an old story, Cassiopeia was a queen sitting on her throne.'],
+      fr: ['Cinq étoiles dessinent un zigzag, comme la lettre W.', 'Dans une vieille histoire, Cassiopée était une reine assise sur son trône.'] } },
+  { id: 'scorpion', pic: '🦂', en: ['the Scorpion', 'The Scorpion'], fr: ['le Scorpion', 'Le Scorpion'],
+    p: [[86, 10], [76, 22], [64, 32, 1.5, '#ff8a6a'], [55, 46], [51, 60], [54, 74], [66, 84], [80, 82], [87, 70]], l: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8]],
+    f: { en: ['Look at its long curly tail, with a sting at the end!', 'Its heart is a big red star. It is called Antares.'],
+      fr: ['Regarde sa longue queue recourbée, avec un dard au bout !', "Son cœur est une grosse étoile rouge. Elle s'appelle Antarès."] } },
+  { id: 'lion', pic: '🦁', en: ['the Lion', 'The Lion'], fr: ['le Lion', 'Le Lion'],
+    p: [[30, 72, 1.4, '#cfe0ff'], [28, 54], [37, 41], [31, 27], [18, 21], [9, 30], [68, 44], [90, 64], [69, 64]], l: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [2, 6], [6, 7], [7, 8], [6, 8], [0, 8]],
+    f: { en: ['The curved line of stars is his big head and his mane.', 'People have seen a lion in these stars for thousands of years.'],
+      fr: ["La ligne courbe d'étoiles, c'est sa grosse tête et sa crinière.", "Les gens voient un lion dans ces étoiles depuis des milliers d'années."] } },
+  { id: 'swan', pic: '🦢', en: ['the Swan', 'The Swan'], fr: ['le Cygne', 'Le Cygne'],
+    p: [[50, 10, 1.4], [50, 36], [50, 90, 1.1, '#ffd9a0'], [14, 50], [86, 30]], l: [[0, 1], [1, 2], [1, 3], [1, 4]],
+    f: { en: ['It is a swan flying with its wings wide open and its long neck stretched out.', 'It seems to fly along the Milky Way, our river of stars.'],
+      fr: ["C'est un cygne qui vole, les ailes grandes ouvertes et son long cou tendu.", "On dirait qu'il vole le long de la Voie lactée, notre rivière d'étoiles."] } },
+];
+function skySVG(c, mini) {
+  const far = mini ? '' : Array.from({ length: 44 }, () => `<circle cx="${(Math.random() * 100).toFixed(1)}" cy="${(Math.random() * 100).toFixed(1)}" r="${(.2 + Math.random() * .35).toFixed(2)}" fill="#fff" opacity="${(.25 + Math.random() * .45).toFixed(2)}"/>`).join('');
+  return `<svg class="sky ${mini ? 'mini' : ''}" viewBox="0 0 100 100" aria-hidden="true">${far}<g class="cls"></g>${c.p.map(([x, y, s = 1, col = '#fff6c9'], i) =>
+    `<g class="cs" data-i="${i}"><circle class="glow" cx="${x}" cy="${y}" r="${(mini ? 6 : 5) * s}" fill="${col}"/><circle class="dot" cx="${x}" cy="${y}" r="${(mini ? 3.4 : 2.1) * s}" fill="${col}"/></g>`).join('')}</svg>`;
+}
+function starPictures() {
+  return new Promise(resolve => {
+    const N = c => c[S.lang];
+    const deck = () => {
+      clearIdle(); stopSpeech(); zone('sci'); musicMode('calm');
+      const allRest = SKIES.every(c => sciToday('st:' + c.id)), firstNew = SKIES.find(c => !sciSeen('st:' + c.id));
+      app.innerHTML = `<div class="screen sub sci library"><div class="topline"><button class="ic back">🏠</button><h2>✨ ${esc(actName('constel'))}</h2><div style="width:64px"></div></div>
+        <div class="shelf">${SKIES.map((c, i) => { const rest = !allRest && sciToday('st:' + c.id), seen = sciSeen('st:' + c.id);
+          // the name stays a surprise until she has joined the stars
+          return `<button class="btn bookc skyc ${rest ? 'st-rest' : ''} ${c === firstNew ? 'suggest' : ''}" data-c="${i}" style="--i:${i}"><span class="cov">${skySVG(c, true)}</span><b>${seen ? esc(N(c)[1]) : '? ? ?'}</b><i class="tag">${rest ? '💤' : seen ? '✅' : '✨'}</i></button>`; }).join('')}</div></div>`;
+      $('.back').onclick = () => { stopSpeech(); resolve(null); }; exitCurrent = () => resolve(null);
+      $$('[data-c]').forEach(el => el.onclick = async () => {
+        if (el.classList.contains('st-rest')) { el.classList.remove('wobble'); void el.offsetWidth; el.classList.add('wobble'); sfx('tap'); return speak(L().disc.rest); }
+        sfx('pop'); const r = await join(SKIES[+el.dataset.c]);
+        if (r) resolve(true); else if (r === null) resolve(null); else deck();
+      });
+      speak(TSL().stSay);
+    };
+    const join = c => new Promise(res => {
+      const R = TSL(), facts = c.f[S.lang]; let k = 0, done = false, said = [R.stJoin];
+      const fin = v => { if (done) return; done = true; stopSpeech(); clearIdle(); res(v); };
+      app.innerHTML = sciFrame('constel', `<h2 class="scih"></h2><div class="cstage">${skySVG(c)}</div><div class="csay">${sciText(R.stJoin)}</div><div class="btnrow cbtn"></div>`, 3, 0);
+      const svg = $('.cstage svg'), stars = $$('.cs', svg);
+      const dots = n => $$('.dots i').forEach((d, j) => { d.className = j < n ? 'done' : j === n ? 'now' : ''; });
+      const tell = (...t) => { said = t; $('.csay').innerHTML = sciText(t.filter(x => typeof x === 'string').join(' ')); setIdle(() => nudge(said)); return speak(...t); };
+      const mark = () => stars.forEach((s, i) => { s.classList.toggle('lit', i < k); s.classList.toggle('next', i === k); });
+      const found = () => {
+        clearIdle(); stopSpeech(); $('.constel').classList.add('found'); $('.scih').textContent = c.pic + ' ' + N(c)[1]; sfx('win'); burstAt($('.cstage'), 50); dots(1);
+        $('.cbtn').innerHTML = '<button class="btn primary huge nextb" aria-label="next">▶</button>';
+        $('.nextb').onclick = () => {
+          sfx('pop'); dots(2); $('.nextb').textContent = '✅';
+          $('.nextb').onclick = async () => { $('.nextb').disabled = true; sfx('pop'); sciMark('st:' + c.id); await sciCheer(R.found(N(c)[0])); fin(true); };
+          tell(facts[1]);
+        };
+        tell(N(c)[1] + (S.lang === 'fr' ? ' !' : '!'), { pause: 200 }, facts[0]);
+      };
+      let last = 0;
+      const light = () => {
+        const i = k++; sfx('pop'); last = performance.now();
+        for (const [a, b] of c.l) if (Math.max(a, b) === i) { const [x1, y1] = c.p[Math.min(a, b)], [x2, y2] = c.p[i];
+          $('.cls', svg).insertAdjacentHTML('beforeend', `<line class="cl" pathLength="1" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`); }
+        mark(); if (k === c.p.length) found(); else setIdle(() => nudge(said));
+      };
+      // a tap on (or near) the shining star, or a finger sliding over it: both join it
+      const near = (e, d) => { const r = svg.getBoundingClientRect(), [x, y] = c.p[k]; return Math.hypot((e.clientX - r.left) / r.width * 100 - x, (e.clientY - r.top) / r.height * 100 - y) < d; };
+      svg.addEventListener('click', e => { if (k < c.p.length && performance.now() - last > 350 && (e.target.closest('.cs.next') || near(e, 12))) light(); });
+      svg.addEventListener('pointermove', e => { if (k && k < c.p.length && (e.buttons || e.pointerType === 'touch') && near(e, 6)) light(); });
+      $('.home').onclick = () => fin(null); exitCurrent = () => fin(null);
+      $('.replay').onclick = () => { sfx('tap'); speak(...said); };
+      mark(); setIdle(() => nudge(said)); speak(R.stJoin);
+    });
+    deck();
+  });
+}
 function wonderCards() {
   return new Promise(resolve => {
     const deck = () => {

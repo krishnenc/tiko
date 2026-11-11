@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 38;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 39;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -676,6 +676,7 @@ const BADGES = [
   { id: 'sci5', icon: '🔭', en: '5 science discoveries', fr: '5 découvertes en sciences', ok: () => tot('sciNew') >= 5 },
   { id: 'planets', icon: '🪐', en: 'Visited the Sun, the Moon and every planet', fr: 'Visité le Soleil, la Lune et toutes les planètes', ok: () => typeof sciAllPlanets === 'function' && sciAllPlanets() },
   { id: 'rocket3', icon: '🚀', en: '3 rocket flights', fr: '3 vols en fusée', ok: () => tot('rockets') >= 3 },
+  { id: 'skies', icon: '✨', en: 'Joined every star picture', fr: "Relié tous les dessins d'étoiles", ok: () => typeof sciAllSkies === 'function' && sciAllSkies() },
   { id: 'think5', icon: '🧠', en: '5 thinking games', fr: '5 jeux de réflexion', ok: () => tot('think') >= 5 },
   { id: 'simon5', icon: '🎶', en: 'Copied 5 in a row', fr: 'Imité 5 à la suite', ok: () => tot('simon5') >= 1 },
   { id: 'puzzle3', icon: '🧩', en: '3 jigsaws done', fr: '3 puzzles finis', ok: () => tot('puzzles') >= 3 },
@@ -843,6 +844,7 @@ const ACTS = {
   // the science track lives in science.js (pure curiosity: nothing is graded)
   space: { icon: '🪐', area: 'sci', studio: () => spaceExplorer() },
   rocket: { icon: '🚀', area: 'sci', studio: () => rocketLaunch() },
+  constel: { icon: '✨', area: 'sci', studio: () => starPictures() },
   zoom: { icon: '🔭', area: 'sci', studio: () => zoomOut() },
   wonder: { icon: '💡', area: 'sci', studio: () => wonderCards() },
 };
@@ -869,8 +871,8 @@ T.en.acts.story = 'Little stories'; T.fr.acts.story = 'Petites histoires';
 T.en.acts.readAloud = 'Read it to Tiko'; T.fr.acts.readAloud = 'Lis-le à Tiko';
 T.en.acts.books = 'Little books'; T.fr.acts.books = 'Petits livres';
 T.en.sciName = 'Science'; T.fr.sciName = 'Sciences';
-Object.assign(T.en.acts, { space: 'Space explorer', rocket: 'Rocket launch', zoom: 'Zoom out!', wonder: 'I wonder…' });
-Object.assign(T.fr.acts, { space: "Explore l'espace", rocket: 'Décollage de fusée', zoom: 'Recule, recule !', wonder: 'Je me demande…' });
+Object.assign(T.en.acts, { space: 'Space explorer', rocket: 'Rocket launch', zoom: 'Zoom out!', wonder: 'I wonder…', constel: 'Star pictures' });
+Object.assign(T.fr.acts, { space: "Explore l'espace", rocket: 'Décollage de fusée', zoom: 'Recule, recule !', wonder: 'Je me demande…', constel: "Dessins d'étoiles" });
 
 // ================= discovery path =================
 // Parent's wish: she tends to replay the same easy things. Tiko steers her FORWARD instead, building on what she
@@ -3209,7 +3211,7 @@ function buildPath() {
   const stops = order.filter(a => !hid(ACTS[a].area)).slice(0, S.settings.stops);
   // a fun treat at the end of every path: art one day, a thinking game the next (whichever of the two is not hidden)
   // (v38: science takes its turn too — art, thinking, science, day after day)
-  const treats = [['art', ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw']], ['think', ['memory', 'simon', 'jigsaw', 'kim', 'odd']], ['sci', ['space', 'wonder', 'rocket', 'space', 'wonder', 'zoom']]].filter(([k]) => !hid(k));
+  const treats = [['art', ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw']], ['think', ['memory', 'simon', 'jigsaw', 'kim', 'odd']], ['sci', ['space', 'wonder', 'constel', 'rocket', 'space', 'wonder', 'constel', 'zoom']]].filter(([k]) => !hid(k));
   if (S.settings.artInPath && treats.length) { const list = treats[dayNo % treats.length][1]; stops.push(list[Math.floor(dayNo / treats.length) % list.length]); }
   // with reading or maths hidden the plan runs short: top it up from the tracks she does see (new things first)
   const want = S.settings.stops + (S.settings.artInPath && treats.length ? 1 : 0);

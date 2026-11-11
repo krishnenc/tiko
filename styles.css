@@ -1019,6 +1019,22 @@ svg.body, svg.rocket, svg.galaxy, svg.solar { width: 100%; height: auto; display
 .wg.mine { box-shadow: 0 0 0 5px #b9a2ea, 0 8px 0 #0003; }
 .wrow.chosen .wg:not(.real) { opacity: .5; }
 .wg.real { box-shadow: 0 0 0 6px var(--sun), 0 0 26px 8px #ffd58099; }
+/* star pictures */
+svg.sky { width: 100%; height: 100%; display: block; touch-action: none; }
+.cstage { position: relative; width: min(39vmin, 400px); aspect-ratio: 1; flex: none; border-radius: 28px; overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, #27307a, #0c1038); box-shadow: 0 0 0 4px #ffffff30, 0 8px 0 #0004; }
+@media (orientation: portrait) { .cstage { width: min(78vw, 44vh); } }
+.cs { cursor: pointer; } .cs .dot { opacity: .7; } .cs .glow { opacity: .14; transform-box: fill-box; transform-origin: center; }
+.cs.lit .dot, .cs.next .dot { opacity: 1; } .cs.lit .glow { opacity: .4; }
+.cs.next .glow { opacity: .55; animation: starp 1s ease-in-out infinite; }
+@keyframes starp { 50% { transform: scale(1.9); opacity: .2; } }
+.cl { stroke: #ffe9a8; stroke-width: 1.1; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: cdraw .45s ease-out forwards; }
+@keyframes cdraw { to { stroke-dashoffset: 0; } }
+.constel .scih { min-height: 1.25em; }
+.csay { min-height: 4.4em; display: flex; align-items: center; justify-content: center; width: 100%; }
+.constel .cbtn { min-height: 92px; align-items: center; }
+.skyc .cov { line-height: 0; } .skyc .cov svg.sky { width: clamp(76px, 13vmin, 108px); height: auto; aspect-ratio: 1; border-radius: 18px; background: #141a45; }
+.skyc .cov .glow { opacity: .3; }
 @media (max-width: 700px) { .bodies { grid-template-columns: repeat(3, 1fr); }
   /* seven cards on the home screen: four to a row on a narrow tablet, so "My stickers" stays on the screen */
   .home .card { min-width: 118px; padding: 12px 8px; font-size: 46px; } .home .card span { font-size: 18px; } .home .row { gap: 12px; } }

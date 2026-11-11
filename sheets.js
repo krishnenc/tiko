@@ -1,5 +1,5 @@
 // Tiko worksheet library — pen-and-paper practice for the parent to print or download.
-// A catalogue of sheets in three tracks (reading, writing, maths). Every sheet is one A4 page, is made fresh each
+// A catalogue of sheets in four tracks (reading, writing, maths, science). Every sheet is one A4 page, is made fresh each
 // time, and follows where she is now: her place on the reading journey, the words and letters she is still
 // learning (those come first; what she already knows only fills the gaps) and her maths levels.
 // A whole track can be opened as a pack (one sheet per page). Everything can be printed / saved as PDF, or
@@ -258,8 +258,100 @@ const SHEETS = [
     const bmax = [10, 50, 100][lvl('compare') - 1], pairs = wsUniq(6, () => { const a = 1 + rand(bmax); let b = 1 + rand(bmax); if (b === a) b = a === bmax ? a - 1 : a + 1; return [a, b]; });
     secs.push([tr('Circle the bigger number.', 'Entoure le plus grand nombre.'), `<div class="ws-pairs">${pairs.map(([a, b]) => `<span>${a} ${b}</span>`).join('')}</div>`]); ans.push(pairs.map(p => Math.max(...p)).join(', '));
     return { secs, answers: ans.map((a, i) => `${i + 1}) ${a}`).join(' &nbsp; '), level: `+ ${la} · − ${ls}` }; } },
+  // ===== science: for curiosity (nothing to get wrong), with drawing, colouring, a little writing and things to try for real =====
+  { id: 'solar', track: 'sci', icon: '🪐', en: 'The Sun and the planets', fr: 'Le Soleil et les planètes', make() {
+    const lg = S.lang, order = SPACE.filter(b => b.id !== 'moon'), five = shuffle(order.filter(b => ['sun', 'earth', 'mars', 'jupiter', 'saturn'].includes(b.id)));
+    return { secs: [
+      [tr('Here are the Sun and its eight planets, in order. Colour them. Then trace each name.', "Voici le Soleil et ses huit planètes, dans l'ordre. Colorie-les. Puis repasse sur chaque nom."),
+        `<div class="ws-plan">${order.map(b => `<div>${wsBody(b.id, 10 + 11 * b.z)}<b>${esc(b[lg][1])}</b></div>`).join('')}</div>`],
+      [tr('Read each name. Draw a line to its picture.', 'Lis chaque nom. Relie-le à son image.'), wsMatch(five.map(b => ({ w: b[lg][1], e: wsBody(b.id, 12) })))],
+      [tr('Invent a new planet! Draw it, and give it a name.', 'Invente une nouvelle planète ! Dessine-la, et donne-lui un nom.'), `<div class="ws-draw"><div class="ws-box"></div><div class="lines">${wsLine}${wsLine}</div></div>`],
+    ] }; } },
+  { id: 'whoami', track: 'sci', icon: '❓', en: 'Who am I? Space riddles', fr: "Qui suis-je ? Devinettes de l'espace", make() {
+    const lg = S.lang, all = [['sun', 'I am a star. I give you light and I keep you warm.', "Je suis une étoile. Je t'éclaire et je te réchauffe."], ['earth', 'You live on me. I look blue.', 'Tu habites sur moi. Je suis toute bleue.'],
+      ['moon', 'I go around the Earth. You see me at night.', 'Je tourne autour de la Terre. Tu me vois la nuit.'], ['mars', 'I am the red planet.', 'Je suis la planète rouge.'], ['jupiter', 'I am the biggest planet.', 'Je suis la plus grosse planète.'],
+      ['saturn', 'I have beautiful rings.', "J'ai de beaux anneaux."], ['mercury', 'I am the smallest planet.', 'Je suis la plus petite planète.'], ['neptune', 'I am the planet farthest from the Sun.', 'Je suis la planète la plus éloignée du Soleil.']];
+    const rs = shuffle(all).slice(0, 6), name = id => SPACE.find(b => b.id === id)[lg][1];
+    return { secs: [
+      [tr('Read each riddle (a grown-up can help). Find the answer in the box, and write it.', "Lis chaque devinette (un adulte peut t'aider). Trouve la réponse dans le cadre, et écris-la."),
+        `<div class="ws-bank">${shuffle(rs).map(r => `<span>${esc(name(r[0]))}</span>`).join('')}</div>${rs.map(r => `<div class="ws-rid"><div class="ws-sent">${esc(r[lg === 'fr' ? 2 : 1])}</div><div class="ws-trow">${wsLine}</div></div>`).join('')}`],
+      [tr('Draw your favourite one.', 'Dessine celui que tu préfères.'), `<div class="ws-wide low"></div>`],
+    ], answers: rs.map(r => name(r[0])).join(', ') }; } },
+  { id: 'rocketws', track: 'sci', icon: '🚀', en: 'My rocket', fr: 'Ma fusée', make() {
+    const hide = shuffle([1, 2, 3, 4, 5, 6, 7, 8]).slice(0, 4), nums = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+    return { secs: [
+      [tr('Colour the rocket. Then finish the countdown!', 'Colorie la fusée. Puis complète le compte à rebours !'),
+        `<div class="ws-rocket">${wsRocket(88)}<div class="ws-seq">${nums.map((n, i) => (hide.includes(i) ? wsBox : `<span>${n}</span>`)).join('')}<span class="ws-pic">🔥</span></div></div>`],
+      [tr('Trace the word. Then write it on the line.', 'Repasse sur le mot. Puis écris-le sur la ligne.'),
+        [tr('rocket', 'fusée'), tr('moon', 'lune'), tr('star', 'étoile')].map(w => `<div class="ws-trow"><span class="ws-tr word">${w}</span>${wsLine}</div>`).join('')],
+      [tr('Where is your rocket going? Draw it. Then finish the sentence.', 'Où va ta fusée ? Dessine. Puis termine la phrase.'),
+        `<div class="ws-draw"><div class="ws-box"></div><div class="lines"><span class="ws-sent">${tr('My rocket is going to', 'Ma fusée va')}</span>${wsLine}</div></div>`],
+    ], answers: '1) ' + nums.filter((_, i) => hide.includes(i)).join(', ') }; } },
+  { id: 'starjoin', track: 'sci', icon: '✨', en: 'Join the stars', fr: 'Relie les étoiles', make() {
+    const lg = S.lang, four = shuffle(SKIES).slice(0, 4);
+    return { secs: [
+      [tr('Trace the dotted lines to join the stars. Colour the stars. Then trace the name.', 'Repasse sur les pointillés pour relier les étoiles. Colorie les étoiles. Puis repasse sur le nom.'),
+        `<div class="ws-skies">${four.map(c => `<div class="ws-sky">${wsSky(c)}<b>${esc(c[lg][1])}</b></div>`).join('')}</div>`],
+      [tr('Invent your own star picture: draw some stars, join them, and give it a name.', "Invente ton dessin d'étoiles : dessine des étoiles, relie-les, et donne-lui un nom."), `<div class="ws-draw"><div class="ws-box"></div><div class="lines">${wsLine}${wsLine}</div></div>`],
+    ] }; } },
+  { id: 'moondiary', track: 'sci', icon: '🌙', en: 'My Moon diary', fr: 'Mon carnet de la Lune', make() {
+    return { secs: [
+      [tr('Look at the Moon every evening for a week. Draw the shape you see. (Too cloudy? Draw a cloud!)', 'Regarde la Lune chaque soir pendant une semaine. Dessine la forme que tu vois. (Trop de nuages ? Dessine un nuage !)'),
+        `<div class="ws-moons">${Array.from({ length: 7 }, (_, i) => `<div><i></i>${tr('Day', 'Jour')} ${i + 1}: ________</div>`).join('')}</div>`],
+      [tr('What happened to the Moon? Circle your answer.', "Qu'est-il arrivé à la Lune ? Entoure ta réponse."), `<div class="ws-find pick"><span><i>${tr('It got bigger', 'Elle a grossi')}</i><i>${tr('It got smaller', 'Elle a rétréci')}</i><i>${tr('It stayed the same', "Elle n'a pas changé")}</i></span></div>`],
+      [tr('Trace the words. Then write them on the line.', 'Repasse sur les mots. Puis écris-les sur la ligne.'), `<div class="ws-trow"><span class="ws-tr word">${tr('the Moon', 'la Lune')}</span>${wsLine}</div>
+        <div class="small" style="white-space:normal;margin-top:10px">${tr('Did you know? The Moon is always a ball. The Sun lights one side of it, and we see more or less of that bright side.', 'Le sais-tu ? La Lune est toujours une boule. Le Soleil éclaire un seul côté, et nous voyons plus ou moins ce côté éclairé.')}</div>`],
+    ] }; } },
+  { id: 'address', track: 'sci', icon: '🔭', en: 'My address in space', fr: "Mon adresse dans l'espace", make() {
+    const row = (lab, word) => `<div class="ws-trow tall"><span class="ws-lab">${lab}</span>${word ? `<span class="ws-tr word">${word}</span>` : ''}${wsLine}</div>`;
+    return { secs: [
+      [tr('Finish your address in space. Write on the lines, and trace the grey words.', "Complète ton adresse dans l'espace. Écris sur les lignes, et repasse sur les mots gris."),
+        row(tr('My name', 'Mon prénom')) + row(tr('My town', 'Ma ville')) + row(tr('My country', 'Mon pays')) + row(tr('My planet', 'Ma planète'), tr('Earth', 'la Terre')) + row(tr('My star', 'Mon étoile'), tr('the Sun', 'le Soleil')) + row(tr('My galaxy', 'Ma galaxie'), tr('the Milky Way', 'la Voie lactée'))],
+      [tr('Draw your home, on planet Earth.', 'Dessine ta maison, sur la planète Terre.'), `<div class="ws-wide"></div>`],
+    ] }; } },
+  { id: 'floatsink', track: 'sci', icon: '🧪', en: 'Float or sink?', fr: 'Flotte ou coule ?', make() {
+    const all = [['🍏', 'an apple', 'une pomme', 1], ['🥄', 'a spoon', 'une cuillère', 0], ['🍃', 'a leaf', 'une feuille', 1], ['✏️', 'a pencil', 'un crayon', 1], ['🔑', 'a key', 'une clé', 0], ['⚽', 'a ball', 'un ballon', 1],
+      ['🍋', 'a lemon', 'un citron', 1], ['🥕', 'a carrot', 'une carotte', 0], ['🥚', 'an egg', 'un œuf', 0]];
+    const it = shuffle(all).slice(0, 6), f = tr('floats', 'flotte'), s = tr('sinks', 'coule'), fr = S.lang === 'fr';
+    return { secs: [
+      [tr('Be a scientist! First GUESS: circle "floats" or "sinks". Then TEST it in a bowl of water, and circle what really happened.', "Fais comme les scientifiques ! D'abord DEVINE : entoure « flotte » ou « coule ». Puis ESSAIE dans un bol d'eau, et entoure ce qui s'est vraiment passé."),
+        `<div class="ws-exp"><span></span><span></span><span class="h">${tr('My guess', 'Je devine')}</span><span class="h">${tr('What happened', 'Ce qui se passe')}</span>
+          ${it.map(x => `<span class="ws-pic">${x[0]}</span><b>${x[fr ? 2 : 1]}</b><span class="g"><i>${f}</i><i>${s}</i></span><span class="g"><i>${f}</i><i>${s}</i></span>`).join('')}</div>`],
+      [tr('Which one surprised you?', 'Laquelle était une surprise ?'), `<div class="ws-trow">${wsLine}</div>`],
+      [tr('Find one more thing to test. Draw it, and write what happened.', "Trouve encore une chose à essayer. Dessine-la, et écris ce qui s'est passé."), `<div class="ws-draw"><div class="ws-box"></div><div class="lines">${wsLine}${wsLine}</div></div>`],
+    ], answers: tr('usually: ', 'en général : ') + it.map(x => `${x[fr ? 2 : 1].replace(/^\S+ /, '')} ${x[3] ? f : s}`).join(', ') }; } },
+  { id: 'wonderws', track: 'sci', icon: '💡', en: 'My "I wonder" page', fr: 'Ma page « Je me demande »', make() {
+    return { secs: [
+      [tr('What do you wonder about? Write your question (a grown-up can help).', "Qu'est-ce que tu te demandes ? Écris ta question (un adulte peut t'aider)."), `<div class="ws-trow"><span class="ws-tr word">${tr('I wonder', 'Je me demande')}</span>${wsLine}</div><div class="ws-trow tall">${wsLine}</div>`],
+      [tr('My guess. Draw it, or write it.', 'Mon idée. Dessine-la, ou écris-la.'), `<div class="ws-draw"><div class="ws-box"></div><div class="lines">${wsLine}${wsLine}</div></div>`],
+      [tr('How can I find out? Circle one or more.', 'Comment le savoir ? Entoure une ou plusieurs idées.'), `<div class="ws-find pick"><span><i>👀 ${tr('look closely', 'bien regarder')}</i><i>🧪 ${tr('try it', 'essayer')}</i><i>🙋 ${tr('ask someone', 'demander')}</i><i>📖 ${tr('look in a book', 'chercher dans un livre')}</i></span></div>`],
+      [tr('What I found out. Draw it, or write it.', "Ce que j'ai découvert. Dessine-le, ou écris-le."), `<div class="ws-draw"><div class="ws-box"></div><div class="lines">${wsLine}${wsLine}</div></div>`],
+    ] }; } },
 ];
-const WS_TRACKS = [['read', '📖', 'Reading', 'Lecture'], ['write', '✍️', 'Writing', 'Écriture'], ['math', '🔢', 'Maths', 'Maths']];
+const WS_TRACKS = [['read', '📖', 'Reading', 'Lecture'], ['write', '✍️', 'Writing', 'Écriture'], ['math', '🔢', 'Maths', 'Maths'], ['sci', '🚀', 'Science', 'Sciences']];
+
+// ---------------------------------------------------------------- outline drawings for the science sheets
+// black lines only: they print well on any printer, and she does the colouring
+function wsBody(id, mm = 22) {
+  const R = id === 'saturn' || id === 'sun' ? 27 : 40, s = 'fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"';
+  const band = dy => { const h = Math.sqrt(R * R - dy * dy) - 1; return `<path d="M${(50 - h).toFixed(1)} ${50 + dy} H${(50 + h).toFixed(1)}" ${s}/>`; };
+  const crat = pts => pts.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" ${s}/>`).join('');
+  const ring = front => (id === 'saturn' ? `<path d="M3 50 A47 12 0 0 ${front ? 0 : 1} 97 50" transform="rotate(-16 50 50)" ${s}/>` : '');
+  const inside = {
+    sun: Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6, c = Math.cos(a), n = Math.sin(a); return `<path d="M${(50 + 33 * c).toFixed(1)} ${(50 + 33 * n).toFixed(1)} L${(50 + 45 * c).toFixed(1)} ${(50 + 45 * n).toFixed(1)}" ${s}/>`; }).join(''),
+    mercury: crat([[36, 38, 7], [62, 60, 10], [58, 30, 4], [34, 66, 5]]), moon: crat([[38, 36, 9], [64, 54, 7], [46, 68, 6], [66, 30, 4]]),
+    venus: `<path d="M16 36 Q50 24 84 38 M12 54 Q50 66 88 52 M22 72 Q50 62 78 72" ${s}/>`,
+    earth: `<path d="M22 30 q10 -12 24 -6 q6 8 -2 14 q-4 8 -12 6 q-2 10 -10 6 q-6 -10 0 -20z M56 46 q14 -6 22 4 q4 12 -4 20 q-10 6 -14 -4 q-8 -8 -4 -20z M36 70 q8 -4 12 4 q-2 10 -10 10 q-6 -6 -2 -14z" ${s}/>`,
+    mars: `<path d="M34 14 Q50 23 66 14 M24 44 q12 -10 26 -2 q8 8 -4 12 q-14 4 -22 -10z" ${s}/>` + crat([[64, 64, 7]]),
+    jupiter: band(-26) + band(-10) + band(4) + band(24) + `<ellipse cx="62" cy="64" rx="9" ry="5" ${s}/>`,
+    saturn: band(-8) + band(8), uranus: band(-6), neptune: `<path d="M30 36 H54 M52 64 H72" ${s}/><ellipse cx="34" cy="58" rx="8" ry="5" ${s}/>`,
+  }[id];
+  return `<svg viewBox="0 0 100 100" style="width:${mm.toFixed(1)}mm;height:${mm.toFixed(1)}mm;display:inline-block;vertical-align:middle">${ring(0)}<circle cx="50" cy="50" r="${R}" fill="#fff" stroke="#000" stroke-width="2.500"/>${inside}${ring(1)}</svg>`;
+}
+const wsRocket = mm => `<svg viewBox="0 0 80 196" style="height:${mm}mm;width:${(mm * 80 / 196).toFixed(1)}mm;flex:none" fill="#fff" stroke="#000" stroke-width="2.500" stroke-linejoin="round">
+  <path d="M28 152 Q40 198 52 152"/><path d="M24 122 L6 156 L24 150Z"/><path d="M56 122 L74 156 L56 150Z"/><path d="M24 44 Q40 -6 56 44 V152 H24Z"/><path d="M26 36 H54 M24 98 H56 M24 112 H56"/><circle cx="40" cy="62" r="9"/></svg>`;
+const wsSky = c => `<svg viewBox="0 0 100 100">${c.l.map(([a, b]) => `<path d="M${c.p[a][0]} ${c.p[a][1]} L${c.p[b][0]} ${c.p[b][1]}" stroke="#888" stroke-width=".8" stroke-dasharray="1.6 1.8" fill="none"/>`).join('')}
+  ${c.p.map(([x, y, z = 1]) => `<path transform="translate(${x} ${y}) scale(${(z * .9).toFixed(2)})" d="M0 -5 L1.5 -1.6 L5 -1.5 L2.3 .9 L3.1 4.4 L0 2.5 L-3.1 4.4 L-2.3 .9 L-5 -1.5 L-1.5 -1.6Z" fill="#fff" stroke="#000" stroke-width=".8" stroke-linejoin="round"/>`).join('')}</svg>`;
 
 // ---------------------------------------------------------------- styles of a printed sheet (also go into the downloaded file)
 const WS_CSS = `
@@ -316,6 +408,21 @@ const WS_CSS = `
 .ws-shapes { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; } .ws-shape svg { display: block; stroke: #000 !important; stroke-width: 3px !important; }
 .ws-clocks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 10px; text-align: center; font-size: 17pt; font-weight: 700; } .ws-clocks svg { width: 40mm; height: 40mm; display: block; margin: 0 auto 4px; filter: none; animation: none; }
 .ws-prob { border: 1.5px solid #bbb; border-radius: 10px; padding: 6px 10px; margin: 0 0 9px; font-size: 15pt; } .ws-prob .work { margin: 4px 0; } .ws-prob > div:last-child { font-size: 19pt; font-weight: 700; }
+.ws-plan { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px 4px; align-items: end; text-align: center; }
+.ws-plan b, .ws-sky b { display: block; font-size: 15pt; color: #c4c4c4; letter-spacing: 1px; white-space: nowrap; margin-top: 2px; }
+.ws-match svg { vertical-align: middle; }
+.ws-rid { margin: 0 0 8px; } .ws-rid .ws-sent { font-size: 16pt; }
+.ws-rocket { display: flex; align-items: center; justify-content: center; gap: 14mm; } .ws-rocket .ws-seq { display: grid; grid-template-columns: repeat(5, 17mm); gap: 14px 6px; justify-items: center; font-size: 24pt; }
+.ws-skies { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; text-align: center; }
+.ws-sky svg { width: 56mm; height: 56mm; border: 2px solid #000; border-radius: 10px; display: block; margin: 0 auto; }
+.ws-moons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 6px; text-align: center; font-size: 11pt; }
+.ws-moons i { display: block; width: 34mm; height: 34mm; border: 2px solid #000; border-radius: 50%; margin: 0 auto 4px; }
+.ws-find.pick i { border: 1.5px solid #bbb; border-radius: 10px; padding: 2px 10px; font-size: 15pt; font-weight: 700; }
+.ws-lab { font-size: 13pt; font-weight: 700; min-width: 30mm; }
+.ws-exp { display: grid; grid-template-columns: auto 1fr auto auto; gap: 0 16px; align-items: center; font-size: 15pt; }
+.ws-exp > * { padding: 8px 0; } .ws-exp .h { font-size: 11pt; font-weight: 700; color: #444; text-align: center; padding: 0; }
+.ws-exp .g { display: flex; gap: 10px; } .ws-exp .g i { border: 1.5px solid #bbb; border-radius: 8px; padding: 1px 9px; }
+.ws-wide { height: 78mm; border: 2px solid #000; border-radius: 10px; } .ws-wide.low { height: 46mm; }
 .ws-foot { margin-top: 12px; padding-top: 4px; border-top: 1px dashed #999; font-size: 8.5pt; color: #555; display: flex; justify-content: space-between; gap: 12px; }
 @page { size: A4; margin: 11mm; }
 `;
@@ -334,7 +441,8 @@ const WSLIB_CSS = `
 // ---------------------------------------------------------------- building and showing
 function wsPageHTML(sh, lang) {
   const keep = S.lang; let r; S.lang = lang;                       // the helpers read "her language"; put it back straight after
-  try { r = sh.make(); r.place = sh.track === 'math' ? (r.level || '') : wsPlace(); r.made = tr('Made by Tiko for her level today', 'Préparé par Tiko pour son niveau du jour'); r.ansLabel = tr('Answers, for the grown-up', "Réponses, pour l'adulte"); r.nd = tr('Name', 'Prénom'); }
+  try { r = sh.make(); r.place = sh.track === 'math' ? (r.level || '') : sh.track === 'sci' ? '' : wsPlace();
+    r.made = sh.track === 'sci' ? tr('Made by Tiko for curious minds', 'Préparé par Tiko pour les curieux') : tr('Made by Tiko for her level today', 'Préparé par Tiko pour son niveau du jour'); r.ansLabel = tr('Answers, for the grown-up', "Réponses, pour l'adulte"); r.nd = tr('Name', 'Prénom'); }
   finally { S.lang = keep; }
   return `<div class="ws" data-sheet="${sh.id}"><div class="ws-head"><h1>${sh.icon} Tiko · ${sh[lang]}</h1><span>${r.nd}: ____________ &nbsp; Date: ________</span></div>
     ${r.secs.map(([h, body], i) => `<div class="ws-sec"><h2><b class="n">${i + 1}</b>${h}</h2>${body}</div>`).join('')}
