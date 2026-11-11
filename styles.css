@@ -1,3 +1,6 @@
+/* The font ships with the app (fonts/, SIL Open Font License): nothing is fetched from any other site. */
+@font-face { font-family: 'Andika'; font-style: normal; font-weight: 400; font-display: swap; src: url(fonts/andika-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Andika'; font-style: normal; font-weight: 700; font-display: swap; src: url(fonts/andika-latin-700-normal.woff2) format('woff2'); }
 :root {
   /* Unicorn universe: soft pastels that are easy on the eye — pink first, with lavender, mint and warm gold */
   --bg1: #e8dcfb; --bgm: #fde3ee; --bg2: #fff6ee;

@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 39;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 40;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +19,7 @@ const STORE_KEY = 'tiko.v1';
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, voiceChat: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -2791,10 +2791,10 @@ const CHATS = [
 // the two-languages game: [picture, English, French (with its little word)]
 const CHAT_WORDS = [['🐱', 'cat', 'chat'], ['🐶', 'dog', 'chien'], ['☀️', 'sun', 'soleil'], ['🌙', 'moon', 'lune'], ['🍎', 'apple', 'pomme'], ['🐟', 'fish', 'poisson'],
   ['🏠', 'house', 'maison'], ['🌸', 'flower', 'fleur'], ['📖', 'book', 'livre'], ['⭐', 'star', 'étoile'], ['🐦', 'bird', 'oiseau'], ['🥛', 'milk', 'lait']];
-T.en.chat = { btn: 'Chat', hello: 'Hello', bye: 'I loved talking with you! See you soon!', tap: 'Tap your answer!', mic: 'Say it', remember: (a, b) => `I remember! You like ${a}${b ? ' and ' + b : ''}!`,
+T.en.chat = { btn: 'Chat', hello: 'Hello', bye: 'I loved talking with you! See you soon!', tap: 'Tap your answer!', remember: (a, b) => `I remember! You like ${a}${b ? ' and ' + b : ''}!`,
   swapIntro: "Let's play the two languages game!", swapTeach: (a, b) => [`In French, ${a} is`, b], swapAsk: w => ['What is', w, '?'], swapShow: (a, b, w) => `In French, ${a} is « ${b} ». What is « ${w} »?`,
   swapYes: (w, a) => ['Yes!', w, `is ${a}! Bravo!`], swapNo: (w, a) => ['Good try!', w, `is ${a}.`], ans: a => cap(a) + '!' };
-T.fr.chat = { btn: 'Parler', hello: 'Coucou', bye: "J'ai adoré parler avec toi ! À bientôt !", tap: 'Touche ta réponse !', mic: 'Dis-le', remember: (a, b) => `Je me souviens ! Tu aimes ${a}${b ? ' et ' + b : ''} !`,
+T.fr.chat = { btn: 'Parler', hello: 'Coucou', bye: "J'ai adoré parler avec toi ! À bientôt !", tap: 'Touche ta réponse !', remember: (a, b) => `Je me souviens ! Tu aimes ${a}${b ? ' et ' + b : ''} !`,
   swapIntro: 'On joue au jeu des deux langues !', swapTeach: (a, b) => [`En anglais, ${a} se dit`, b], swapAsk: w => ['Que veut dire', w, '?'], swapShow: (a, b, w) => `En anglais, ${a} se dit « ${b} ». Que veut dire « ${w} » ?`,
   swapYes: (w, a) => ['Oui !', w, `veut dire ${a} ! Bravo !`], swapNo: (w, a) => ['Bien essayé !', w, `veut dire ${a}.`], ans: a => cap(a) + ' !' };
 const CHAT_ME = {
@@ -2837,26 +2837,12 @@ async function chatWithTiko() {
   $('.again').onclick = () => { if (line) { sfx('tap'); talk(line); } };
   $('.otherl').onclick = () => { if (line) { sfx('tap'); talk(line, other()); } };   // hear the same thing in the other language
   $$('.chat .lang').forEach(b => b.onclick = () => { if (b.dataset.l === S.lang) return; S.lang = b.dataset.l; save(); applySettings(); sfx('pop'); chips(); if (relang) relang(); });
-  // her answer: a tap on a picture-sentence, or (if a parent switched it on, and it is available) her voice
-  const SR = S.settings.voiceChat && navigator.onLine && (window.SpeechRecognition || window.webkitSpeechRecognition);
-  const hear = () => new Promise(res => {
-    try {
-      const r = new SR(); let out = ''; r.lang = S.lang === 'fr' ? 'fr-FR' : 'en-GB'; r.maxAlternatives = 3;
-      r.onresult = e => { out = [...e.results[0]].map(a => a.transcript).join(' ').toLowerCase(); };
-      r.onerror = () => res(''); r.onend = () => res(out); r.start(); setTimeout(() => { try { r.stop(); } catch (e) { /* ignore */ } }, 7000);
-    } catch (e) { res(''); }
-  });
-  const words = s => s.toLowerCase().replace(/[^a-zàâçéèêëîïôûùüœ' ]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !/^(what|that|this|with|like|aime|suis|veux|mets|fait|avec|dans|pour)$/.test(w));
+  // her answer: a tap on a picture-sentence. (Answering by voice was removed in v40: the browser's speech
+  // recognition sends the recording to an outside service, and a child's voice never leaves the device.)
   const choose = opts => new Promise(res => {
     const draw = () => {
-      $('.replies').innerHTML = opts.map((o, i) => `<button class="btn reply" data-i="${i}" style="--i:${i}"><span>${o.e}</span><b>${esc(o[S.lang])}</b></button>`).join('') +
-        (SR ? `<button class="btn sun micb">🎤 ${L().chat.mic}</button>` : '');
+      $('.replies').innerHTML = opts.map((o, i) => `<button class="btn reply" data-i="${i}" style="--i:${i}"><span>${o.e}</span><b>${esc(o[S.lang])}</b></button>`).join('');
       $$('.reply').forEach(b => b.onclick = () => { sfx('pop'); res(opts[+b.dataset.i]); });
-      const m = $('.micb'); if (m) m.onclick = async () => {
-        stopSpeech(); m.classList.add('pulse'); const heard = await hear(); if (!alive()) return; m.classList.remove('pulse');
-        const score = opts.map(o => words(o[S.lang]).filter(w => heard.includes(w)).length), best = Math.max(...score);
-        if (best > 0 && score.filter(x => x === best).length === 1) { sfx('pop'); res(opts[score.indexOf(best)]); } else speak(L().chat.tap);
-      };
     };
     relang = () => { draw(); if (line) talk(line); }; draw();
     setIdle(() => { if (alive()) speak(L().chat.tap); });
@@ -3494,7 +3480,6 @@ function parents() {
         <button class="pbtn alt moretime">➕ 10 more minutes today</button></div>
       <label class="set">Movement break mid-path <input type="checkbox" data-s="breaks" ${st.breaks ? 'checked' : ''}></label>
       <label class="set">Fun treat at the end of the path (art or thinking game) <input type="checkbox" data-s="artInPath" ${st.artInPath ? 'checked' : ''}></label>
-      <label class="set">🎤 In "Chat with Tiko", let her answer by voice too (needs internet; her voice is sent to Google's speech service to be understood) <input type="checkbox" data-s="voiceChat" ${st.voiceChat ? 'checked' : ''}></label>
       <label class="set">Discovery mode (mastered activities, or ones played twice today, rest; new ones sparkle) <input type="checkbox" data-s="discovery" ${st.discovery ? 'checked' : ''}></label>
       <label class="set">Focus nudges (Tiko says "Your turn!" after 15 s with no taps) <input type="checkbox" data-s="nudge" ${st.nudge ? 'checked' : ''}></label>
       <label class="set">Sound effects <input type="checkbox" data-s="sfx" ${st.sfx ? 'checked' : ''}></label>
@@ -3533,6 +3518,10 @@ function parents() {
       <p>Her progress lives only in this tablet's browser storage. Save a backup file now and then (it goes to Downloads); you can restore it here, or on a new tablet. Voice recordings and photos are not included.${S.lastBackup ? ` Last backup: <b>${esc(S.lastBackup)}</b>.` : ' <b>No backup yet.</b>'}</p>
       <button class="pbtn bkup">💾 Save a backup file</button> <button class="pbtn alt rstr">📂 Restore from a backup file</button><input type="file" class="bkfile" accept=".json,application/json" hidden>
       <p class="bkmsg" style="color:var(--teal-d);font-weight:600"></p></section>
+
+    <section><h3>🔒 Privacy</h3>
+      <p>Tiko has no account, no adverts and no tracking. Everything about your child (name, progress, recordings, photos) stays on this tablet and is never sent anywhere. The app asks no other website for anything, and works without internet.</p>
+      <a class="pbtn alt privlink" href="privacy.html" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none">Read the privacy policy</a></section>
 
     <section><h3>🧹 Reset</h3><button class="pbtn warn rst">Reset all progress</button></section>
   </div></div>`;
