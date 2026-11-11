@@ -906,6 +906,20 @@ body[data-theme="owl"][data-zone="think"] { --bg1: #dbe1ee; --bgm: #e6eaec; --bg
 .themec { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 18px; white-space: normal; border: 5px solid #fff; animation: tileIn .5s both; animation-delay: calc(var(--i) * 90ms); }
 .themec .owl { width: clamp(110px, 22vmin, 190px); height: clamp(110px, 22vmin, 190px); } .themec b { font-size: clamp(20px, 3vmin, 28px); }
 .themec.on { border-color: var(--sun); box-shadow: 0 0 0 5px var(--sun), 0 0 24px 6px #ffd58099, 0 8px 0 var(--line); }
+/* who is playing? (several children on one tablet) */
+.home .whob { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 94px; font-size: 30px; }
+@media (max-width: 700px) { .home .whob { left: 18px; top: calc(max(14px, env(safe-area-inset-top)) + 74px); } }   /* under the palette: no room beside the languages */
+.whois { gap: 28px; } .profs { justify-content: center; gap: 18px; flex-wrap: wrap; max-width: 900px; }
+.profb { min-width: 150px; padding: 18px 14px; animation: tileIn .5s both; animation-delay: calc(var(--i) * 70ms); }
+.profb .av { font-style: normal; font-size: clamp(64px, 12vmin, 96px); line-height: 1.1; display: block; }
+.profb span { font-size: clamp(20px, 3vmin, 26px); }
+.profb.on { box-shadow: 0 0 0 5px var(--sun), 0 8px 0 var(--line); }
+.proflist { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.profrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 14px; border: 2px solid #eee; font-size: 18px; }
+.profrow.cur { border-color: var(--teal); background: #f1fbf9; } .profrow b { flex: 1; min-width: 90px; }
+.profrow .pav { font-size: 26px; border-radius: 10px; padding: 2px 4px; }
+.ptag { background: var(--teal); color: #fff; border-radius: 999px; padding: 3px 12px; font-size: 14px; font-weight: 700; }
+.profadd { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 /* theme picker in the parent corner */
 .themes { display: flex; gap: 12px; flex-wrap: wrap; }
 .robowrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }

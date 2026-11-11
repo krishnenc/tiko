@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 40;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 41;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -16,6 +16,38 @@ const app = $('#app');
 
 // ================= state =================
 const STORE_KEY = 'tiko.v1';
+// ----- profiles (v41): several children on one tablet, each with their own save -----
+// The list of children is in PROF_KEY. The first child keeps the original save key (tiko.v1), so a tablet that
+// updates loses nothing and needs no migration; every other child is saved under tiko.v1.<id>.
+// Everything in S (progress, settings, name) belongs to the child who is playing. Switching child reloads the app,
+// so nothing of one child's session can leak into another's.
+const PROF_KEY = 'tiko.profiles';
+const AVATARS = ['🦄', '🐱', '🐶', '🦊', '🐼', '🐸', '🦁', '🐧', '🐙', '🦋', '🐢', '🐝', '🚀', '⭐', '🌈', '🌻'];
+function loadProfiles() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PROF_KEY));
+    if (p && Array.isArray(p.list) && p.list.length) { if (!p.list.some(x => x.id === p.current)) p.current = p.list[0].id; return p; }
+  } catch (e) { /* fall through */ }
+  return { list: [{ id: 'main', avatar: AVATARS[0] }], current: 'main' };
+}
+let PROFILES = loadProfiles();
+function saveProfiles() { try { localStorage.setItem(PROF_KEY, JSON.stringify(PROFILES)); } catch (e) { /* ignore */ } }
+const storeKey = (id = PROFILES.current) => (id === 'main' ? STORE_KEY : STORE_KEY + '.' + id);
+const curProfile = () => PROFILES.list.find(p => p.id === PROFILES.current) || PROFILES.list[0];
+// a key in IndexedDB that belongs to one child (the first child keeps the plain key)
+const pkey = (k, id = PROFILES.current) => (id === 'main' ? k : k + '@' + id);
+// the name on a child's card: the name typed for them (kept on this tablet only), or "Child 2"
+function profName(p) {
+  let n = '';
+  if (p.id === PROFILES.current) n = S.settings.name;
+  else { try { n = ((JSON.parse(localStorage.getItem(storeKey(p.id))) || {}).settings || {}).name; } catch (e) { /* ignore */ } }
+  return (n || '').trim() || `${S.lang === 'fr' ? 'Enfant' : 'Child'} ${PROFILES.list.indexOf(p) + 1}`;
+}
+function switchProfile(id) {
+  PROFILES.current = id; saveProfiles();
+  try { sessionStorage.setItem('tiko.picked', '1'); } catch (e) { /* ignore */ }
+  location.reload();
+}
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
@@ -25,7 +57,7 @@ const DEFAULTS = {
 let S = load();
 function load() {
   try {
-    const d = JSON.parse(localStorage.getItem(STORE_KEY));
+    const d = JSON.parse(localStorage.getItem(storeKey()));
     if (d) return { ...structuredClone(DEFAULTS), ...d, settings: { ...DEFAULTS.settings, ...d.settings } };
   } catch (e) { /* fall through */ }
   return structuredClone(DEFAULTS);
@@ -38,7 +70,30 @@ if (!S.settings.pitchV17) { if (S.settings.pitch < 1.6) S.settings.pitch = 1.6; 
 if (!S.knownV22) { for (const k of Object.keys(S.boxes || {})) if (S.boxes[k] >= 2) { S.boxes[k] = 5; S.due[k] = 'never'; } S.knownV22 = true; }
 // v23: Memory pairs was too hard — new gentler ladder (2 pairs first), so she starts again at the bottom (once)
 if (!S.memV23) { S.levels = S.levels || {}; S.streak = S.streak || {}; S.levels.memory = 1; S.streak.memory = { ok: 0, bad: 0 }; S.memV23 = true; }
-function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
+function save() { try { localStorage.setItem(storeKey(), JSON.stringify(S)); } catch (e) { /* ignore */ } }
+// a new child starts fresh; only this tablet's sound choices are carried over from the child who is playing
+function addProfile(name) {
+  const id = 'c' + Math.random().toString(36).slice(2, 10), used = PROFILES.list.map(p => p.avatar);
+  const st = S.settings, d = structuredClone(DEFAULTS);
+  Object.assign(d.settings, { rate: st.rate, pitch: st.pitch, pitch_fr: st.pitch_fr, voice_en: st.voice_en, voice_fr: st.voice_fr, sfx: st.sfx, music: st.music, ambient: st.ambient, ambientWork: st.ambientWork,
+    pitchV17: true, name: String(name || '').trim().slice(0, 30) });
+  d.lang = S.lang; d.knownV22 = true; d.memV23 = true;          // the one-off fixes for old saves do not apply to a new one
+  try { localStorage.setItem(storeKey(id), JSON.stringify(d)); } catch (e) { return null; }
+  PROFILES.list.push({ id, avatar: AVATARS.find(a => !used.includes(a)) || pick(AVATARS) }); saveProfiles();
+  return id;
+}
+// removes a child who is not playing: their save, the recording of their name, their readings and their photos
+async function removeProfile(id) {
+  if (id === PROFILES.current || PROFILES.list.length < 2) return;
+  let old = null; try { old = JSON.parse(localStorage.getItem(storeKey(id))); } catch (e) { /* ignore */ }
+  try { localStorage.removeItem(storeKey(id)); } catch (e) { /* ignore */ }
+  PROFILES.list = PROFILES.list.filter(p => p.id !== id); saveProfiles();
+  try {
+    await idb.del('rec', pkey('name', id)); recKeys.delete(pkey('name', id));
+    for (const r of (old && old.readings) || []) await idb.del('rec', r.k);
+    for (const k of (await idb.keys('photos')) || []) { const p = await idb.get('photos', k); if (p && (p.pid || 'main') === id) await idb.del('photos', k); }
+  } catch (e) { /* ignore */ }
+}
 function applySettings() {
   document.body.classList.toggle('calm', !!S.settings.calm); document.documentElement.lang = S.lang;
   // the theme a parent chose: colours and scenery come from body[data-theme] in styles.css, the mascot from MASCOTS
@@ -271,7 +326,7 @@ async function speakParts(parts) {
 // ================= her name (kept only on this device, never in the code) =================
 const childName = () => (S.settings.name || '').trim();
 async function sayName(bang) {
-  if (recKeys.has('name')) { const b = await idb.get('rec', 'name'); if (b) return playBlob(b); }
+  if (recKeys.has(pkey('name'))) { const b = await idb.get('rec', pkey('name')); if (b) return playBlob(b); }
   const n = (S.settings.nameSay || '').trim() || childName();
   if (n) return say(n + (bang ? '!' : ''));
 }
@@ -1879,7 +1934,7 @@ function studioFrame(title, extraTop = '') {
 }
 async function saveArt(blob, label) {
   if (!blob) return;
-  await idb.set('photos', Date.now(), { blob, label, date: today() });
+  await idb.set('photos', Date.now(), { blob, label, date: today(), pid: PROFILES.current });
 }
 // Paint / Magic mirror / Read & draw
 function paintStudio(opts = {}) {
@@ -2583,7 +2638,7 @@ async function savePhoto(file, label) {
   c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
   const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .8));
-  await idb.set('photos', Date.now(), { blob, label, date: today() });
+  await idb.set('photos', Date.now(), { blob, label, date: today(), pid: PROFILES.current });
   tally('photos'); save();
 }
 // replaces the stage with a "now do it on paper" card; resolves on Done
@@ -3103,6 +3158,20 @@ function intro() {
   };
 }
 
+// ================= who is playing? (only on a tablet with more than one child) =================
+T.en.who = 'Who is playing?'; T.fr.who = 'Qui joue ?';
+function profilePicker(then) {
+  stopSpeech(); clearIdle(); applySettings(); musicMode('off');
+  app.innerHTML = `<div class="screen center whois"><h1 class="hello">${esc(L().who)}</h1>
+    <div class="row profs">${PROFILES.list.map((p, i) => `<button class="btn card profb ${p.id === PROFILES.current ? 'on' : ''}" data-p="${esc(p.id)}" style="--i:${i}"><i class="av">${p.avatar || AVATARS[i % AVATARS.length]}</i><span>${esc(profName(p))}</span></button>`).join('')}</div></div>`;
+  $$('.profb').forEach(b => b.onclick = () => {
+    sfx('pop');
+    if (b.dataset.p !== PROFILES.current) return switchProfile(b.dataset.p);   // another child: load their save from scratch
+    try { sessionStorage.setItem('tiko.picked', '1'); } catch (e) { /* ignore */ }
+    then();
+  });
+}
+
 // ================= screens =================
 function home(fromIntro) {
   dayStars();
@@ -3113,6 +3182,7 @@ function home(fromIntro) {
   app.innerHTML = `<div class="screen home">
     <button class="ic corner" aria-label="parents">⚙️</button>
     <button class="ic themepick" aria-label="theme">🎨</button>
+    ${PROFILES.list.length > 1 ? `<button class="ic whob" aria-label="who is playing">${curProfile().avatar || AVATARS[0]}</button>` : ''}
     <div class="langs"><button class="lang ${S.lang === 'en' ? 'on' : ''}" data-l="en">🇬🇧 English</button>
       <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr">🇫🇷 Français</button></div>
     <div class="hero">${owl('big')}${hid('chat') ? '' : `<button class="chatb">💬 ${L().chat.btn}</button>`}<h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
@@ -3139,6 +3209,7 @@ function home(fromIntro) {
   $('.go').onclick = () => { sfx('pop'); startPath(); };
   if ($('.chatb')) $('.chatb').onclick = () => { sfx('pop'); chatWithTiko(); };
   $('.themepick').onclick = () => { sfx('pop'); themePicker(); };
+  if ($('.whob')) $('.whob').onclick = () => { sfx('pop'); profilePicker(home); };
   $$('[data-m]').forEach(b => b.onclick = () => { sfx('tap'); const m = b.dataset.m; m === 'stickers' ? stickerBook() : m === 'journey' ? journey() : menu(m); });
   $('.corner').onclick = () => parentGate();
 }
@@ -3367,7 +3438,7 @@ async function stickerBook(tab = 'stickers') {
     c.innerHTML = '<div class="gallery"></div>';
     const g = $('.gallery');
     for (const k of keys) {
-      const p = await idb.get('photos', k); if (!p) continue;
+      const p = await idb.get('photos', k); if (!p || (p.pid || 'main') !== PROFILES.current) continue;   // only this child's photos
       const img = new Image(); img.src = URL.createObjectURL(p.blob); img.style.setProperty('--r', (rand(7) - 3) + 'deg');
       img.onclick = () => { const lb = document.createElement('div'); lb.className = 'lightbox'; lb.innerHTML = `<img src="${img.src}">`; lb.onclick = () => lb.remove(); document.body.appendChild(lb); };
       g.appendChild(img);
@@ -3435,14 +3506,23 @@ function parents() {
       Every daily path also includes a <b>paper mission</b>. She works on paper, then taps ✅ or uses 📷 to show Tiko her work.</p>
       <button class="pbtn wsopen" data-l="en">📚 Open the worksheet library</button><button class="pbtn alt wsopen" data-l="fr">🇫🇷 Fiches en français</button></section>
 
+    <section><h3>👧🧒 Children on this tablet</h3>
+      <p>Each child has their own progress, levels, stars, name and settings. Everything on this page is about the child marked <b>playing now</b>. With more than one child, Tiko asks "Who is playing?" each time the app opens. Nothing here leaves the tablet.</p>
+      <div class="proflist">${PROFILES.list.map(p => `<div class="profrow ${p.id === PROFILES.current ? 'cur' : ''}" data-p="${esc(p.id)}">
+        <select class="pav" aria-label="picture">${AVATARS.map(a => `<option ${a === (p.avatar || AVATARS[0]) ? 'selected' : ''}>${a}</option>`).join('')}</select>
+        <b>${esc(profName(p))}</b>
+        ${p.id === PROFILES.current ? '<span class="ptag">playing now</span>' : '<button class="pbtn alt psw">Switch to this child</button><button class="pbtn warn pdel">Remove</button>'}</div>`).join('')}</div>
+      <div class="profadd"><input class="nm-in padd-name" type="text" maxlength="30" placeholder="New child's name (optional)"><button class="pbtn padd">➕ Add a child</button></div>
+      <p class="profmsg" style="color:var(--teal-d);font-weight:600"></p></section>
+
     <section><h3>🧒 The child's name</h3>
       <p>Tiko welcomes the child by name and sometimes uses it in praise. It's stored only on this tablet, never online.
       If the robot voice says it wrong, type how it sounds, syllable by syllable (e.g. "Mee-ah"), or better, record it in your voice.</p>
       <label class="set">Name <input class="nm-in" data-s="name" type="text" maxlength="30" value="${esc(st.name)}" placeholder="Name"></label>
       <label class="set">In French, Tiko speaks to a boy ("champion", "prêt", "content"… instead of "championne", "prête", "contente") <input type="checkbox" data-s="frBoy" ${st.frBoy ? 'checked' : ''}></label>
       <label class="set">Spoken as (optional) <input class="nm-in" data-s="nameSay" type="text" maxlength="40" value="${esc(st.nameSay)}" placeholder="How it sounds"></label>
-      <button class="pbtn alt nm-test">▶ Hear it</button><button class="pbtn nm-rec">⏺ Record her name</button>
-      <button class="pbtn alt nm-del" ${recKeys.has('name') ? '' : 'hidden'}>🗑 Delete recording</button></section>
+      <button class="pbtn alt nm-test">▶ Hear it</button><button class="pbtn nm-rec">⏺ Record the name</button>
+      <button class="pbtn alt nm-del" ${recKeys.has(pkey('name')) ? '' : 'hidden'}>🗑 Delete recording</button></section>
 
     <section><h3>🎁 Rewards she's working towards</h3>
       <p>Set a real-world reward and a star price. Stars count from the moment you add it. Her progress bar shows on the home screen, and Tiko celebrates when she gets there.
@@ -3562,8 +3642,20 @@ function parents() {
   $$('.tv').forEach(b => b.onclick = () => demo(b.dataset.l));
   $$('.nm-in').forEach(i => i.addEventListener('keydown', e => e.stopPropagation()));
   $('.nm-test').onclick = () => speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, ...praiseParts());
-  $('.nm-del').onclick = async () => { await idb.del('rec', 'name'); recKeys.delete('name'); $('.nm-del').hidden = true; };
-  $('.nm-rec').onclick = () => record('name', $('.nm-rec'), () => { $('.nm-del').hidden = false; $('.nm-rec').className = 'pbtn nm-rec'; $('.nm-rec').textContent = '⏺ Record again'; });
+  $('.nm-del').onclick = async () => { await idb.del('rec', pkey('name')); recKeys.delete(pkey('name')); $('.nm-del').hidden = true; };
+  $('.nm-rec').onclick = () => record(pkey('name'), $('.nm-rec'), () => { $('.nm-del').hidden = false; $('.nm-rec').className = 'pbtn nm-rec'; $('.nm-rec').textContent = '⏺ Record again'; });
+  // children on this tablet
+  const profAt = el => el.closest('.profrow').dataset.p, backToProfs = msg => { parents(); const m = $('.profmsg'); if (m) { m.textContent = msg; m.scrollIntoView({ block: 'center' }); } };
+  $$('.pav').forEach(sel => sel.onchange = () => { PROFILES.list.find(p => p.id === profAt(sel)).avatar = sel.value; saveProfiles(); });
+  $$('.psw').forEach(b => b.onclick = () => switchProfile(profAt(b)));
+  $$('.pdel').forEach(b => b.onclick = async () => {
+    if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again: erases this child for good'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Remove'; } }, 4000); return; }
+    await removeProfile(profAt(b)); backToProfs('Removed.');
+  });
+  $('.padd').onclick = () => {
+    if (PROFILES.list.length >= 8) { $('.profmsg').textContent = 'Eight children is the most one tablet can hold.'; return; }
+    backToProfs(addProfile($('.padd-name').value) ? 'Added ✓ Tap "Switch to this child" to play as them or change their settings.' : 'There is no room left on this tablet to add a child.');
+  };
   $$('.vs').forEach(b => b.onclick = () => {
     st.pitch = +b.dataset.p; st.pitch_fr = +b.dataset.pf; st.rate = +b.dataset.r; save();
     $('[data-s="pitch"]').value = st.pitch; $('[data-s="pitch_fr"]').value = st.pitch_fr; $('[data-s="rate"]').value = st.rate; vinfo(); demo(S.lang);
@@ -3680,7 +3772,7 @@ function parents() {
     const g = $('.pg'), keys = ((await idb.keys('photos')) || []).sort((a, b) => b - a);
     if (!keys.length) { g.outerHTML = '<p>No photos yet. She can take one with 📷 during paper missions.</p>'; return; }
     for (const k of keys) {
-      const p = await idb.get('photos', k); if (!p) continue;
+      const p = await idb.get('photos', k); if (!p || (p.pid || 'main') !== PROFILES.current) continue;
       const w = document.createElement('div'); w.style.position = 'relative';
       w.innerHTML = `<img style="--r:0deg" src="${URL.createObjectURL(p.blob)}"><p style="margin:4px 0;font-size:13px">${esc(p.date)}</p><button class="pbtn alt" style="position:absolute;top:6px;right:0">🗑</button>`;
       w.querySelector('button').onclick = async () => { await idb.del('photos', k); w.remove(); };
@@ -3772,4 +3864,6 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   }, 3000);
 }
 applySettings();
-intro();
+// a tablet shared by several children asks who is playing, once each time the app is opened
+let picked = false; try { picked = !!sessionStorage.getItem('tiko.picked'); } catch (e) { /* ignore */ }
+if (PROFILES.list.length > 1 && !picked) profilePicker(intro); else intro();
