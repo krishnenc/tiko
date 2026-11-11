@@ -1092,3 +1092,9 @@ body.calm .world * { animation: none !important; } body.calm .sparkles { display
 .ptab { font: 700 16px system-ui, 'Segoe UI', sans-serif; padding: 11px 16px; border-radius: 14px; background: #fff; color: #333; border: 2px solid #ddd; min-height: 46px; }
 .ptab.on { background: #1f7a6c; background: color-mix(in srgb, var(--teal-d) 68%, #000); color: #fff; border-color: transparent; }
 .parent section[hidden] { display: none !important; }
+
+/* 8. The starting game for a new child (placement.js): big, calm, nothing is marked right or wrong. */
+.plc-stem { font-size: clamp(54px, 12vmin, 110px); line-height: 1.1; text-align: center; font-weight: 800; color: var(--ink, #3d3553); }
+.plc-row { gap: clamp(12px, 3vmin, 28px); }
+.plc-opt { min-width: 44px; min-height: 44px; width: min(28vw, 220px); padding: 14px 10px; background: #fff; color: var(--ink, #3d3553); font-size: clamp(38px, 9vmin, 76px); line-height: 1.1; transition: transform .2s; }
+.plc-opt.chosen { transform: scale(1.08); box-shadow: 0 0 0 6px var(--teal), 0 8px 0 var(--teal-d); }

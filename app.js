@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 42;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 43;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -51,7 +51,7 @@ function switchProfile(id) {
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true, review: 'discovery',
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -70,14 +70,106 @@ if (!S.settings.pitchV17) { if (S.settings.pitch < 1.6) S.settings.pitch = 1.6; 
 if (!S.knownV22) { for (const k of Object.keys(S.boxes || {})) if (S.boxes[k] >= 2) { S.boxes[k] = 5; S.due[k] = 'never'; } S.knownV22 = true; }
 // v23: Memory pairs was too hard — new gentler ladder (2 pairs first), so she starts again at the bottom (once)
 if (!S.memV23) { S.levels = S.levels || {}; S.streak = S.streak || {}; S.levels.memory = 1; S.streak.memory = { ok: 0, bad: 0 }; S.memV23 = true; }
-function save() { try { localStorage.setItem(storeKey(), JSON.stringify(S)); } catch (e) { /* ignore */ } }
+// ---------- save sections: prepared for keeping one child's progress in step across two tablets ----------
+// Each section carries a timestamp (S.stamp[section], ms) of its last change, written by save(). Nothing is sent anywhere.
+const SAVE_SECTIONS = {
+  boxes: ['boxes', 'due'], levels: ['levels', 'streak', 'simonLen'], journey: ['seenStage', 'counts', 'placed'], days: ['days', 'diary'],
+  rewards: ['stars', 'stickers', 'badges', 'goals', 'totals'], science: ['sci'], settings: ['settings', 'lang'],
+};
+const sectionSnap = s => { const o = {}; for (const n in SAVE_SECTIONS) o[n] = JSON.stringify(SAVE_SECTIONS[n].map(k => s[k])); return o; };
+let lastSnap = sectionSnap(S);       // what was saved last (the loaded save at first, so loading alone stamps nothing)
+function stampChanges() {
+  try {
+    const now = Date.now(), snap = sectionSnap(S);
+    for (const n in snap) if (snap[n] !== lastSnap[n]) { if (!S.stamp || typeof S.stamp !== 'object') S.stamp = {}; S.stamp[n] = now; }
+    lastSnap = snap;
+  } catch (e) { /* never let stamping break a save */ }
+}
+function save() { stampChanges(); try { localStorage.setItem(storeKey(), JSON.stringify(S)); } catch (e) { /* ignore */ } }
+// Merge two saves so that progress only moves forward. Pure: reads nothing but a and b, changes neither.
+function mergeSaves(a, b) {
+  a = a || {}; b = b || {};
+  const isO = v => v && typeof v === 'object' && !Array.isArray(v);
+  const O = v => (isO(v) ? v : {}), A = v => (Array.isArray(v) ? v : []), N = v => (typeof v === 'number' && isFinite(v) ? v : 0);
+  const keys = (x, y) => [...new Set([...Object.keys(x), ...Object.keys(y)])];
+  const cl = v => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
+  const stampOf = (x, n) => N(O(x.stamp)[n]);
+  const maxMap = (x, y) => { const o = {}; for (const k of keys(O(x), O(y))) o[k] = Math.max(N(O(x)[k]), N(O(y)[k])); return o; };
+  const out = {};
+  // everything that belongs to no section, and the settings, follow the newer settings stamp (equal: a)
+  const sa = stampOf(a, 'settings'), sb = stampOf(b, 'settings'), win = sb > sa ? b : a, lose = win === a ? b : a;
+  for (const k of keys(lose, win)) if (!(k in SAVE_SECTIONS) && !Object.values(SAVE_SECTIONS).some(l => l.includes(k)) && k !== 'stamp') out[k] = cl(win[k] !== undefined ? win[k] : lose[k]);
+  out.settings = { ...cl(O(win.settings)) };
+  for (const k of ['name', 'nameSay']) if (k in O(a.settings)) out.settings[k] = a.settings[k]; else delete out.settings[k];
+  out.lang = win.lang !== undefined ? win.lang : (lose.lang !== undefined ? lose.lang : 'en');
+  // boxes and due
+  const ba = O(a.boxes), bb = O(b.boxes), da = O(a.due), db = O(b.due), dueWins = (x, y) => (x === 'never' ? x : y === 'never' ? y : x > y ? x : y);
+  out.boxes = {}; out.due = {};
+  for (const k of new Set([...Object.keys(ba), ...Object.keys(bb), ...Object.keys(da), ...Object.keys(db)])) {
+    const ha = k in ba, hb = k in bb, xa = N(ba[k]), xb = N(bb[k]);
+    if (ha || hb) out.boxes[k] = Math.max(xa, xb);
+    let d;
+    if (ha && hb && xa !== xb) d = xa > xb ? da[k] : db[k];
+    else if (k in da && k in db) d = dueWins(da[k], db[k]);
+    else d = k in da ? da[k] : db[k];
+    if (d !== undefined) out.due[k] = d;
+  }
+  // levels, streak, simonLen
+  out.levels = maxMap(a.levels, b.levels);
+  out.simonLen = Math.max(N(a.simonLen), N(b.simonLen));
+  out.streak = cl(O(stampOf(b, 'levels') > stampOf(a, 'levels') ? b.streak : a.streak));
+  // journey
+  out.seenStage = maxMap(a.seenStage, b.seenStage);
+  out.counts = {};
+  for (const lg of keys(O(a.counts), O(b.counts))) out.counts[lg] = maxMap(O(a.counts)[lg], O(b.counts)[lg]);
+  out.placed = {};
+  for (const lg of keys(O(a.placed), O(b.placed))) out.placed[lg] = !!(O(a.placed)[lg] || O(b.placed)[lg]);
+  // days and diary
+  out.days = {};
+  for (const d of keys(O(a.days), O(b.days))) {
+    const x = O(a.days)[d], y = O(b.days)[d];
+    if (x === undefined || y === undefined) { out.days[d] = cl(x !== undefined ? x : y); continue; }
+    const m = { ...cl(O(y)), ...cl(O(x)) };
+    for (const f of ['q', 'ok', 't']) if (f in O(x) || f in O(y)) m[f] = Math.max(N(O(x)[f]), N(O(y)[f]));
+    out.days[d] = m;
+  }
+  // the diary is a multiset: a row appears max(copies in a, copies in b) times; a's rows keep their order, b's extra rows follow, then a stable sort by date
+  const inA = {}, inB = {}, rows = [...A(a.diary)];
+  for (const e of rows) { const j = JSON.stringify(e); inA[j] = (inA[j] || 0) + 1; }
+  for (const e of A(b.diary)) { const j = JSON.stringify(e); inB[j] = (inB[j] || 0) + 1; if (inB[j] > (inA[j] || 0)) rows.push(e); }
+  const day = e => String(Array.isArray(e) ? e[0] : '');
+  rows.sort((p, q) => { const x = day(p), y = day(q); return x < y ? -1 : x > y ? 1 : 0; });
+  out.diary = rows.slice(-800).map(cl);
+  // rewards
+  out.stars = Math.max(N(a.stars), N(b.stars));
+  out.totals = maxMap(a.totals, b.totals);
+  out.stickers = [...new Set([...A(a.stickers), ...A(b.stickers)])];
+  out.badges = {};
+  for (const k of keys(O(a.badges), O(b.badges))) { const x = O(a.badges)[k], y = O(b.badges)[k]; out.badges[k] = x === undefined ? y : y === undefined ? x : (y < x ? y : x); }
+  const gs = new Map(), ahead = (x, y) => {                       // true when x is further along than y
+    if (!!x.done !== !!y.done) return !!x.done;
+    if (x.done) return !!x.given !== !!y.given ? !!x.given : String(x.done) < String(y.done);   // both done: given first, else the earlier day
+    return N(x.base) < N(y.base);                                 // not yet done: more progress means a lower starting point
+  };
+  for (const g of [...A(a.goals), ...A(b.goals)]) { if (!isO(g)) continue; const o = gs.get(g.text); if (!o || ahead(g, o)) gs.set(g.text, g); }
+  out.goals = [...gs.values()].map(cl);
+  // science
+  out.sci = {};
+  for (const k of keys(O(a.sci), O(b.sci))) { const x = O(a.sci)[k], y = O(b.sci)[k]; out.sci[k] = x === undefined ? y : y === undefined ? x : (y > x ? y : x); }
+  // stamps
+  if (a.stamp !== undefined || b.stamp !== undefined) {
+    out.stamp = {};
+    for (const n of keys(O(a.stamp), O(b.stamp))) out.stamp[n] = Math.max(stampOf(a, n), stampOf(b, n));
+  }
+  return out;
+}
 // a new child starts fresh; only this tablet's sound choices are carried over from the child who is playing
 function addProfile(name) {
   const id = 'c' + Math.random().toString(36).slice(2, 10), used = PROFILES.list.map(p => p.avatar);
   const st = S.settings, d = structuredClone(DEFAULTS);
   Object.assign(d.settings, { rate: st.rate, pitch: st.pitch, pitch_fr: st.pitch_fr, voice_en: st.voice_en, voice_fr: st.voice_fr, sfx: st.sfx, music: st.music, ambient: st.ambient, ambientWork: st.ambientWork,
-    pitchV17: true, name: String(name || '').trim().slice(0, 30) });
-  d.lang = S.lang; d.knownV22 = true; d.memV23 = true;          // the one-off fixes for old saves do not apply to a new one
+    pitchV17: true, review: 'gentle', name: String(name || '').trim().slice(0, 30) });
+  d.lang = S.lang; d.knownV22 = true; d.memV23 = true; d.newChild = true;         // the one-off fixes for old saves do not apply to a new one
   try { localStorage.setItem(storeKey(id), JSON.stringify(d)); } catch (e) { return null; }
   PROFILES.list.push({ id, avatar: AVATARS.find(a => !used.includes(a)) || pick(AVATARS) }); saveProfiles();
   return id;
@@ -558,8 +650,12 @@ function owlReact(kind) {
 // ================= spaced repetition (Leitner boxes) =================
 // box 0 = not yet introduced, 1..5 = learning → mastered. Few new items at a time (poor memory friendly).
 const recent = {};
+const revHist = {};   // per set: was each of the last 9 picks a review? (gentle mode; not saved)
 const bkey = (set, id) => `${S.lang}:${set}:${id}`;
 const boxOf = (set, id) => S.boxes[bkey(set, id)] || 0;
+// 'discovery' = right first time is known for ever (the original rule); 'gentle' = known things come back after 3, 7 and 21 days
+const reviewMode = () => S.settings.review === 'gentle' ? 'gentle' : 'discovery';
+const reviewDue = (set, id) => { const d = S.due[bkey(set, id)]; return boxOf(set, id) >= 3 && /^\d/.test(d || '') && d <= today(); };
 function weighted(list, w) { const tot = list.reduce((s, x) => s + w(x), 0); let r = Math.random() * tot; for (const x of list) { r -= w(x); if (r <= 0) return x; } return list[list.length - 1]; }
 function chooseItem(set, items) {
   const intro = items.filter(i => boxOf(set, i.id) > 0);
@@ -575,12 +671,26 @@ function chooseItem(set, items) {
   void ready; void learning; void fresh; void avail;   // (replaced by the simpler rule below)
   // THE RULE (parent's wish): right first time = known for ever, never shown again. Only items she got WRONG
   // come back, at random, until she gets them right. Everything else is new.
-  const missed = items.filter(i => { const b = boxOf(set, i.id); return b > 0 && b < 5 && !isKnown(set, i.id); });
+  const gentle = reviewMode() === 'gentle';
+  // gentle: a due review comes up now and then (1 pick in 4, never more than 2 in 10); items resting in box 3-4 are not "missed"
+  if (gentle) {
+    const hist = revHist[set] || [], dueNow = items.filter(i => reviewDue(set, i.id));
+    if (dueNow.length && hist.filter(Boolean).length < 2 && Math.random() < 0.25) {
+      const notLast = dueNow.filter(i => !rec.includes(i.id));
+      item = pick(notLast.length ? notLast : dueNow);
+      revHist[set] = [true, ...hist].slice(0, 9);
+      recent[set] = [item.id, ...rec].slice(0, 3);
+      return { item, isNew };
+    }
+    revHist[set] = [false, ...hist].slice(0, 9);
+  }
+  const missed = items.filter(i => { const b = boxOf(set, i.id); return b > 0 && b < 5 && !isKnown(set, i.id) && !(gentle && b >= 3); });
   const newOnes = items.filter(i => boxOf(set, i.id) === 0 && !isKnown(set, i.id));
   const practise = missed.filter(i => !rec.includes(i.id));
   if (practise.length && (!newOnes.length || Math.random() < 0.4)) item = pick(practise);
   else if (newOnes.length) { item = newOnes[0]; isNew = true; S.boxes[bkey(set, item.id)] = 1; }
   else if (missed.length) { const notLast = missed.filter(i => i.id !== rec[0]); item = pick(notLast.length ? notLast : missed); }
+  else if (gentle && items.some(i => reviewDue(set, i.id))) { const dueAll = items.filter(i => reviewDue(set, i.id)), notLast = dueAll.filter(i => i.id !== rec[0]); item = pick(notLast.length ? notLast : dueAll); }   // nothing missed or new: a due review, not "any item"
   else { const notLast = items.filter(i => i.id !== rec[0]); item = pick(notLast.length ? notLast : items); }   // she knows every one at this level
   recent[set] = [item.id, ...rec].slice(0, Math.max(1, Math.min(3, missed.length - 1)));
   return { item, isNew };
@@ -597,6 +707,16 @@ const isDue = (set, id) => { const d = S.due[bkey(set, id)]; return !d || d <= t
 // right first time → known for ever (box 5, never due again); a mistake → box 1, it will come back to practise
 function gradeItem(set, id, first) {
   const k = bkey(set, id);
+  if (reviewMode() === 'gentle') {
+    // gentle: new → box 3 (+3 days), then 4 (+7), then 5 (+21), then known for ever; any miss → box 1, back today
+    const b = boxOf(set, id);
+    if (!first) { S.boxes[k] = 1; S.due[k] = today(); }
+    else if (b >= 3 && !reviewDue(set, id)) { /* resting (or known for ever): answering early changes nothing */ }
+    else if (b >= 5) { S.boxes[k] = 5; S.due[k] = 'never'; }
+    else { const nb = b >= 3 ? b + 1 : 3; S.boxes[k] = nb; S.due[k] = dayPlus(REVIEW_DAYS[nb]); }
+    diary(first ? 'ok' : 'miss', set, id, first ? '' : lastWrong);
+    return;
+  }
   S.boxes[k] = first ? 5 : 1;
   S.due[k] = first ? 'never' : today();
   diary(first ? 'ok' : 'miss', set, id, first ? '' : lastWrong);
@@ -620,8 +740,10 @@ function introduced(set, items) { const l = items.filter(i => boxOf(set, i.id) >
 // ================= the literacy journey =================
 // Six places. Each unlocks when the skill before it is genuinely remembered (spaced-repetition box >= 3).
 // share of items she knows (a word known through ANY word activity counts)
+// the box from which an item counts as known across activities: 5 in discovery, 3 in gentle (right first time rests at box 3)
+const knownBox = () => reviewMode() === 'gentle' ? 3 : 5;
 const frac = (lg, set, items) => items.length ? items.filter(i => (S.boxes[`${lg}:${set}:${i.id}`] || 0) >= 3 ||
-  (['blend', 'oral', 'spell', 'fam'].includes(set) && ['blend', 'oral', 'spell', 'fam'].some(s => (S.boxes[`${lg}:${s}:${i.id}`] || 0) >= 5))).length / items.length : 1;
+  (['blend', 'oral', 'spell', 'fam'].includes(set) && ['blend', 'oral', 'spell', 'fam'].some(s => (S.boxes[`${lg}:${s}:${i.id}`] || 0) >= knownBox()))).length / items.length : 1;
 const cnt = (lg, k) => ((S.counts[lg] || {})[k]) || 0;
 function bumpCount(k) { const c = S.counts[S.lang] = S.counts[S.lang] || {}; c[k] = (c[k] || 0) + 1; }
 // word difficulty levels: tier(lg, 1) = simple words, 2 = digraphs/blends (FR: ou/on/ch…), 3 = long vowels (FR: complex
@@ -644,24 +766,28 @@ const STAGES = [
 const stagePct = (i, lg = S.lang) => Math.min(1, STAGES[i].prog(lg) / STAGES[i].goal);
 // a place she has already reached is never taken away again (new content, or a word going back to practice, can't move her back)
 function stageOf(lg = S.lang) { for (let i = (S.seenStage || {})[lg] || 0; i < STAGES.length; i++) if (stagePct(i, lg) < 1) return i; return STAGES.length; }
-// Parent "start the journey at…": mark everything belonging to the earlier places as known (box 3, resting),
+// "Start the journey at…": mark everything belonging to the earlier places as known (box 5, due 'never'),
 // so she starts at the chosen place. Forward only — it never erases progress.
-function startJourneyAt(lg, target) {
+// check = true (the starting game, gentle mode only): the items are box 5 but due a review on day 3 to 9 (dayPlus(3 + i % 7),
+// i = index in the list being marked), so a lucky pass is caught: right → 'never', a miss → box 1, back to practice.
+function startJourneyAt(lg, target, check = false) {
   let n = 0;
-  const know = (set, items) => items.forEach(i => { const k = `${lg}:${set}:${i.id}`; if ((S.boxes[k] || 0) < 5) { S.boxes[k] = 5; S.due[k] = 'never'; n++; } });
+  const spread = check && reviewMode() === 'gentle';
+  const know = (set, items) => items.forEach((i, ix) => { const k = `${lg}:${set}:${i.id}`; if ((S.boxes[k] || 0) < 5) { S.boxes[k] = 5; S.due[k] = spread ? dayPlus(3 + (ix % 7)) : 'never'; n++; } });
   const c = S.counts[lg] = S.counts[lg] || {};
   const steps = [() => know('letter', DATA[lg].letters), () => know('blend', tier(lg, 1)), () => know('sight', DATA[lg].sight.slice(0, 20)),
     () => know('blend', tier(lg, 2)), () => { c.sentence = Math.max(c.sentence || 0, 15); }, () => know('blend', tier(lg, 3)),
     () => { c.story = Math.max(c.story || 0, 10); }, () => (tier(lg, 4).length ? know('blend', tier(lg, 4)) : know('sight', DATA[lg].sight))];
   for (let i = 0; i < target && i < steps.length; i++) steps[i]();
-  S.seenStage[lg] = Math.max(S.seenStage[lg] || 0, stageOf(lg)); save();
+  S.seenStage[lg] = Math.max(S.seenStage[lg] || 0, stageOf(lg));
+  S.placed = S.placed || {}; S.placed[lg] = true; save();      // a parent's choice cancels the starting game
   return n;
 }
 // words she meets now grow with the journey: level 1 → +2 at Tricky Sound Mountain → +3 at the Lagoon → +4 at the Summit
 function wordLevel(lg = S.lang) {
   const st = stageOf(lg); let lv = st < 3 ? 1 : st < 5 ? 2 : st < 7 ? 3 : 4;
   // never run out of new words: if she already knows every word at this level, open up the next one
-  const known = w => WORD_SETS.some(s => (S.boxes[`${lg}:${s}:${w.id}`] || 0) >= 5);
+  const kb = knownBox(), known = w => WORD_SETS.some(s => (S.boxes[`${lg}:${s}:${w.id}`] || 0) >= kb);
   const maxLv = DATA[lg].tiers.filter((t, i, a) => i === 0 || t > a[i - 1]).length;
   while (lv < maxLv && DATA[lg].words.slice(0, DATA[lg].tiers[lv - 1]).every(known)) lv++;
   return lv;
@@ -962,6 +1088,8 @@ const playedEver = a => ((S.plays || {})[playKey(a)] || {}).total || 0;
 // too easy for her now: she has moved past it on the journey, or reached the top level and keeps getting it right
 function mastered(a) {
   const st = stageOf();
+  // gentle: an activity is not "mastered" on a day when one of its items is due for review
+  if (reviewMode() === 'gentle' && (a === 'letters' || a === 'sight') && (a === 'letters' ? DATA[S.lang].letters : DATA[S.lang].sight).some(i => reviewDue(a === 'letters' ? 'letter' : 'sight', i.id))) return false;
   if (a === 'letters') return st >= 2 || frac(S.lang, 'letter', DATA[S.lang].letters) >= 1;
   if (a === 'trace') return st >= 2;            // she traces words and sentences by then
   if (a === 'robot') return st >= 3;            // listening-only blending is behind her
@@ -3069,9 +3197,11 @@ function weekReport() {
     S.lang = lg;   // (only so the helpers below look at this language; put back afterwards, nothing is saved)
     const ev = dia.filter(e => e[1] === lg), wk = ev.filter(e => inWeek.has(e[0]));
     const learned = { letters: [], magic: [], words: [], syllables: [] }, practise = { letters: [], magic: [], words: [], syllables: [] };
-    for (const e of wk) if (e[2] === 'ok' && (S.boxes[`${lg}:${e[3]}:${e[4]}`] || 0) >= 5 && !learned[kind(e[3])].includes(e[4])) learned[kind(e[3])].push(e[4]);
+    const gentle = reviewMode() === 'gentle', kb = knownBox();
+    const known = (set, id) => gentle ? boxOf(set, id) >= kb || (WORD_SETS.includes(set) && WORD_SETS.some(s => boxOf(s, id) >= kb)) : isKnown(set, id);
+    for (const e of wk) if (e[2] === 'ok' && (S.boxes[`${lg}:${e[3]}:${e[4]}`] || 0) >= kb && !learned[kind(e[3])].includes(e[4])) learned[kind(e[3])].push(e[4]);
     for (const [k, v] of Object.entries(S.boxes)) { const [l, set, ...rest] = k.split(':'), id = rest.join(':');
-      if (l === lg && v > 0 && v < 5 && !isKnown(set, id) && !practise[kind(set)].includes(id)) practise[kind(set)].push(id); }
+      if (l === lg && v > 0 && v < kb && !known(set, id) && !practise[kind(set)].includes(id)) practise[kind(set)].push(id); }
     const mix = {}; for (const e of ev) if (e[2] === 'miss' && e[5] && !e[5].includes('+')) { const k = `${e[4]} → ${e[5]}`; mix[k] = (mix[k] || 0) + 1; }
     const acts = Object.keys(ACTS), P = S.plays || {}, played = acts.filter(a => inWeek.has((P[lg + ':' + a] || {}).day)).map(a => actName(a));
     let never = acts.filter(a => !(P[lg + ':' + a] || {}).total && readyFor(a) && ACTS[a].area !== 'art' && !hid(ACTS[a].area)).map(a => actName(a));
@@ -3079,7 +3209,7 @@ function weekReport() {
     const st = stageOf(lg);
     R.langs[lg] = { any: wk.length > 0 || played.length > 0, stage: `${Math.min(st + 1, STAGES.length)}/${STAGES.length} ${st >= STAGES.length ? '(complete)' : T.en.journey[st]}`, learned, practise,
       mix: Object.entries(mix).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => (n > 1 ? `${k} (×${n})` : k)), played, never,
-      known: { letters: DATA[lg].letters.filter(x => isKnown('letter', x.id)).length, magic: DATA[lg].sight.filter(x => isKnown('sight', x.id)).length, words: DATA[lg].words.filter(x => isKnown('blend', x.id)).length } };
+      known: { letters: DATA[lg].letters.filter(x => known('letter', x.id)).length, magic: DATA[lg].sight.filter(x => known('sight', x.id)).length, words: DATA[lg].words.filter(x => known('blend', x.id)).length } };
     R.caught += wk.filter(e => e[2] === 'caught').length;
   }
   S.lang = keep;
@@ -3189,6 +3319,9 @@ function profilePicker(then) {
 function home(fromIntro) {
   dayStars();
   if (sessionOver()) return calmEnding();
+  // a new child plays the starting game first (once per language; leaving it half-way asks again next time the app is opened)
+  if (placementActive()) return;                       // a game is already on screen
+  if (needsPlacement() && !placeDeclined[S.lang]) { const first = fromIntro === true; placement().then(() => home(first)); return; }
   stopSpeech(); clearIdle(); applySettings(); zoomable(false); zone('home'); musicMode('calm');
   if (fromIntro === true) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);   // (back buttons pass a click event — not 'from intro')
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
@@ -3291,7 +3424,8 @@ function buildPath() {
   // a fun treat at the end of every path: art one day, a thinking game the next (whichever of the two is not hidden)
   // (v38: science takes its turn too — art, thinking, science, day after day)
   const treats = [['art', ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw']], ['think', ['memory', 'simon', 'jigsaw', 'kim', 'odd']], ['sci', ['space', 'wonder', 'constel', 'rocket', 'space', 'wonder', 'constel', 'zoom']]].filter(([k]) => !hid(k));
-  if (S.settings.artInPath && treats.length) { const list = treats[dayNo % treats.length][1]; stops.push(list[Math.floor(dayNo / treats.length) % list.length]); }
+  let treatAt = -1;   // where the end-of-path treat sits in `stops` (the top-up below only adds after it)
+  if (S.settings.artInPath && treats.length) { const list = treats[dayNo % treats.length][1]; treatAt = stops.length; stops.push(list[Math.floor(dayNo / treats.length) % list.length]); }
   // with reading or maths hidden the plan runs short: top it up from the tracks she does see (new things first)
   const want = S.settings.stops + (S.settings.artInPath && treats.length ? 1 : 0);
   if (stops.length < want) {
@@ -3301,6 +3435,17 @@ function buildPath() {
   }
   // discovery: anything she has mastered is swapped for something fresh she is ready for
   stops.splice(0, stops.length, ...freshen(stops));
+  // gentle: a letter or magic word that is due for review gets one stop at the start of the path, taking the place of the
+  // last regular stop (never the movement break or the end-of-path treat). The set with more due items wins; a tie goes to letters.
+  if (reviewMode() === 'gentle' && !hid('read')) {
+    const nDue = (set, items) => items.filter(i => reviewDue(set, i.id)).length;
+    const nl = nDue('letter', DATA[S.lang].letters), ns = nDue('sight', DATA[S.lang].sight);
+    const rev = nl || ns ? (ns > nl ? 'sight' : 'letters') : null;
+    if (rev && !stops.includes(rev)) {
+      const reg = stops.map((a, i) => i).filter(i => i !== treatAt);
+      if (reg.length) { stops.splice(reg[reg.length - 1], 1); stops.unshift(rev); }
+    }
+  }
   const seq = [];
   stops.forEach((s, i) => { seq.push(s); if (S.settings.breaks && i === 2 && stops.length > 3) seq.push('break'); });
   return seq.map(a => ({ a, done: false, sticker: null }));
@@ -3536,6 +3681,7 @@ function parents() {
         <b>${esc(profName(p))}</b>
         ${p.id === PROFILES.current ? '<span class="ptag">playing now</span>' : '<button class="pbtn alt psw">Switch to this child</button><button class="pbtn warn pdel">Remove</button>'}</div>`).join('')}</div>
       <div class="profadd"><input class="nm-in padd-name" type="text" maxlength="30" placeholder="New child's name (optional)"><button class="pbtn padd">➕ Add a child</button></div>
+      ${needsPlacement() ? '<p>This child will start with a short, ungraded game that places them on the journey. Skip it if you would rather choose the starting place yourself.</p><button class="pbtn alt pskip">Skip the starting game</button>' : ''}
       <p class="profmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
     <section><h3>🧒 The child's name</h3>
@@ -3561,6 +3707,9 @@ function parents() {
     <section><h3>🎚️ Difficulty</h3>
       <p>Tiko makes things harder by itself as your child succeeds (and easier after a struggle). If your child is ready for harder work already, move ahead here.
       It keeps adjusting automatically afterwards.</p>
+      <label class="set">Practice style <select data-s="review">
+        <option value="discovery" ${reviewMode() === 'discovery' ? 'selected' : ''}>Discovery: right first time means known, never shown again</option>
+        <option value="gentle" ${reviewMode() === 'gentle' ? 'selected' : ''}>Gentle review: known things come back after 3, 7 and 21 days</option></select></label>
       ${['en', 'fr'].map(lg => `<label class="set">${lg === 'en' ? '🇬🇧 English' : '🇫🇷 French'} reading — start the journey at
         <select class="jstart" data-lg="${lg}">${STAGES.map((s, i) => `<option value="${i}" ${i === stageOf(lg) ? 'selected' : ''} ${i < stageOf(lg) ? 'disabled' : ''}>${s.icon} ${esc(T[lg].journey[i])}</option>`).join('')}</select></label>`).join('')}
       <div class="set" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:17px;flex-wrap:wrap">🔢 All maths to level
@@ -3688,6 +3837,7 @@ function parents() {
     if (PROFILES.list.length >= 8) { $('.profmsg').textContent = 'Eight children is the most one tablet can hold.'; return; }
     backToProfs(addProfile($('.padd-name').value) ? 'Added ✓ Tap "Switch to this child" to play as them or change their settings.' : 'There is no room left on this tablet to add a child.');
   };
+  if ($('.pskip')) $('.pskip').onclick = () => { S.placed = S.placed || {}; S.placed.en = S.placed.fr = true; save(); backToProfs('The starting game is skipped.'); };
   $$('.vs').forEach(b => b.onclick = () => {
     st.pitch = +b.dataset.p; st.pitch_fr = +b.dataset.pf; st.rate = +b.dataset.r; save();
     $('[data-s="pitch"]').value = st.pitch; $('[data-s="pitch_fr"]').value = st.pitch_fr; $('[data-s="rate"]').value = st.rate; vinfo(); demo(S.lang);
