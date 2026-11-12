@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 48;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 49;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -74,9 +74,17 @@ if (!S.memV23) { S.levels = S.levels || {}; S.streak = S.streak || {}; S.levels.
 // ---------- save sections: prepared for keeping one child's progress in step across two tablets ----------
 // Each section carries a timestamp (S.stamp[section], ms) of its last change, written by save(). Nothing is sent anywhere.
 const SAVE_SECTIONS = {
-  boxes: ['boxes', 'due'], levels: ['levels', 'streak', 'simonLen'], journey: ['seenStage', 'counts', 'placed'], days: ['days', 'diary'],
+  boxes: ['boxes', 'due'], levels: ['levels', 'streak', 'simonLen'], journey: ['seenStage', 'counts', 'placed', 'books', 'used'], days: ['days', 'diary', 'plays'],
   rewards: ['stars', 'stickers', 'badges', 'goals', 'totals'], science: ['sci'], settings: ['settings', 'lang'],
+  meta: ['knownV22', 'memV23', 'newChild'],     // one-off flags: a restored save must not re-run the old fixes or the starting game
 };
+// "Local only" = never uploaded, never part of a section; the key stays in the save and in the backup file on this tablet.
+// chat / readings: what the child told Tiko and her recordings' metadata. The rest is the state of this tablet or this day, not progress.
+// levelUps is the queue of level-up announcements still to be shown (emptied when shown), so it is local too.
+// Every key of S is in exactly one section or here (sections-check.js fails otherwise).
+const SAVE_LOCAL = ['chat', 'readings', 'lastBackup', 'dayStart', 'demoDay', 'endedDay', 'extra', 'wsLang', 'stamp', 'levelUps'];
+// Old saves: lastSnap below is taken from the loaded save, so the first save() after an update stamps nothing by itself.
+// A section that never changed has no stamp (counts as 0, as mergeSaves already treats it); a stamp appears when it really changes.
 const sectionSnap = s => { const o = {}; for (const n in SAVE_SECTIONS) o[n] = JSON.stringify(SAVE_SECTIONS[n].map(k => s[k])); return o; };
 let lastSnap = sectionSnap(S);       // what was saved last (the loaded save at first, so loading alone stamps nothing)
 function stampChanges() {
@@ -101,7 +109,8 @@ function mergeSaves(a, b) {
   const sa = stampOf(a, 'settings'), sb = stampOf(b, 'settings'), win = sb > sa ? b : a, lose = win === a ? b : a;
   for (const k of keys(lose, win)) if (!(k in SAVE_SECTIONS) && !Object.values(SAVE_SECTIONS).some(l => l.includes(k)) && k !== 'stamp') out[k] = cl(win[k] !== undefined ? win[k] : lose[k]);
   out.settings = { ...cl(O(win.settings)) };
-  for (const k of ['name', 'nameSay']) if (k in O(a.settings)) out.settings[k] = a.settings[k]; else delete out.settings[k];
+  // `a` is always THIS tablet's save: the private settings (SAVE_PRIVATE_SETTINGS) are never taken from b (provisional: widened from name and nameSay, settled with the owner)
+  for (const k of SAVE_PRIVATE_SETTINGS) if (k in O(a.settings)) out.settings[k] = a.settings[k]; else delete out.settings[k];
   out.lang = win.lang !== undefined ? win.lang : (lose.lang !== undefined ? lose.lang : 'en');
   // boxes and due
   const ba = O(a.boxes), bb = O(b.boxes), da = O(a.due), db = O(b.due), dueWins = (x, y) => (x === 'never' ? x : y === 'never' ? y : x > y ? x : y);
@@ -157,12 +166,195 @@ function mergeSaves(a, b) {
   // science
   out.sci = {};
   for (const k of keys(O(a.sci), O(b.sci))) { const x = O(a.sci)[k], y = O(b.sci)[k]; out.sci[k] = x === undefined ? y : y === undefined ? x : (y > x ? y : x); }
+  // provisional (settled with the owner before sync): books, plays, used, meta
+  const has = k => a[k] !== undefined || b[k] !== undefined;    // these three appear in the result only if a save has them
+  if (has('books')) out.books = {};
+  for (const k of keys(O(a.books), O(b.books))) { const x = O(a.books)[k], y = O(b.books)[k]; out.books[k] = x === undefined ? y : y === undefined ? x : (String(y) > String(x) ? y : x); }
+  if (has('plays')) out.plays = {};
+  for (const k of keys(O(a.plays), O(b.plays))) {
+    const x = O(a.plays)[k], y = O(b.plays)[k];
+    if (x === undefined || y === undefined) { out.plays[k] = cl(x !== undefined ? x : y); continue; }
+    const nx = isO(x) ? x : {}, ny = isO(y) ? y : {}, dx = String(nx.day || ''), dy = String(ny.day || '');
+    const newer = dy > dx ? ny : nx, n = dx === dy ? Math.max(N(nx.n), N(ny.n)) : N(newer.n);
+    out.plays[k] = { total: Math.max(N(nx.total), N(ny.total)), day: newer.day === undefined ? '' : newer.day, n };
+  }
+  if (has('used')) out.used = {};
+  for (const k of keys(O(a.used), O(b.used))) {
+    const x = O(a.used)[k], y = O(b.used)[k];
+    if (Array.isArray(x) || Array.isArray(y)) { const seen = new Set(); out.used[k] = [...A(x), ...A(y)].filter(v => { const j = JSON.stringify(v); return seen.has(j) ? false : (seen.add(j), true); }).map(cl); }
+    else out.used[k] = cl(x !== undefined ? x : y);
+  }
+  for (const k of ['knownV22', 'memV23']) if (a[k] !== undefined || b[k] !== undefined) out[k] = !!(a[k] || b[k]);
+  if (a.newChild !== undefined || b.newChild !== undefined) out.newChild = a.newChild !== false && b.newChild !== false;   // false in either: the child has started (a save that does not say counts for nothing)
   // stamps
   if (a.stamp !== undefined || b.stamp !== undefined) {
     out.stamp = {};
     for (const n of keys(O(a.stamp), O(b.stamp))) out.stamp[n] = Math.max(stampOf(a, n), stampOf(b, n));
   }
   return out;
+}
+// ---------- progress as sections, for a later upload (nothing here touches the network or storage; the app does not call it yet) ----------
+// Settings are classified by an explicit allow-list: only SAVE_SYNCED_SETTINGS can ever be uploaded or taken from the cloud. SAVE_PRIVATE_SETTINGS
+// never leave the tablet (the name Tiko says, this tablet's voice and speed, and frBoy, which stays on the tablet until the owner decides).
+// A new setting must be added to one of the two lists (sections-check.js fails otherwise), and is private until it is in the synced list.
+const SAVE_SYNCED_SETTINGS = ['stops', 'perStop', 'sessionMin', 'theme', 'calm', 'breaks', 'nudge', 'artInPath', 'discovery', 'review', 'hide', 'font', 'spacing', 'textSize', 'simpleHome', 'listenFirst', 'sfx', 'music', 'ambient', 'ambientWork', 'voicePack'];
+const SAVE_PRIVATE_SETTINGS = ['name', 'nameSay', 'voice_en', 'voice_fr', 'rate', 'pitch', 'pitch_fr', 'pitchV17', 'frBoy'];
+// Format of the cloud form of the sections (the server's `format` column): 1 = boxes and due as two flat maps (never shipped), 2 = boxes packed.
+const CLOUD_FORMAT = 2;
+// The cloud copy is bounded: the newest CLOUD_MAX_DAYS entries of `days` (by date key) and the last CLOUD_MAX_DIARY diary rows. Older history stays on the tablet and in backup files.
+const CLOUD_MAX_DAYS = 730, CLOUD_MAX_DIARY = 800;
+const putKey = (o, k, v) => Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });   // safe even for the key "__proto__"
+const newestDays = d => { const ks = Object.keys(d).sort(); if (ks.length <= CLOUD_MAX_DAYS) return d; const o = {}; for (const k of ks.slice(-CLOUD_MAX_DAYS)) putKey(o, k, d[k]); return o; };
+// boxes and due packed as { lang: { set: { id: entry } } }; entry = box (a number: due is 'never'), [box] (no due), [box, due], or [null, due] (a due with no box).
+// A key that is not "lang:set:id" (non-empty parts, lang not "~") goes under "~" by its whole key. The conversion is lossless for every box/due combination.
+function packBoxes(boxes, due) {
+  const isP = v => v && typeof v === 'object' && !Array.isArray(v), B = isP(boxes) ? boxes : {}, D = isP(due) ? due : {}, out = {};
+  const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  for (const k of [...new Set([...Object.keys(B), ...Object.keys(D)])]) {
+    const hb = has(B, k), hd = has(D, k), b = B[k], d = D[k];
+    const e = !hb ? [null, d] : !hd ? [b] : (d === 'never' && typeof b === 'number' ? b : [b, d]);
+    const i = k.indexOf(':'), j = i > 0 ? k.indexOf(':', i + 1) : -1, lg = i > 0 ? k.slice(0, i) : '';
+    if (j > i + 1 && j < k.length - 1 && lg !== '~') {
+      const st = k.slice(i + 1, j), id = k.slice(j + 1);
+      if (!has(out, lg)) putKey(out, lg, {});
+      if (!has(out[lg], st)) putKey(out[lg], st, {});
+      putKey(out[lg][st], id, e);
+    } else { if (!has(out, '~')) putKey(out, '~', {}); putKey(out['~'], k, e); }
+  }
+  return out;
+}
+// The sections in their cloud form (CLOUD_FORMAT 2): per section exactly that section's keys that the save has, deep-copied, with boxes packed
+// (the boxes section holds one key, boxes, with due folded in). Nothing from SAVE_LOCAL, and only the settings in SAVE_SYNCED_SETTINGS. s is not changed.
+function cloudSections(s) {
+  s = s && typeof s === 'object' ? s : {};
+  const out = {};
+  for (const n in SAVE_SECTIONS) {
+    out[n] = {};
+    for (const k of SAVE_SECTIONS[n]) if (s[k] !== undefined) out[n][k] = JSON.parse(JSON.stringify(s[k]));
+  }
+  if (out.days.days && typeof out.days.days === 'object' && !Array.isArray(out.days.days)) out.days.days = newestDays(out.days.days);
+  if (Array.isArray(out.days.diary) && out.days.diary.length > CLOUD_MAX_DIARY) out.days.diary = out.days.diary.slice(-CLOUD_MAX_DIARY);
+  if (s.boxes !== undefined || s.due !== undefined) out.boxes = { boxes: packBoxes(out.boxes.boxes, out.boxes.due) };
+  const st = out.settings.settings;
+  if (st && typeof st === 'object' && !Array.isArray(st)) { for (const k of Object.keys(st)) if (!SAVE_SYNCED_SETTINGS.includes(k)) delete st[k]; }
+  else if (st !== undefined) out.settings.settings = {};
+  return out;
+}
+// A complete, loadable save for a new local profile, from sections in their cloud form (format 2, or 1 with boxes and due as flat maps; told apart
+// by shape, or pass `format`). Defaults first, then every value that is well formed: each value is checked for type and shape and anything
+// malformed is dropped, never thrown on; unknown sections, keys and settings are ignored; only SAVE_SYNCED_SETTINGS are taken, with a type and
+// a value that fits. The private settings keep their defaults. The old one-off fixes are marked done (a restored save is already in the new shape).
+// Returns { save, missing, rejected }:
+//   missing  = sections that were absent or not an object. They are left at the defaults and NOT stamped (a missing stamp counts as 0, so they
+//              never win a merge). A caller must refuse a restore when `missing` is not empty: in particular a missing `settings` section gives the
+//              default settings, which includes the practice style `review: 'discovery'`, and would silently change a gentle child to discovery.
+//   rejected = sections in which something was malformed and dropped (the rest of the section was kept).
+// Only the sections actually taken are stamped, from `stamps` (section -> ms) or now. "Nothing looks changed since it was fetched" holds only if
+// the caller writes `save` to storage as a profile's save and reloads the app (as sections-check.js fact 5 does); do not assign it to S and call save().
+function fromCloudSections(sections, stamps, format) {
+  const out = structuredClone(DEFAULTS), isP = v => v && typeof v === 'object' && !Array.isArray(v);
+  const fin = v => typeof v === 'number' && isFinite(v), str = v => typeof v === 'string';
+  let src = {}; try { src = JSON.parse(JSON.stringify(sections)); } catch (e) { /* not copyable: treated as nothing */ }
+  if (!isP(src)) src = {};
+  const missing = [], taken = [], rejected = new Set(); let cur = '';
+  const bad = () => rejected.add(cur);
+  // a plain object whose entries are cleaned by f (return undefined to drop an entry)
+  const mapOf = (v, f) => { if (!isP(v)) return undefined; const o = {}; for (const k of Object.keys(v)) { const x = f(v[k], k); if (x === undefined) bad(); else putKey(o, k, x); } return o; };
+  const listOf = (v, f, cap) => { if (!Array.isArray(v)) return undefined; const o = []; for (const x of v) { const y = f(x); if (y === undefined) bad(); else o.push(y); } if (o.length > cap) { bad(); return o.slice(-cap); } return o; };
+  const num = x => fin(x) ? x : undefined;
+  const CLEAN = {
+    stars: num, simonLen: num, lang: v => (v === 'en' || v === 'fr' ? v : undefined),
+    knownV22: v => (typeof v === 'boolean' ? v : undefined), memV23: v => (typeof v === 'boolean' ? v : undefined), newChild: v => (v === true ? true : undefined),
+    levels: v => mapOf(v, num), totals: v => mapOf(v, num), seenStage: v => mapOf(v, num),
+    streak: v => mapOf(v, x => (isP(x) && fin(x.ok) && fin(x.bad) ? { ok: x.ok, bad: x.bad } : undefined)),
+    counts: v => mapOf(v, x => mapOf(x, num)), placed: v => mapOf(v, x => (typeof x === 'boolean' ? x : undefined)),
+    books: v => mapOf(v, x => (str(x) && x.length <= 20 ? x : undefined)), sci: v => mapOf(v, x => (str(x) && x.length <= 20 ? x : undefined)), badges: v => mapOf(v, x => (str(x) && x.length <= 20 ? x : undefined)),
+    used: v => mapOf(v, x => listOf(x, y => (str(y) || fin(y) ? y : undefined), 5000)),
+    days: v => { const m = mapOf(v, x => { if (!isP(x)) return undefined; const o = {}; for (const f of Object.keys(x)) { if (fin(x[f])) putKey(o, f, x[f]); else bad(); } return o; }); if (m && Object.keys(m).length > CLOUD_MAX_DAYS) { bad(); return newestDays(m); } return m; },
+    plays: v => mapOf(v, x => (isP(x) && fin(x.total) ? { total: x.total, day: str(x.day) ? x.day : '', n: fin(x.n) ? x.n : 0 } : undefined)),
+    diary: v => listOf(v, r => (Array.isArray(r) && r.length <= 8 && r.every(c => str(c) || fin(c)) ? r : undefined), CLOUD_MAX_DIARY),
+    stickers: v => listOf(v, x => (str(x) && x.length <= 16 ? x : undefined), 200),
+    goals: v => listOf(v, g => (isP(g) && str(g.text) && g.text.length > 0 && g.text.length <= 40 && str(g.emoji) && g.emoji.length > 0 && g.emoji.length <= 16 && fin(g.cost) && fin(g.base)
+      && (g.done === null || str(g.done)) ? { id: fin(g.id) ? g.id : 0, emoji: g.emoji, text: g.text, cost: g.cost, base: g.base, done: g.done, ...(typeof g.given === 'boolean' ? { given: g.given } : {}) } : undefined), 50),
+  };
+  const okSetting = (k, v) => {
+    if (!SAVE_SYNCED_SETTINGS.includes(k)) return false;
+    if (k === 'hide') return isP(v) && Object.values(v).every(x => typeof x === 'boolean');
+    if (typeof v !== typeof DEFAULTS.settings[k]) return false;
+    if (typeof v === 'number') return fin(v) && v >= 0 && v <= 100000;
+    if (k === 'theme') return Object.hasOwn(THEMES, v);
+    if (k === 'review') return v === 'discovery' || v === 'gentle';
+    if (k === 'font') return ['andika', 'hyper', 'lexend', 'dys'].includes(v);
+    return true;
+  };
+  const okSetting2 = (k, v) => okSetting(k, v) && (k !== 'spacing' && k !== 'textSize' || [0, 1, 2].includes(v));
+  // one packed entry (see packBoxes) -> [box or undefined, due or undefined] or null when malformed
+  const entry = e => {
+    const okBox = b => fin(b) && b >= 0 && b <= 5;
+    if (okBox(e)) return [e, 'never'];
+    if (Array.isArray(e) && e.length >= 1 && e.length <= 2 && (e[0] === null || okBox(e[0])) && (e.length === 1 ? e[0] !== null : str(e[1]))) return [e[0] === null ? undefined : e[0], e.length === 2 ? e[1] : undefined];
+    return null;
+  };
+  const unpack = packed => {
+    const B = {}, D = {}, put = (k, e) => { const r = entry(e); if (!r) { bad(); return; } if (r[0] !== undefined) putKey(B, k, r[0]); if (r[1] !== undefined) putKey(D, k, r[1]); };
+    if (!isP(packed)) return null;
+    for (const lg of Object.keys(packed)) {
+      if (!isP(packed[lg])) { bad(); continue; }
+      if (lg === '~') { for (const k of Object.keys(packed[lg])) put(k, packed[lg][k]); continue; }
+      for (const st of Object.keys(packed[lg])) {
+        if (!isP(packed[lg][st])) { bad(); continue; }
+        for (const id of Object.keys(packed[lg][st])) put(lg + ':' + st + ':' + id, packed[lg][st][id]);
+      }
+    }
+    return { boxes: B, due: D };
+  };
+  for (const n in SAVE_SECTIONS) {
+    const sec = src[n]; cur = n;
+    if (!isP(sec)) { missing.push(n); continue; }
+    taken.push(n);
+    for (const k of SAVE_SECTIONS[n]) {
+      if (!Object.prototype.hasOwnProperty.call(sec, k) || n === 'boxes') continue;
+      if (k === 'settings') {
+        if (!isP(sec[k])) { bad(); continue; }
+        for (const s of Object.keys(sec[k])) { if (okSetting2(s, sec[k][s])) putKey(out.settings, s, sec[k][s]); else bad(); }
+        continue;
+      }
+      const v = CLEAN[k](sec[k]); if (v === undefined) bad(); else out[k] = v;
+    }
+    if (n === 'boxes') {
+      const fmt = format === 1 || format === 2 ? format : (isP(sec.due) || (isP(sec.boxes) && Object.values(sec.boxes).some(fin)) ? 1 : 2);
+      let r = null;
+      if (fmt === 1) {
+        const B = mapOf(sec.boxes === undefined ? {} : sec.boxes, x => (fin(x) && x >= 0 && x <= 5 ? x : undefined)), D = mapOf(sec.due === undefined ? {} : sec.due, x => (str(x) ? x : undefined));
+        if (B && D) r = { boxes: B, due: D };
+      } else if (sec.boxes !== undefined) r = unpack(sec.boxes);
+      if (r) { out.boxes = r.boxes; out.due = r.due; } else if (sec.boxes !== undefined || sec.due !== undefined) bad();
+    }
+  }
+  out.knownV22 = true; out.memV23 = true;
+  if (out.newChild !== true) delete out.newChild;
+  const t = Date.now(), st = isP(stamps) ? stamps : {};
+  out.stamp = {}; for (const n of taken) out.stamp[n] = fin(st[n]) ? st[n] : t;
+  return { save: out, missing, rejected: [...rejected] };
+}
+// ---------- the link record: which server child a local profile is, and what was last uploaded (tablet-wide, in no child's save or backup) ----------
+// localStorage['tiko.link'] = { [profileId]: { child: '<server child id>', up: { <section>: <stamp last uploaded> } } }. Nothing writes it yet.
+function linkAll() {
+  try { const d = JSON.parse(localStorage.getItem('tiko.link')); return d && typeof d === 'object' && !Array.isArray(d) ? d : {}; } catch (e) { return {}; }
+}
+function linkGet(id) {
+  const all = linkAll(), r = Object.hasOwn(all, id) ? all[id] : null;
+  return r && typeof r === 'object' && typeof r.child === 'string' ? { child: r.child, up: r.up && typeof r.up === 'object' && !Array.isArray(r.up) ? r.up : {} } : null;
+}
+function linkSet(id, rec) {
+  if (!id || !rec || typeof rec.child !== 'string') return false;
+  const all = linkAll(); putKey(all, String(id), { child: rec.child, up: rec.up && typeof rec.up === 'object' && !Array.isArray(rec.up) ? rec.up : {} });
+  try { localStorage.setItem('tiko.link', JSON.stringify(all)); return true; } catch (e) { return false; }
+}
+function linkDrop(id) {
+  const all = linkAll(); if (!Object.hasOwn(all, id)) return;
+  delete all[id];
+  try { if (Object.keys(all).length) localStorage.setItem('tiko.link', JSON.stringify(all)); else localStorage.removeItem('tiko.link'); } catch (e) { /* ignore */ }
 }
 // a new child starts fresh; only this tablet's sound choices are carried over from the child who is playing
 function addProfile(name) {
@@ -180,7 +372,7 @@ async function removeProfile(id) {
   if (id === PROFILES.current || PROFILES.list.length < 2) return;
   let old = null; try { old = JSON.parse(localStorage.getItem(storeKey(id))); } catch (e) { /* ignore */ }
   try { localStorage.removeItem(storeKey(id)); } catch (e) { /* ignore */ }
-  PROFILES.list = PROFILES.list.filter(p => p.id !== id); saveProfiles();
+  PROFILES.list = PROFILES.list.filter(p => p.id !== id); saveProfiles(); linkDrop(id);
   try {
     await idb.del('rec', pkey('name', id)); recKeys.delete(pkey('name', id));
     for (const r of (old && old.readings) || []) await idb.del('rec', r.k);
@@ -769,7 +961,7 @@ let starHideT = null;
 // in a 120×120 box using the same class names (owl-body, wing l / wing r, eyes, mouth), so all the animations
 // (blink, bob, hop, flap, dance, talk, sleep) work for each of them. owl(cls) draws the current one.
 const THEMES = { unicorn: ['Unicorn', 'pink and lavender', '#f6c1da'], dino: ['Dragon', 'blue, green and orange', '#bfdcf6'], rex: ['Dinosaur', 'jungle green and orange', '#cfe9c4'], owl: ['Owl', 'soft and natural', '#d5e9dc'] };
-const themeName = () => (THEMES[S.settings.theme] ? S.settings.theme : 'unicorn');
+const themeName = () => (typeof S.settings.theme === 'string' && Object.hasOwn(THEMES, S.settings.theme) ? S.settings.theme : 'unicorn');
 const MASCOTS = {};
 function owl(cls = '', theme = themeName()) { return MASCOTS[theme](cls); }
 MASCOTS.dino = (cls = '') => `<div class="owl ${cls}"><svg viewBox="0 0 120 120" aria-hidden="true">
@@ -957,7 +1149,7 @@ function gradeItem(set, id, first) {
   diary(first ? 'ok' : 'miss', set, id, first ? '' : lastWrong);
 }
 // A small diary for the parent report: what she learned, missed (and what she chose instead), day by day.
-// Kept short (about the last 800 answers) and only on this device.
+// Kept short (about the last 800 answers). Today it stays on this device; it is part of the `days` section and goes to the server only if a parent turns sync on.
 let lastWrong = '';
 function diary(kind, set, id, extra) {
   S.diary = S.diary || []; S.diary.push([today(), S.lang, kind, set, String(id), extra || '']);
@@ -1130,7 +1322,7 @@ function newGoals() {
 async function celebrateAwards() {
   const badges = newBadges(), goals = newGoals(); save();
   for (const b of badges) await celebrate(`<div class="medal">${b.icon}</div>`, L().aw.newBadge, badgeName(b));
-  for (const g of goals) await celebrate(`<div class="prize">${g.emoji}</div>`, L().aw.goalReached, g.text, L().aw.tellGrownUp);
+  for (const g of goals) await celebrate(`<div class="prize">${esc(g.emoji)}</div>`, L().aw.goalReached, g.text, L().aw.tellGrownUp);
   // a skill got harder: celebrate it so the progress is visible
   const ups = (S.levelUps || []).splice(0); save();
   for (const [a, n] of ups.slice(-2)) if (ACTS[a]) await celebrate(`<div class="prize">${ACTS[a].icon}</div><div class="lvlstars">${'⭐'.repeat(n)}</div>`, L().lvl.up, L().lvl.now(actName(a), n));
@@ -1149,10 +1341,10 @@ function celebrate(art, title, name, extra = '') {
 }
 function goalBarHTML() {
   const earned = S.goals.find(g => g.done && !g.given), g = S.goals.find(x => !x.done);
-  if (earned) return `<div class="goalbar earned">${earned.emoji} ${esc(earned.text)}: ${esc(L().aw.tellGrownUp)}</div>`;
+  if (earned) return `<div class="goalbar earned">${esc(earned.emoji)} ${esc(earned.text)}: ${esc(L().aw.tellGrownUp)}</div>`;
   if (!g) return '';
   const p = goalProgress(g);
-  return `<div class="goalbar"><span>${g.emoji}</span><span class="gt">${esc(g.text)}</span>
+  return `<div class="goalbar"><span>${esc(g.emoji)}</span><span class="gt">${esc(g.text)}</span>
     <span class="gb"><i style="width:${p / g.cost * 100}%"></i></span><span>⭐ ${p}/${g.cost}</span></div>`;
 }
 
@@ -4204,7 +4396,7 @@ function parents() {
   });
   const drawGoals = () => {
     const box = $('.goals');
-    box.innerHTML = S.goals.length ? S.goals.map((g, i) => `<div class="goalrow"><span style="font-size:28px">${g.emoji}</span>
+    box.innerHTML = S.goals.length ? S.goals.map((g, i) => `<div class="goalrow"><span style="font-size:28px">${esc(g.emoji)}</span>
       <b>${esc(g.text)}</b><span>${g.done ? `✅ earned ${esc(g.done)}` : `⭐ ${goalProgress(g)}/${g.cost}`}</span>
       ${g.done ? `<button class="pbtn" data-give="${i}">Given ✓</button>` : `<button class="pbtn alt" data-del="${i}">🗑</button>`}</div>`).join('')
       : '<p><i>No rewards set yet.</i></p>';
