@@ -1,5 +1,5 @@
 // Tiko service worker - works fully offline after first load.
-const VERSION = 'tiko-v45';
+const VERSION = 'tiko-v46';
 // phonics clips live in their own long-lived cache, so an app update never wipes them
 // (they still refresh in the background whenever the tablet is online)
 const SOUNDS = 'tiko-sounds';

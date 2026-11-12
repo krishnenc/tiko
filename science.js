@@ -483,7 +483,9 @@ function starPictures() {
       // a tap on (or near) the shining star, or a finger sliding over it: both join it
       const near = (e, d) => { const r = svg.getBoundingClientRect(), [x, y] = c.p[k]; return Math.hypot((e.clientX - r.left) / r.width * 100 - x, (e.clientY - r.top) / r.height * 100 - y) < d; };
       svg.addEventListener('click', e => { if (k < c.p.length && performance.now() - last > 350 && (e.target.closest('.cs.next') || near(e, 12))) light(); });
-      svg.addEventListener('pointermove', e => { if (k && k < c.p.length && (e.buttons || e.pointerType === 'touch') && near(e, 6)) light(); });
+      // (a finger put down on the first star and dragged never makes a "click": the press itself must count, and the slide works from the first star on)
+      svg.addEventListener('pointerdown', e => { if (k < c.p.length && performance.now() - last > 350 && (e.target.closest('.cs.next') || near(e, 12))) light(); });
+      svg.addEventListener('pointermove', e => { if (k < c.p.length && (e.buttons || e.pointerType === 'touch') && near(e, 8)) light(); });
       $('.home').onclick = () => fin(null); exitCurrent = () => fin(null);
       $('.replay').onclick = () => { sfx('tap'); speak(...said); };
       mark(); setIdle(() => nudge(said)); speak(R.stJoin);
