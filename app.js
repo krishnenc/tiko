@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 46;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 47;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -342,8 +342,16 @@ let packSets = null, packExt = 'aac', sayChain = Promise.resolve();
 // (asked of the sounds cache alone with the exact URL: a search over every cache with ignoreSearch took hundreds of ms)
 let soundsCache = null;
 const clipCached = async url => { try { if (typeof caches === 'undefined') return false; soundsCache = soundsCache || caches.open('tiko-sounds'); return !!(await (await soundsCache).match(url)); } catch (e) { soundsCache = null; return false; } };
+// The recorded voice comes in four packs (manifest v2): `en` / `fr` (everyday) and `en_math` / `fr_math` (harder sums); a v1 manifest has only the first two.
+const VP_KEY = 'tiko.voicepacks', VP_PACKS = ['en', 'en_math', 'fr', 'fr_math'], vpMemo = {};
+function vpIds(p) {
+  let s = ''; try { s = String((typeof VOICE === 'object' && VOICE && VOICE[p]) || ''); } catch (e) { /* no manifest */ }
+  const m = vpMemo[p]; if (m && m.s === s) return m.a;
+  const a = s.split(/\s+/).filter(Boolean); vpMemo[p] = { s, a }; return a;
+}
+const vpExt = () => { try { return (typeof VOICE === 'object' && VOICE && VOICE.ext) || 'aac'; } catch (e) { return 'aac'; } };
 function packUrl(text, lang) {
-  if (!packSets) { packSets = {}; try { for (const l of ['en', 'fr']) packSets[l] = new Set(String(VOICE[l] || '').split(/\s+/).filter(Boolean)); packExt = VOICE.ext || 'aac'; } catch (e) { packSets = { en: new Set(), fr: new Set() }; } }
+  if (!packSets) { packSets = {}; try { for (const l of ['en', 'fr']) packSets[l] = new Set(vpIds(l).concat(vpIds(l + '_math'))); packExt = vpExt(); } catch (e) { packSets = { en: new Set(), fr: new Set() }; } }
   const id = cyrb53(lang + '|' + text).toString(36);
   return packSets[lang] && packSets[lang].has(id) ? `sounds/voice/${lang}/${id}.${packExt}` : null;
 }
@@ -359,6 +367,134 @@ function playClip(url) {
     a.onplaying = arm; a.ontimeupdate = () => { if (!a.paused) arm(); };
     a.onended = () => fin(true); a.onerror = () => fin(false); a.play().catch(err => fin(err && err.name === 'AbortError'));
   });
+}
+// ---- what is downloaded of the recorded voice: tablet-wide choices (the cache belongs to the tablet, not to one child), never part of a child's save
+function vpSave(r) { try { localStorage.setItem(VP_KEY, JSON.stringify(r)); } catch (e) { /* storage unavailable: the choice lasts until the page closes */ } }
+function voicePrefs() {
+  let p = null; try { const t = localStorage.getItem(VP_KEY); p = t ? JSON.parse(t) : null; } catch (e) { p = null; }
+  if (!p || typeof p !== 'object') p = {};
+  const list = (a, ok) => Array.isArray(a) ? a.filter(x => ok.includes(x)) : null;
+  // the first time, a tablet whose parent had switched the recorded voice off keeps it off: nothing is downloaded for a voice that would not play
+  const r = { auto: typeof p.auto === 'boolean' ? p.auto : S.settings.voicePack !== false, wifi: p.wifi === true, langs: list(p.langs, ['en', 'fr']), math: list(p.math, ['en', 'fr']) || [], off: list(p.off, VP_PACKS) || [] };
+  if (!r.langs) {   // first time: the language in use, plus any the child has already used
+    r.langs = [S.lang]; for (const l of ['en', 'fr']) if (!r.langs.includes(l) && S.seenStage && S.seenStage[l] !== undefined) r.langs.push(l);
+    vpSave(r);
+  }
+  return r;
+}
+// the language in use is a language of this tablet; a child who has reached the harder sums wants the maths sentences of that language
+function vpNoteWanted(r) {
+  let ch = false;
+  if (!r.langs.includes(S.lang)) { r.langs.push(S.lang); ch = true; }
+  if (['add', 'sub', 'next', 'missing'].some(a => lvl(a) >= 3) && !r.math.includes(S.lang)) { r.math.push(S.lang); ch = true; }
+  if (ch) vpSave(r);
+  return r;
+}
+// packs to fetch, in order: those asked for with "Download now", everyday of the language in use, everyday of the others, then maths (language in use first)
+function vpPlan(r, forced) {
+  const cur = S.lang, other = cur === 'fr' ? 'en' : 'fr', out = [], add = p => { if (!out.includes(p) && vpIds(p).length) out.push(p); };
+  for (const p of forced) add(p);
+  if (r.auto) {
+    for (const l of [cur, other]) if (r.langs.includes(l) && !r.off.includes(l)) add(l);
+    for (const l of [cur, other]) if (r.math.includes(l) && !r.off.includes(l + '_math')) add(l + '_math');
+  }
+  return out;
+}
+// vpNote says why the last run did not fetch (shown in the pack's row): wait[pack] = 'wifi' | 'saver', space, why = 'noworker' | 'offline' | 'dropped', plan = the packs it meant to fetch
+let vpRunning = false, vpDirty = false, vpCur = '', vpHave = null, vpNote = { wait: {}, plan: [] }, vpTick = null;   // vpTick: the open parent-corner panel asks to be redrawn when a run ends
+const vpForced = new Set();
+// one run at a time; a call made during a run just makes it look again at what is wanted. `force` is a pack asked for with "Download now".
+async function voiceFetch(force) {
+  if (typeof VOICE !== 'object' || !VOICE) return;
+  if (force) for (const p of [].concat(force)) if (VP_PACKS.includes(p)) vpForced.add(p);
+  if (vpRunning) { vpDirty = true; return; }
+  vpRunning = true;
+  try { await vpRun(); } catch (e) { /* ignore */ } finally { vpRunning = false; vpCur = ''; vpHave = null; vpForced.clear(); if (vpTick) vpTick(); }   // a pack asked for by hand is forced only for the run that was started for it
+}
+addEventListener('online', () => voiceFetch());   // a run that stopped offline goes on when the tablet is back online
+async function vpRun() {
+  // guards: a worker in control (it does the caching), online; nothing is requested otherwise
+  vpNote = { wait: {}, plan: [] };
+  const stopped = why => { vpNote.why = why; vpNote.plan = vpPlan(vpNoteWanted(voicePrefs()), vpForced); };   // the row of each pack that was wanted says why nothing came
+  if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return stopped('noworker');
+  if (navigator.onLine === false) return stopped('offline');
+  const sc = await caches.open('tiko-sounds'), root = new URL('sounds/voice/', location.href).pathname;
+  // what the cache already holds is read ONCE (a lookup per clip is far too slow for a big pack)
+  const have = vpHave = new Set((await sc.keys()).map(r => new URL(r.url).pathname));
+  let lost = 0;
+  for (;;) {
+    vpDirty = false; vpNote = { wait: {}, plan: [] };
+    const r = vpNoteWanted(voicePrefs()), plan = vpPlan(r, vpForced);
+    if (!plan.length) return;
+    vpNote.plan = plan;
+    // 200 MB of room to spare (no estimate: carry on)
+    try { const e = await navigator.storage.estimate(); if (e.quota && e.quota - e.usage < 200e6) { vpNote.space = true; return; } } catch (e) { /* carry on */ }
+    let restart = false;
+    for (const p of plan) {
+      const forced = vpForced.has(p), l = p.slice(0, 2); let done = true;
+      for (const id of vpIds(p)) {
+        if (vpDirty) { restart = true; done = false; break; }
+        const url = `sounds/voice/${l}/${id}.${vpExt()}`, path = root + `${l}/${id}.${vpExt()}`;
+        if (have.has(path)) continue;   // (before the network rules: a pack that is complete never "waits")
+        // data saver, 2g, and (when asked) not on Wi-Fi: only where the tablet can tell; a pack asked for by hand ignores these
+        const cn = navigator.connection;
+        if (!forced && cn) {
+          if (cn.saveData || /2g/.test(cn.effectiveType || '')) { vpNote.wait[p] = 'saver'; done = false; break; }
+          if (r.wifi && cn.type && !['wifi', 'ethernet', 'unknown'].includes(cn.type)) { vpNote.wait[p] = 'wifi'; done = false; break; }
+        }
+        if (navigator.onLine === false) { vpNote.why = 'offline'; return; }
+        vpCur = p;
+        const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 15000);
+        let ok = false;
+        try { const res = await fetch(url, { signal: ctl.signal }); await res.arrayBuffer(); clearTimeout(tm); ok = res.ok; } catch (e) { clearTimeout(tm); vpNote.why = navigator.onLine === false ? 'offline' : 'dropped'; return; }   // offline or timed out: try again next time
+        if (!ok) continue;
+        if (!(await sc.match(url))) { await sleep(300); if (!(await sc.match(url))) { if (++lost >= 3) { vpNote.space = true; return; } continue; } }   // 3 in a row that did not land in the cache: the disk is full
+        lost = 0;
+        if (vpDirty && voicePrefs().off.includes(p) && !vpForced.has(p)) { try { await sc.delete(url); } catch (e) { /* ignore */ } continue; }   // removed while this clip was coming
+        have.add(path);
+      }
+      vpCur = '';
+      if (done) vpForced.delete(p);
+      if (restart) break;
+    }
+    if (!restart && !vpDirty) return;
+  }
+}
+// how many clips of each pack are in the tablet's cache
+let vpLast = null;
+async function vpCounts() {
+  if (vpRunning && !vpHave && vpLast) return vpLast;   // the run is reading the cache keys right now: do not read them twice at once
+  const out = {}; for (const p of VP_PACKS) out[p] = 0;
+  try {
+    // while a download runs it keeps an up-to-date set in memory: no need to read the whole cache again
+    const sc = await caches.open('tiko-sounds'), have = vpHave || new Set((await sc.keys()).map(r => new URL(r.url).pathname)), root = new URL('sounds/voice/', location.href).pathname, ext = vpExt();
+    for (const p of VP_PACKS) { const l = p.slice(0, 2); let n = 0; for (const id of vpIds(p)) if (have.has(`${root}${l}/${id}.${ext}`)) n++; out[p] = n; }
+  } catch (e) { /* no cache */ }
+  return vpLast = out;
+}
+// takes one pack off the tablet: only its clips leave the cache (never phonics, never the other packs) and it is not fetched again by itself
+async function vpRemove(p) {
+  const r = voicePrefs(); if (!r.off.includes(p)) r.off.push(p); vpSave(r);
+  vpForced.delete(p); vpDirty = true;
+  try {
+    const sc = await caches.open('tiko-sounds'), l = p.slice(0, 2), ext = vpExt(), root = new URL('sounds/voice/', location.href).pathname;
+    if (vpHave) for (const id of vpIds(p)) vpHave.delete(`${root}${l}/${id}.${ext}`);   // a running download must not think they are still there
+    await Promise.all(vpIds(p).map(id => sc.delete(`sounds/voice/${l}/${id}.${ext}`)));
+    // a clip that was in flight when the pack was removed may land a moment later (the worker does not wait for its cache write): sweep once more
+    setTimeout(async () => {
+      try {
+        if (!voicePrefs().off.includes(p)) return;   // asked for again meanwhile
+        const want = new Set(vpIds(p).map(id => `${root}${l}/${id}.${ext}`));
+        for (const k of await sc.keys()) if (want.has(new URL(k.url).pathname)) await sc.delete(k);
+      } catch (e) { /* ignore */ }
+    }, 1000);
+  } catch (e) { /* ignore */ }
+}
+// "Download now": the pack is wanted from now on, whatever the automatic setting and the child's level say
+function vpDownload(p) {
+  const r = voicePrefs(); r.off = r.off.filter(x => x !== p);
+  const l = p.slice(0, 2), list = p.endsWith('_math') ? r.math : r.langs; if (!list.includes(l)) list.push(l);
+  vpSave(r); return voiceFetch(p);
 }
 function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang), opts) {
   return new Promise(res => {
@@ -3082,7 +3218,7 @@ async function chatWithTiko() {
   const plain = (en, fr) => { en = fill(en, 'en'); fr = fill(fr, 'fr'); return { show: { en, fr }, parts: lang => [lang === 'en' ? en : fr] }; };
   $('.again').onclick = () => { if (line) { sfx('tap'); talk(line); } };
   $('.otherl').onclick = () => { if (line) { sfx('tap'); talk(line, other()); } };   // hear the same thing in the other language
-  $$('.chat .lang').forEach(b => b.onclick = () => { if (b.dataset.l === S.lang) return; S.lang = b.dataset.l; save(); applySettings(); sfx('pop'); chips(); if (relang) relang(); });
+  $$('.chat .lang').forEach(b => b.onclick = () => { if (b.dataset.l === S.lang) return; S.lang = b.dataset.l; save(); applySettings(); sfx('pop'); chips(); if (relang) relang(); voiceFetch(); });
   // her answer: a tap on a picture-sentence. (Answering by voice was removed in v40: the browser's speech
   // recognition sends the recording to an outside service, and a child's voice never leaves the device.)
   const choose = opts => new Promise(res => {
@@ -3396,6 +3532,7 @@ function home(fromIntro, full) {
   $('.soundb').onclick = () => { S.settings.ambient = !S.settings.ambient; save(); musicSet(); $('.soundb').textContent = S.settings.ambient ? '🎵' : '🔇'; if (S.settings.ambient) sfx('pop'); };
   $$('.lang').forEach(b => b.onclick = () => {
     S.lang = b.dataset.l; save(); sfx('pop'); home(false, true); owlReact('happy');   // the language buttons exist only on the full home
+    voiceFetch();   // the new language is a language of this tablet: its recorded voice is fetched too
     speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, S.lang === 'fr' ? 'On parle français !' : "Let's speak English!");
   });
   // tapping Tiko gives a random silly reaction
@@ -3705,6 +3842,56 @@ let installEvt = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
 
 let parentTab = 'prog';
+// the parent corner's panel for the recorded-voice packs; updates its numbers in place (a remove button waiting for its second tap is never redrawn)
+const VP_NAMES = { en: '🇬🇧 Everyday voice', en_math: '🇬🇧 Maths sentences', fr: '🇫🇷 Everyday voice', fr_math: '🇫🇷 Maths sentences' };
+function vpPanel() {
+  const box = $('.vpacks'); if (!box) return;
+  const rows = $('.vprows', box), fmt = n => n.toLocaleString('en-GB');
+  let shown = '', busy = false, again = false;
+  // one refresh at a time (a slow tablet must not pile them up); a request that comes meanwhile is served right after
+  const refresh = async () => {
+    if (!box.isConnected) { clearInterval(timer); if (vpTick === refresh) vpTick = null; return; }
+    if (busy) { again = true; return; }
+    busy = true;
+    try { await draw(); } finally { busy = false; }
+    if (again) { again = false; refresh(); }
+  };
+  const draw = async () => {
+    const counts = await vpCounts(), pr = voicePrefs(), vis = VP_PACKS.filter(p => vpIds(p).length);
+    if (vis.join() !== shown) {   // rows are built only when the set of packs changes
+      shown = vis.join();
+      rows.innerHTML = vis.map(p => `<div class="vprow" data-p="${p}"><b class="vpname">${VP_NAMES[p]}</b> <span class="vpsize"></span> <span class="vpcount"></span> <em class="vpstate"></em>
+        <button class="pbtn alt vpdl">Download now</button> <button class="pbtn warn vprm">Remove from this tablet</button></div>`).join('') || '<p><i>No recorded voice is listed in this version.</i></p>';
+      $$('.vprow', rows).forEach(row => {
+        const p = row.dataset.p, rm = $('.vprm', row);
+        $('.vpdl', row).onclick = () => { vpDownload(p); setTimeout(refresh, 400); };
+        rm.onclick = async () => {
+          if (!rm.dataset.armed) { rm.dataset.armed = '1'; rm.textContent = 'Tap again to remove'; setTimeout(() => { if (rm.isConnected) { delete rm.dataset.armed; rm.textContent = 'Remove from this tablet'; } }, 4000); return; }
+          delete rm.dataset.armed; rm.textContent = 'Removing…'; row.dataset.busy = '1'; $$('button', row).forEach(b => { b.disabled = true; });
+          await vpRemove(p);
+          delete row.dataset.busy; $$('button', row).forEach(b => { b.disabled = false; }); rm.textContent = 'Remove from this tablet'; refresh();
+        };
+      });
+    }
+    $$('.vprow', rows).forEach(row => {
+      const p = row.dataset.p, total = vpIds(p).length, n = counts[p] || 0, bytes = (typeof VOICE === 'object' && VOICE && VOICE.size && +VOICE.size[p]) || 0;
+      const meant = n < total && vpNote.plan.includes(p);   // the last run meant to fetch this pack and did not finish it: say why
+      const WHY = { noworker: 'waiting for the app to finish starting (try again in a moment)', offline: 'waiting for the internet', dropped: 'stopped: the connection dropped' };
+      const state = vpCur === p ? 'downloading' : vpNote.wait[p] === 'saver' ? 'waiting: data saver is on' : vpNote.wait[p] ? 'waiting for Wi-Fi'
+        : meant && vpNote.space ? 'not enough space' : meant && vpNote.why ? WHY[vpNote.why] : pr.off.includes(p) ? 'removed' : n >= total ? 'on this tablet' : 'not downloaded';
+      $('.vpsize', row).textContent = bytes ? `${Math.max(1, Math.round(bytes / 1e6))} MB` : '';
+      $('.vpcount', row).textContent = `${fmt(n)} of ${fmt(total)} clips`;
+      $('.vpstate', row).textContent = state;
+    });
+  };
+  const timer = setInterval(refresh, 5000); vpTick = refresh;
+  const pr = voicePrefs(), a = $('.vp-auto', box), w = $('.vp-wifi', box);
+  a.checked = pr.auto; w.checked = pr.wifi;
+  // every change calls voiceFetch(): a download that is running looks again at the choices before its next clip
+  a.onchange = () => { const r = voicePrefs(); r.auto = a.checked; vpSave(r); voiceFetch(); };
+  w.onchange = () => { const r = voicePrefs(); r.wifi = w.checked; vpSave(r); voiceFetch(); };
+  refresh();
+}
 function parents() {
   stopSpeech(); zoomable(true);
   const st = S.settings;
@@ -3834,6 +4021,14 @@ function parents() {
       <p class="voiceinfo" style="font-size:14px;color:#666"></p>
       <label class="set">Tiko's recorded voice (La voix enregistrée de Tiko) <input type="checkbox" data-s="voicePack" ${st.voicePack ? 'checked' : ''}></label>
       <p style="font-size:14px;color:#666">Tiko says many things with a gentle voice recorded in advance, and uses the tablet's voice for the rest. Switch off to use only the tablet's voice. Letter sounds and the name are never affected. / Tiko dit beaucoup de choses avec une voix douce enregistrée à l'avance, et utilise la voix de la tablette pour le reste. Désactivez pour n'utiliser que la voix de la tablette. Les sons des lettres et le prénom ne changent pas.</p>
+      <div class="vpacks" role="group" aria-label="Recorded voice downloads">
+        <h4 style="margin:12px 0 4px">Voice downloads</h4>
+        <p style="font-size:14px;color:#666">Tiko's recorded voice is downloaded after the app, a little at a time, and kept on this tablet. Until a sentence is downloaded, the tablet's own voice says it. The maths sentences are fetched when your child reaches the harder sums. / La voix enregistrée de Tiko se télécharge après l'application, petit à petit, et reste sur cette tablette. Tant qu'une phrase n'est pas téléchargée, c'est la voix de la tablette qui la dit. Les phrases de maths sont téléchargées quand votre enfant arrive aux calculs plus difficiles.</p>
+        <div class="vprows"></div>
+        <label class="set">Download the everyday voice automatically <input type="checkbox" class="vp-auto"></label>
+        <label class="set">Only on Wi-Fi (where the tablet can tell) <input type="checkbox" class="vp-wifi"></label>
+        <p style="font-size:14px;color:#666">These choices belong to the tablet, not to one child.</p>
+      </div>
       <p style="font-size:14px;color:#666">The voice, speed and pitch settings below apply to the tablet's own voice only; the recorded voice always plays at its own pace. Switch it off if your child needs slower speech. / Les réglages de voix, de vitesse et de hauteur ci-dessous ne concernent que la voix de la tablette ; la voix enregistrée garde toujours son propre rythme. Désactivez-la si votre enfant a besoin d'une parole plus lente.</p>
       <label class="set">Voice speed <input type="range" min="0.5" max="1.1" step="0.05" value="${st.rate}" data-s="rate"></label>
       <label class="set">English voice <select data-s="voice_en">${voiceOpts('en')}</select></label>
@@ -3975,7 +4170,7 @@ function parents() {
     $$('[data-r]').forEach(b => b.onclick = () => record(recLang + ':' + b.dataset.r, b, drawRec));
   };
   $$('.rl').forEach(b => b.onclick = () => { $$('.rl').forEach(x => x.classList.toggle('on', x === b)); recLang = b.dataset.l; recSyl = !!b.dataset.syl; $('.sylnote').hidden = !recSyl; drawRec(); });
-  drawRec();
+  drawRec(); vpPanel();
   let armed = false;
   $('.rst').onclick = e => {
     if (!armed) { armed = true; e.target.textContent = 'Tap again to confirm reset'; setTimeout(() => { armed = false; e.target.textContent = 'Reset all progress'; }, 4000); return; }
@@ -4191,21 +4386,8 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
         try { await fetch(url, { signal: ctl.signal }); } catch (e) { /* try again next launch */ }
         clearTimeout(tm);
       }
-      // then the recorded voice, one clip at a time (the language in use first). Only with the switch on, a worker in control (it does the
-      // caching), no data saver, and room to spare. A failed fetch means offline; 3 clips in a row that did not land in the cache means a full disk.
-      const cn = navigator.connection;
-      if (typeof VOICE !== 'object' || !S.settings.voicePack || !navigator.serviceWorker.controller || (cn && (cn.saveData || /2g/.test(cn.effectiveType || '')))) return;
-      try { const e = await navigator.storage.estimate(); if (e.quota && e.quota - e.usage < 200e6) return; } catch (e) { /* no estimate: carry on */ }
-      let lost = 0;
-      for (const l of [S.lang, S.lang === 'fr' ? 'en' : 'fr']) for (const id of String(VOICE[l] || '').split(/\s+/).filter(Boolean)) {
-        if (!S.settings.voicePack) return;
-        const url = `sounds/voice/${l}/${id}.${VOICE.ext || 'aac'}`;
-        if (got(url)) continue;
-        const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 15000);
-        try { const r = await fetch(url, { signal: ctl.signal }); await r.arrayBuffer(); clearTimeout(tm); if (!r.ok) continue; } catch (e) { clearTimeout(tm); return; }
-        if (!(await sc.match(url))) { await sleep(300); if (!(await sc.match(url))) { if (++lost >= 3) return; continue; } }
-        lost = 0;
-      }
+      // then the recorded voice: only what the parent's download choices want (see voiceFetch), one clip at a time
+      voiceFetch();
     } catch (e) { /* ignore */ }
   }, 3000);
 }
