@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 44;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 45;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -52,6 +52,7 @@ const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
   settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true, review: 'discovery', voicePack: true,
+    font: 'andika', spacing: 0, textSize: 0, simpleHome: false,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -200,6 +201,11 @@ function applySettings() {
   // the theme a parent chose: colours and scenery come from body[data-theme] in styles.css, the mascot from MASCOTS
   const th = themeName(); document.body.dataset.theme = th;
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = THEMES[th][2];
+  // reading comfort (v45): font, letter/word spacing and text size for this child; an unknown value falls back to the usual one
+  const st = S.settings, b = document.body.dataset;
+  b.font = ['andika', 'hyper', 'lexend', 'dys'].includes(st.font) ? st.font : 'andika';
+  b.sp = [0, 1, 2].includes(st.spacing) ? st.spacing : 0;
+  b.tz = [0, 1, 2].includes(st.textSize) ? st.textSize : 0;
 }
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* ignore */ }
 
@@ -3065,6 +3071,7 @@ async function chatWithTiko() {
   chips();
   let line = null, relang = null;   // the line Tiko is saying now: { show: {en, fr}, parts: lang => [...] }
   const talk = async (l, lang = S.lang) => {
+    if (!alive()) return;   // she may have left during the pause before this line
     line = l; const o = $('.chat .owl'); $('.tikosay').textContent = l.show[lang]; $('.tikosay').classList.remove('pop2'); void $('.tikosay').offsetWidth; $('.tikosay').classList.add('pop2');
     if (o) o.classList.add('talk');
     await speak(...l.parts(lang).map(p => typeof p === 'string' ? { text: p, lang } : p));
@@ -3359,7 +3366,7 @@ function profilePicker(then) {
 }
 
 // ================= screens =================
-function home(fromIntro) {
+function home(fromIntro, full) {
   dayStars();
   if (sessionOver()) return calmEnding();
   // a new child plays the starting game first (once per language; leaving it half-way asks again next time the app is opened)
@@ -3368,6 +3375,7 @@ function home(fromIntro) {
   stopSpeech(); clearIdle(); applySettings(); zoomable(false); zone('home'); musicMode('calm');
   if (fromIntro === true) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);   // (back buttons pass a click event — not 'from intro')
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
+  if (S.settings.simpleHome && full !== true) return homeSimple();
   app.innerHTML = `<div class="screen home">
     <button class="ic corner" aria-label="parents">⚙️</button>
     <div class="langs"><button class="lang ${S.lang === 'en' ? 'on' : ''}" data-l="en">🇬🇧 English</button>
@@ -3387,7 +3395,7 @@ function home(fromIntro) {
   // the music has its own button, so she can switch it off herself
   $('.soundb').onclick = () => { S.settings.ambient = !S.settings.ambient; save(); musicSet(); $('.soundb').textContent = S.settings.ambient ? '🎵' : '🔇'; if (S.settings.ambient) sfx('pop'); };
   $$('.lang').forEach(b => b.onclick = () => {
-    S.lang = b.dataset.l; save(); sfx('pop'); home(); owlReact('happy');
+    S.lang = b.dataset.l; save(); sfx('pop'); home(false, true); owlReact('happy');   // the language buttons exist only on the full home
     speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, S.lang === 'fr' ? 'On parle français !' : "Let's speak English!");
   });
   // tapping Tiko gives a random silly reaction
@@ -3403,6 +3411,29 @@ function home(fromIntro) {
   $('.themepick').onclick = () => { sfx('pop'); themePicker(); };
   if ($('.whob')) $('.whob').onclick = () => { sfx('pop'); profilePicker(home); };
   $$('[data-m]').forEach(b => b.onclick = () => { sfx('tap'); const m = b.dataset.m; m === 'stickers' ? stickerBook() : m === 'journey' ? journey() : menu(m); });
+  $('.corner').onclick = () => parentGate();
+}
+// the simpler home screen (parent setting, per child): Tiko, Start, one "more" button, the parents' corner and (with several
+// children) the "who is playing" button. "More" draws the full home for this visit; every other screen's home button returns here.
+function homeSimple() {
+  app.innerHTML = `<div class="screen home simple">
+    <button class="ic corner" aria-label="parents">⚙️</button>
+    <div class="hero">${owl('big')}</div>
+    <button class="btn primary huge pulse go">▶ ${L().start}</button>
+    <button class="btn moreb">➕ ${S.lang === 'fr' ? 'Encore' : 'More'}</button>
+    <div class="ver">v${APP_VERSION}</div>
+    ${PROFILES.list.length > 1 ? `<button class="whob" aria-label="${esc(L().who)}"><i>${curProfile().avatar || AVATARS[0]}</i><span>${esc(profName(curProfile()))}</span></button>` : ''}
+  </div>`;
+  const silly = S.lang === 'fr' ? ['Youpi !', 'Ça chatouille !', 'Hi hi hi !', 'On joue ?', 'Tu es super !', 'Ça brille !']
+    : ['Wheee!', 'That tickles!', 'Hee hee hee!', "Let's play!", "You're awesome!", 'Sparkle, sparkle!'];
+  $('.hero .owl').onclick = () => {
+    const o = $('.hero .owl'), k = pick(['happy', 'dance', 'spin']);
+    o.classList.remove('happy', 'dance', 'spin'); void o.offsetWidth; o.classList.add(k); setTimeout(() => o.classList.remove(k), 1600);
+    sfx('pop'); burstAt(o, 20); speak(pick(silly));
+  };
+  $('.go').onclick = () => { sfx('pop'); startPath(); };
+  $('.moreb').onclick = () => { sfx('pop'); home(false, true); };
+  if ($('.whob')) $('.whob').onclick = () => { sfx('pop'); profilePicker(home); };
   $('.corner').onclick = () => parentGate();
 }
 function menu(area) {
@@ -3766,6 +3797,20 @@ function parents() {
       <div class="tracks">${TRACKS.map(([k, ic, n]) => `<label class="trackb ${hid(k) ? '' : 'on'}"><input type="checkbox" data-track="${k}" ${hid(k) ? '' : 'checked'}> ${ic} ${n}</label>`).join('')}</div>
       <p class="trackmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
+    <section><h3>👓 Reading comfort</h3>
+      <p>No font is proven to help every child. Try them with your child and keep the one they read most easily. Wider spacing helps many children who find text crowded. If a screen would not fit on the tablet, Tiko makes that screen's text a little smaller. These choices are kept for this child only.</p>
+      <label class="set">Font <select data-s="font">
+        <option value="andika" ${st.font === 'andika' || !st.font ? 'selected' : ''}>Andika (the usual one: simple schoolbook letters)</option>
+        <option value="hyper" ${st.font === 'hyper' ? 'selected' : ''}>Atkinson Hyperlegible (letters that are hard to mix up)</option>
+        <option value="lexend" ${st.font === 'lexend' ? 'selected' : ''}>Lexend (wide and even)</option>
+        <option value="dys" ${st.font === 'dys' ? 'selected' : ''}>OpenDyslexic (heavy at the bottom; some children with dyslexia prefer it)</option></select></label>
+      <label class="set">Letter and word spacing <select data-s="spacing">
+        <option value="0" ${!st.spacing ? 'selected' : ''}>Usual</option><option value="1" ${st.spacing === 1 ? 'selected' : ''}>Wider</option><option value="2" ${st.spacing === 2 ? 'selected' : ''}>Widest</option></select></label>
+      <label class="set">Text size where your child plays <select data-s="textSize">
+        <option value="0" ${!st.textSize ? 'selected' : ''}>Usual</option><option value="1" ${st.textSize === 1 ? 'selected' : ''}>Bigger</option><option value="2" ${st.textSize === 2 ? 'selected' : ''}>Biggest</option></select></label>
+      <label class="set">Simpler home screen (only Tiko, the Start button and a "more" button) <input type="checkbox" data-s="simpleHome" ${st.simpleHome ? 'checked' : ''}></label>
+      <div class="cfprev" role="group" aria-label="Preview of the chosen font"><p lang="en">The cat sat on the mat.</p><p lang="fr">Le chat est sur le tapis.</p></div></section>
+
     <section><h3>⚙️ Session</h3>
       <label class="set">Stops on the daily path <select data-s="stops">${[3, 4, 5, 6, 7, 8].map(n => `<option ${st.stops === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="set">Questions per stop <select data-s="perStop">${[3, 4, 5, 6, 8].map(n => `<option ${st.perStop === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -3825,7 +3870,7 @@ function parents() {
   </div></div>`;
   $('.back').onclick = home;
   // the parent corner is long: its sections sit behind five tabs (the one last open is remembered while the app is open)
-  const TABS = [['prog', '📊 Progress', /This week|Progress|Read-aloud|Paper work$/], ['child', '🧒 Child', /Children|name|Theme|Rewards|Difficulty|sees/],
+  const TABS = [['prog', '📊 Progress', /This week|Progress|Read-aloud|Paper work$/], ['child', '🧒 Child', /Children|name|Theme|Rewards|Difficulty|sees|comfort/],
     ['play', '⚙️ Session and voice', /Session|Record letter/], ['paper', '🖨️ Worksheets', /worksheets/], ['data', '🔒 Tablet and data', /Install|Backup|Privacy|Reset/]];
   const secs = $$('.parent section');
   secs.forEach(s => { const h = s.querySelector('h3').textContent; s.dataset.tab = (TABS.find(t => t[2].test(h)) || TABS[0])[0]; });
@@ -3993,7 +4038,7 @@ function parents() {
       const text = await f.text(), d = JSON.parse(text);
       if (!d || d.app !== 'tiko' || !d.data) throw new Error('x');
       $('.bkmsg').innerHTML = `Backup from <b>${esc(d.date || '?')}</b> with ${Object.values(d.data.boxes || {}).filter(v => v >= 5).length} things known. This replaces the progress on this tablet. <button class="pbtn warn doit">Yes, restore it</button>`;
-      $('.doit').onclick = () => { try { restoreBackup(text); parents(); setTimeout(() => { const m = $('.bkmsg'); if (m) { m.textContent = 'Restored ✓'; m.scrollIntoView({ block: 'center' }); } }, 50); } catch (err) { $('.bkmsg').textContent = 'That file could not be restored.'; } };
+      $('.doit').onclick = () => { try { restoreBackup(text); applySettings(); parents(); setTimeout(() => { const m = $('.bkmsg'); if (m) { m.textContent = 'Restored ✓'; m.scrollIntoView({ block: 'center' }); } }, 50); } catch (err) { $('.bkmsg').textContent = 'That file could not be restored.'; } };
     } catch (err) { $('.bkmsg').textContent = 'That is not a Tiko backup file.'; }
     e.target.value = '';
   };
@@ -4074,6 +4119,53 @@ let nameT = 0;
 new MutationObserver(() => { if (nameT) return; nameT = requestAnimationFrame(() => { nameT = 0;
   for (const b of app.querySelectorAll('button:not([aria-label])')) { const n = ICON_NAMES[b.textContent.trim().replace(/️/g, '')] || ICON_NAMES[b.textContent.trim()]; if (n) b.setAttribute('aria-label', n[S.lang === 'fr' ? 1 : 0]); } }); })
   .observe(app, { childList: true, subtree: true });
+// ---- reading comfort (v45): keep a working screen on the tablet ----
+// A parent's bigger text, wider spacing or a wide font can make a screen taller than the tablet. On the screens a child works in
+// (questions, book pages, science, chat, the daily path) the text then steps down until the screen fits, in this order: the size down to
+// the usual size, then the extra line height, then the size a little below the usual size (to 0.8), and the extra letter and word spacing
+// last of all. A fit is made from scratch only for a new screen, a window resize or a font load; when something changes inside a screen
+// (an answer appears, a cue) nothing moves if it still fits, otherwise the text only shrinks further and never grows back.
+// Nothing happens with the default settings, on the home screen (it has its own rules in styles.css) or in the parent corner.
+const FIT_SEL = '.screen.act, .screen.chat, .screen.path';
+const FIT_VARS = ['--tz', '--lhx', '--ls', '--ws'];
+let fitState = null, fitBase = null;   // fitState: [size, extra line height, share of the extra spacing] now in force on this screen
+function comfortFit(shrinkOnly) {
+  const b = document.body, d = b.dataset;
+  if (!shrinkOnly || !fitState) { shrinkOnly = false; FIT_VARS.forEach(v => b.style.removeProperty(v)); fitState = null; }
+  if (d.font === 'andika' && d.sp === '0' && d.tz === '0') return;   // the validated look, not the raw settings
+  const sc = app.querySelector(':scope > .screen');
+  if (!sc || !sc.matches(FIT_SEL)) return;
+  // how much taller the screen's content is than the screen (animation transforms are ignored: only layout sizes count)
+  const over = () => {
+    const cs = getComputedStyle(sc); let need = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom), n = 0;
+    for (const k of sc.children) { const c = getComputedStyle(k); if (c.position === 'absolute' || c.position === 'fixed' || c.display === 'none') continue; need += k.offsetHeight + parseFloat(c.marginTop) + parseFloat(c.marginBottom); n++; }
+    return need + Math.max(0, n - 1) * (parseFloat(cs.rowGap) || 0) - sc.clientHeight;
+  };
+  if (!shrinkOnly) {   // what the parent chose (read before any step-down is applied)
+    const cs = getComputedStyle(b), num = v => parseFloat(cs.getPropertyValue(v)) || 0;
+    fitBase = { tz0: num('--tz') || 1, lh0: num('--lhx'), ls0: num('--ls'), ws0: num('--ws') }; fitState = [fitBase.tz0, fitBase.lh0, 1];
+  }
+  if (over() <= 2) return;                // it fits: nothing moves
+  const { tz0, lh0, ls0, ws0 } = fitBase;
+  const seq = [];                                                // [size, extra line height, share of the extra spacing], biggest first
+  for (let z = tz0 - .05; z > 1.001; z -= .05) seq.push([z, lh0, 1]);
+  if (tz0 > 1) seq.push([1, lh0, 1]);
+  for (const l of [.15, .1, .05, 0]) if (l < lh0) seq.push([1, l, 1]);
+  for (let z = .95; z >= .799; z -= .05) seq.push([z, 0, 1]);
+  seq.push([.8, 0, .5], [.8, 0, 0]);
+  const [cz, cl, cs2] = fitState;
+  for (const [z, l, s] of seq) {
+    if (z > cz + 1e-6 || l > cl + 1e-6 || s > cs2 + 1e-6 || (Math.abs(z - cz) < 1e-6 && Math.abs(l - cl) < 1e-6 && Math.abs(s - cs2) < 1e-6)) continue;   // never grow, never repeat
+    b.style.setProperty('--tz', z.toFixed(2)); b.style.setProperty('--lhx', l); b.style.setProperty('--ls', (ls0 * s) + 'em'); b.style.setProperty('--ws', (ws0 * s) + 'em');
+    fitState = [z, l, s];
+    if (over() <= 2) return;
+  }
+  if (!shrinkOnly) { FIT_VARS.forEach(v => b.style.removeProperty(v)); fitState = null; }   // nothing fits (it would not at the usual size either): leave the parent's choice as it is
+}
+let fitT = 0, fitFull = false;
+const fitSoon = full => { fitFull = fitFull || full === true; clearTimeout(fitT); fitT = setTimeout(() => { const f = fitFull; fitFull = false; comfortFit(!f); }, 150); };
+new MutationObserver(recs => { if (recs.some(r => r.target === app)) comfortFit(); else fitSoon(); }).observe(app, { childList: true, subtree: true });
+window.addEventListener('resize', () => fitSoon(true)); if (document.fonts) { document.fonts.addEventListener('loadingdone', () => fitSoon(true)); document.fonts.ready.then(() => fitSoon(true)); }
 reduceMotion.addEventListener && reduceMotion.addEventListener('change', applySettings);
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeech(); });

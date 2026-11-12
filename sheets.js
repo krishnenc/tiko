@@ -428,7 +428,7 @@ const WS_CSS = `
 `;
 // styles of the library screen itself (never printed)
 const WSLIB_CSS = `
-.wslib { max-width: 900px; margin: 0 auto; font-family: var(--font); color: #333; }
+.wslib { max-width: 900px; margin: 0 auto; font-family: 'Andika', 'Comic Sans MS', 'Segoe UI', system-ui, sans-serif; color: #333; }
 .wslib h1 { font-size: 28px; margin: 0 0 4px; } .wslib p { font-size: 17px; margin: 4px 0 10px; line-height: 1.4; }
 .wslib h2 { font-size: 22px; margin: 22px 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .wscards { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
