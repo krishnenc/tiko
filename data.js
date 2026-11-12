@@ -484,7 +484,7 @@ const T = {
       longer: 'Lequel est le plus long ?', shorter: 'Lequel est le plus court ?', blocks: 'Ça mesure combien de cubes ?',
       flash: 'Regarde vite ! Combien de points ?', seeAgain: 'Revoir',
       pop: n => `Éclate tous les ${n} !`, popTen: 'Éclate les bulles qui font 10 !',
-      storyAdd: (n, a, b) => [`Tiko a ${a} ${n}.`, `Il en trouve ${b} de plus.`, `Combien de ${n} a-t-il maintenant ?`],
+      storyAdd: (n, a, b) => [`Tiko a ${a} ${n}.`, `Il en trouve ${b} de plus.`, `Combien ${/^[aeiouyéèêàâîôûœ]/i.test(n) ? "d'" : 'de '}${n} a-t-il maintenant ?`],
       storySub: (n, a, b, verb) => [`Il y a ${a} ${n}.`, `${b} ${verb}.`, `Combien en reste-t-il ?`],
       things: [['pommes', '🍎'], ['étoiles', '⭐'], ['poissons', '🐟'], ['biscuits', '🍪'], ['fleurs', '🌸']],
       away: [['ballons', '🎈', "s'envolent"], ['biscuits', '🍪', 'sont mangés'], ['oiseaux', '🐦', "s'envolent"], ['canards', '🦆', "s'en vont à la nage"]],

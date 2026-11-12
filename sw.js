@@ -1,9 +1,9 @@
 // Tiko service worker - works fully offline after first load.
-const VERSION = 'tiko-v43';
+const VERSION = 'tiko-v44';
 // phonics clips live in their own long-lived cache, so an app update never wipes them
 // (they still refresh in the background whenever the tablet is online)
 const SOUNDS = 'tiko-sounds';
-const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'data.js', 'sheets.js', 'science.js', 'placement.js', 'manifest.webmanifest', 'privacy.html',
+const ASSETS = ['./', 'index.html', 'styles.css', 'voice.js', 'app.js', 'data.js', 'sheets.js', 'science.js', 'placement.js', 'manifest.webmanifest', 'privacy.html',
   'fonts/andika-latin-400-normal.woff2', 'fonts/andika-latin-700-normal.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
 // Install only waits for the small core files. Sound clips are fetched afterwards by the page,
@@ -19,7 +19,7 @@ self.addEventListener('activate', e => {
 function swr(cacheName, req, e, fallbackToPage) {
   return caches.open(cacheName).then(async c => {
     const hit = await c.match(req, { ignoreSearch: true });
-    const net = fetch(req).then(r => { if (r.ok) c.put(req, r.clone()); return r; })
+    const net = fetch(req).then(r => { if (r.status === 200) c.put(req, r.clone()).catch(() => {}); return r; })
       // only a page navigation may fall back to the app page — never hand index.html back for a sound or a script
       .catch(() => hit || (fallbackToPage ? c.match('index.html') : Response.error()));
     if (hit) e.waitUntil(net.catch(() => {}));
@@ -31,6 +31,9 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;   // the app asks no other site for anything
+  // recorded-voice clips: their names are hashes of the TEXT (not the audio), so a cached clip is final (a redone clip needs a new name): no re-fetch (and no request to the host) when one plays
+  if (url.pathname.includes('/sounds/voice/')) { e.respondWith(caches.open(SOUNDS).then(async c => (await c.match(req, { ignoreSearch: true })) ||
+    fetch(req).then(r => { if (r.status === 200) c.put(req, r.clone()).catch(() => {}); return r; }))); return; }
   if (url.pathname.includes('/sounds/')) { e.respondWith(swr(SOUNDS, req, e, false)); return; }
   e.respondWith(swr(VERSION, req, e, req.mode === 'navigate'));
 });

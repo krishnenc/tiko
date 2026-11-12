@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 43;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 44;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -51,7 +51,7 @@ function switchProfile(id) {
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true, review: 'discovery',
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true, review: 'discovery', voicePack: true,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
 let S = load();
@@ -316,6 +316,7 @@ const liveAudio = new Set();
 let unitChain = Promise.resolve();
 function stopSpeech() {
   speakToken++;
+  sayChain = Promise.resolve();       // a speech job that never reports its end must not hold up what is said next
   try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
   for (const a of [...liveAudio]) { try { a.pause(); } catch (e) { /* ignore */ } if (a.__fin) a.__fin(); }
   liveAudio.clear(); curAudio = null;
@@ -323,11 +324,44 @@ function stopSpeech() {
 // Bubbly voice: raised pitch overall, and an extra lift for anything exclaimed ("Bravo !", "Great job!")
 // French device voices distort when pitched very high, so French has its own, gentler pitch
 const langPitch = lang => lang === 'fr' ? (S.settings.pitch_fr || 1.25) : S.settings.pitch;
-function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang)) {
+// Recorded voice (voice.js, made in advance from the app's own text): a clip is found by a hash of "lang|text" after the
+// normalisation in say(). Without a clip, or with voicePack off, or if the clip cannot play, the device voice speaks as before.
+function cyrb53(str, seed = 0) { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0); }
+let packSets = null, packExt = 'aac', sayChain = Promise.resolve();
+// a clip is played only if it is already cached (the background prefetch fills the cache): never a network wait while speaking
+// (asked of the sounds cache alone with the exact URL: a search over every cache with ignoreSearch took hundreds of ms)
+let soundsCache = null;
+const clipCached = async url => { try { if (typeof caches === 'undefined') return false; soundsCache = soundsCache || caches.open('tiko-sounds'); return !!(await (await soundsCache).match(url)); } catch (e) { soundsCache = null; return false; } };
+function packUrl(text, lang) {
+  if (!packSets) { packSets = {}; try { for (const l of ['en', 'fr']) packSets[l] = new Set(String(VOICE[l] || '').split(/\s+/).filter(Boolean)); packExt = VOICE.ext || 'aac'; } catch (e) { packSets = { en: new Set(), fr: new Set() }; } }
+  const id = cyrb53(lang + '|' + text).toString(36);
+  return packSets[lang] && packSets[lang].has(id) ? `sounds/voice/${lang}/${id}.${packExt}` : null;
+}
+// plays one recorded clip exactly as recorded; true = played or stopped, false = could not be loaded or played (caller falls back)
+function playClip(url) {
+  return new Promise(res => {
+    const a = new Audio(url); curAudio = a; liveAudio.add(a);
+    let done = false, tm = 0; const fin = a.__fin = (ok = true) => { if (!done) { done = true; clearTimeout(tm); liveAudio.delete(a); res(ok); } };
+    // 10 s for the clip to start; once it plays, its own length plus a margin (so a long clip is never cut short)
+    // (a clip is never left audible after its promise resolves: it is paused first)
+    tm = setTimeout(() => { try { a.pause(); a.removeAttribute('src'); a.load(); } catch (e) { /* ignore */ } fin(false); }, 10000);
+    const arm = () => { clearTimeout(tm); tm = setTimeout(() => { try { a.pause(); } catch (e) { /* ignore */ } fin(true); }, (isFinite(a.duration) ? Math.max(0, a.duration - a.currentTime) : 20) * 1000 + 1500); };
+    a.onplaying = arm; a.ontimeupdate = () => { if (!a.paused) arm(); };
+    a.onended = () => fin(true); a.onerror = () => fin(false); a.play().catch(err => fin(err && err.name === 'AbortError'));
+  });
+}
+function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang), opts) {
   return new Promise(res => {
     // never read punctuation aloud: "Combien ?" / "…?" would otherwise be spoken as "question mark"
     text = String(text || '').replace(/…\s*\?/g, '?').replace(/…/g, ', ').replace(/\s+([?!.,;:])/g, '$1').replace(/^[\s?!.,;:]+/, '').trim();
-    if (!('speechSynthesis' in window) || !text || /^[?!.,;:\s]*$/.test(text)) return res();
+    if (!text || /^[?!.,;:\s]*$/.test(text)) return res();
+    const clip = S.settings.voicePack && !(opts && opts.noPack) ? packUrl(text, lang) : null;
+    const dev = () => new Promise(res => {
+    if (!('speechSynthesis' in window)) return res();
     const u = new SpeechSynthesisUtterance(text), v = voiceFor(lang);
     if (v) u.voice = v;
     // Expression, so Tiko doesn't sound like a flat robot: cheering is higher and quicker (with a little random
@@ -348,6 +382,15 @@ function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang
     // Chrome can silently pause long-running speech; nudge it along
     keep = setInterval(() => { try { if (speechSynthesis.paused) speechSynthesis.resume(); } catch (e) { /* ignore */ } }, 1000);
     speechSynthesis.speak(u);
+    });
+    // one voice at a time: un-awaited say() calls (counting taps) wait for each other, and stopSpeech() drops what is queued
+    const tok = speakToken;
+    const job = sayChain.then(async () => {
+      if (tok !== speakToken) return;
+      if (clip && await clipCached(clip)) { if (tok !== speakToken || await playClip(clip) || tok !== speakToken) return; }
+      return dev();
+    });
+    sayChain = job.catch(() => {}); job.then(() => res(), () => res());
   });
 }
 // A sound unit plays, in order of preference: the parent's own recording → the built-in phonics clip → the voice
@@ -371,7 +414,7 @@ async function playUnitNow(unit, lang = S.lang, rate) {
   if (rate === 'clear') rate = 0;
   if ((SOUND_CLIPS[lang] || []).includes(snd) && await playUrl(`sounds/${lang}-${snd}.wav`) !== false) return;
   // letter sounds stay close to natural pitch so they remain clear
-  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(langPitch(lang), 1.4));
+  return say(DATA[lang].sounds[snd] || unitText(unit), lang, (rate || S.settings.rate) * 0.9, Math.min(langPitch(lang), 1.4), { noPack: true });   // phonics never use the recorded voice
 }
 function playUrl(url) {
   return new Promise(res => {
@@ -429,7 +472,7 @@ const childName = () => (S.settings.name || '').trim();
 async function sayName(bang) {
   if (recKeys.has(pkey('name'))) { const b = await idb.get('rec', pkey('name')); if (b) return playBlob(b); }
   const n = (S.settings.nameSay || '').trim() || childName();
-  if (n) return say(n + (bang ? '!' : ''));
+  if (n) return say(n + (bang ? '!' : ''), S.lang, S.settings.rate, undefined, { noPack: true });   // a name never uses the recorded voice
 }
 // praise, sometimes with her name: "Great job, <name>!"
 function praiseParts() {
@@ -1618,8 +1661,8 @@ function mkMissing() {
       ${l < 3 ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center">${objsHTML(a, e)}${ghosts}</div>` : ''}</div>`,
     options: numOpts(ans, 0, max), answer: ans, correctSpeak: [`${a} ${q.plus} ${ans} ${q.equals} ${s}`], setup: r => tapToCount(r), grade: f => gradeMath('missing', f),
     // count on: start from the first number and count the ghost ones
-    explain: async r => { const gh = $$('.obj.ghost', r); if (!gh.length) return; await say(String(a), S.lang, 1);
-      for (const [i, o] of gh.entries()) { o.classList.add('ticked', 'pulse1'); await say(String(a + i + 1), S.lang, 1.05); o.classList.remove('pulse1'); } } };
+    explain: async r => { const gh = $$('.obj.ghost', r); if (!gh.length) return; const tok = speakToken; await say(String(a), S.lang, 1);
+      for (const [i, o] of gh.entries()) { if (tok !== speakToken) return; o.classList.add('ticked', 'pulse1'); await say(String(a + i + 1), S.lang, 1.05); o.classList.remove('pulse1'); } } };
 }
 function mkSkip() {
   const l = lvl('skip'), m = M();
@@ -3744,6 +3787,9 @@ function parents() {
       <label class="set">🇬🇧 English voice pitch (higher = more bubbly) <input type="range" min="0.8" max="2" step="0.05" value="${st.pitch}" data-s="pitch"></label>
       <label class="set">🇫🇷 French voice pitch (French voices sound strange if too high) <input type="range" min="0.8" max="1.6" step="0.05" value="${st.pitch_fr || 1.25}" data-s="pitch_fr"></label>
       <p class="voiceinfo" style="font-size:14px;color:#666"></p>
+      <label class="set">Tiko's recorded voice (La voix enregistrée de Tiko) <input type="checkbox" data-s="voicePack" ${st.voicePack ? 'checked' : ''}></label>
+      <p style="font-size:14px;color:#666">Tiko says many things with a gentle voice recorded in advance, and uses the tablet's voice for the rest. Switch off to use only the tablet's voice. Letter sounds and the name are never affected. / Tiko dit beaucoup de choses avec une voix douce enregistrée à l'avance, et utilise la voix de la tablette pour le reste. Désactivez pour n'utiliser que la voix de la tablette. Les sons des lettres et le prénom ne changent pas.</p>
+      <p style="font-size:14px;color:#666">The voice, speed and pitch settings below apply to the tablet's own voice only; the recorded voice always plays at its own pace. Switch it off if your child needs slower speech. / Les réglages de voix, de vitesse et de hauteur ci-dessous ne concernent que la voix de la tablette ; la voix enregistrée garde toujours son propre rythme. Désactivez-la si votre enfant a besoin d'une parole plus lente.</p>
       <label class="set">Voice speed <input type="range" min="0.5" max="1.1" step="0.05" value="${st.rate}" data-s="rate"></label>
       <label class="set">English voice <select data-s="voice_en">${voiceOpts('en')}</select></label>
       <label class="set">French voice <select data-s="voice_fr">${voiceOpts('fr')}</select></label>
@@ -3772,7 +3818,7 @@ function parents() {
       <p class="bkmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
     <section><h3>🔒 Privacy</h3>
-      <p>Tiko has no account, no adverts and no tracking. Everything about your child (name, progress, recordings, photos) stays on this tablet and is never sent anywhere. The app asks no other website for anything, and works without internet.</p>
+      <p>Tiko has no account, no adverts and no tracking. Everything about your child (name, progress, recordings, photos) stays on this tablet and is never sent anywhere. The app asks no other website for anything, and works without internet. The recorded voice was made in advance from the app's own text; its clips are files from the app's own site.</p>
       <a class="pbtn alt privlink" href="privacy.html" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none">Read the privacy policy</a></section>
 
     <section><h3>🧹 Reset</h3><button class="pbtn warn rst">Reset all progress</button></section>
@@ -3809,7 +3855,8 @@ function parents() {
     $$('[data-vp]').forEach(b => b.onclick = async () => {
       const { lg, v } = rows[+b.dataset.vp], keep = st['voice_' + lg];
       st['voice_' + lg] = v.name; stopSpeech();
-      await speak(lg === 'fr' ? 'Coucou ! Je suis Tiko !' : "Hi there! I'm Tiko!", ...(lg === 'fr' ? ['Youpi ! Bravo !'] : ['Woohoo! Great job!']));
+      // the device voice being chosen, never the recorded one
+      for (const s of lg === 'fr' ? ['Coucou ! Je suis Tiko !', 'Youpi ! Bravo !'] : ["Hi there! I'm Tiko!", 'Woohoo! Great job!']) await say(s, lg, undefined, undefined, { noPack: true });
       st['voice_' + lg] = keep;
     });
     $$('[data-vu]').forEach(b => b.onclick = () => {
@@ -3819,7 +3866,7 @@ function parents() {
     });
   };
   drawVoices(); if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', () => { if ($('.voicelist')) drawVoices(); });
-  const demo = async l => { stopSpeech(); await sleep(80); await say(l === 'fr' ? "Coucou ! Je suis Tiko. On lit ensemble ?" : "Hi there! I'm Tiko. Shall we read together?", l); await say(l === 'fr' ? 'Bravo, super !' : 'Great job, superstar!', l); };
+  const demo = async l => { stopSpeech(); await sleep(80); await say(l === 'fr' ? "Coucou ! Je suis Tiko. On lit ensemble ?" : "Hi there! I'm Tiko. Shall we read together?", l, undefined, undefined, { noPack: true }); await say(l === 'fr' ? 'Bravo, super !' : 'Great job, superstar!', l, undefined, undefined, { noPack: true }); };
   $$('.tv').forEach(b => b.onclick = () => demo(b.dataset.l));
   $$('.nm-in').forEach(i => i.addEventListener('keydown', e => e.stopPropagation()));
   $('.nm-test').onclick = () => speak(S.lang === 'fr' ? 'Coucou' : 'Hello', { name: true, bang: true }, ...praiseParts());
@@ -4043,12 +4090,29 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     try {
       await navigator.serviceWorker.ready;
       if (!navigator.serviceWorker.controller) await new Promise(r => { navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }); setTimeout(r, 10000); });
+      // what the sounds cache already holds is read ONCE (a lookup per clip over every cache is far too slow for a big pack)
+      const sc = await caches.open('tiko-sounds'), have = new Set((await sc.keys()).map(r => new URL(r.url).pathname)), got = u => have.has(new URL(u, location.href).pathname);
       for (const [l, keys] of Object.entries(SOUND_CLIPS)) for (const k of keys) {
         const url = `sounds/${l}-${k}.wav`;
-        if (await caches.match(url, { ignoreSearch: true })) continue;
+        if (got(url)) continue;
         const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 10000);
         try { await fetch(url, { signal: ctl.signal }); } catch (e) { /* try again next launch */ }
         clearTimeout(tm);
+      }
+      // then the recorded voice, one clip at a time (the language in use first). Only with the switch on, a worker in control (it does the
+      // caching), no data saver, and room to spare. A failed fetch means offline; 3 clips in a row that did not land in the cache means a full disk.
+      const cn = navigator.connection;
+      if (typeof VOICE !== 'object' || !S.settings.voicePack || !navigator.serviceWorker.controller || (cn && (cn.saveData || /2g/.test(cn.effectiveType || '')))) return;
+      try { const e = await navigator.storage.estimate(); if (e.quota && e.quota - e.usage < 200e6) return; } catch (e) { /* no estimate: carry on */ }
+      let lost = 0;
+      for (const l of [S.lang, S.lang === 'fr' ? 'en' : 'fr']) for (const id of String(VOICE[l] || '').split(/\s+/).filter(Boolean)) {
+        if (!S.settings.voicePack) return;
+        const url = `sounds/voice/${l}/${id}.${VOICE.ext || 'aac'}`;
+        if (got(url)) continue;
+        const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 15000);
+        try { const r = await fetch(url, { signal: ctl.signal }); await r.arrayBuffer(); clearTimeout(tm); if (!r.ok) continue; } catch (e) { clearTimeout(tm); return; }
+        if (!(await sc.match(url))) { await sleep(300); if (!(await sc.match(url))) { if (++lost >= 3) return; continue; } }
+        lost = 0;
       }
     } catch (e) { /* ignore */ }
   }, 3000);
