@@ -172,6 +172,13 @@ body[data-zone="think"] { --bg1: #d6d9f6; --bgm: #e4daf7; --bg2: #f8eef8; --hill
 .opt.correct { background: #d4f7e0; box-shadow: 0 9px 0 var(--leaf-d), 0 0 0 6px var(--leaf); animation: yay .6s; }
 .opt.wrong { opacity: .3; animation: shake .45s; }
 .opt.hint { animation: hint 1s ease-in-out infinite; box-shadow: 0 9px 0 var(--sun-d), 0 0 0 6px var(--sun); }
+/* listen first (v48): the answers are softer and cannot be touched while Tiko is still asking; no size or position changes */
+.options.wait, .plc-row.wait { opacity: .7; }
+.options.wait .opt, .plc-row.wait .plc-opt { pointer-events: none; }
+.options.wait .opt:not(.hint):not(.say):not(.correct), .plc-row.wait .plc-opt:not(.chosen) { box-shadow: 0 3px 0 var(--line); }   /* the hint ring and the naming ring look as usual */
+.options.wake, .plc-row.wake { animation: lfwake .35s ease-out; }
+@keyframes lfwake { from { opacity: .7; } }
+body.calm .options.wake, body.calm .plc-row.wake { animation: none; }
 @keyframes tileIn { from { transform: translateY(40px) scale(.6); opacity: 0; } }
 @keyframes yay { 30% { transform: scale(1.18) rotate(-4deg); } 60% { transform: scale(.95) rotate(3deg); } }
 @keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }

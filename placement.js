@@ -46,10 +46,10 @@ function placement() {
   return placeRun = new Promise(resolve => {
     const lg = S.lang, P = PLC[lg];
     let alive = true, applied = null, n = 0, said = [], locked = false, token = 0;
-    const fin = v => { if (!alive) return; alive = false; placeRun = null; stopSpeech(); clearIdle(); if (v === null) placeDeclined[lg] = true; resolve(v); };
+    const fin = v => { if (!alive) return; alive = false; placeRun = null; const row = $('.plc-row'); if (row) lfStop(row); stopSpeech(); clearIdle(); if (v === null) placeDeclined[lg] = true; resolve(v); };
     clearIdle(); stopSpeech(); zone('home'); musicMode('calm'); exitCurrent = () => fin(applied);
     const frame = (inner, rung, qi, extra) => { app.innerHTML = sciFrame('placement', inner, PLACE_Q, qi); const sc = $('.placement'); sc.dataset.n = extra; sc.dataset.rung = rung;
-      $('.home').onclick = () => fin(applied); $('.replay').onclick = () => { sfx('tap'); if (said.length) speak(...said); }; };
+      $('.home').onclick = () => fin(applied); $('.replay').onclick = () => { sfx('tap'); if (said.length) lfSay($('.plc-row'), ...said); }; };
     const run = async () => {
       let passed = 0, first = true;
       for (let rung = 1; rung <= 4 && alive; rung++) {
@@ -58,11 +58,15 @@ function placement() {
           if (!alive) return;
           const my = ++token; locked = false; said = q.say;
           frame(`<div class="plc-stem bob"${q.listen ? ` role="button" tabindex="0" aria-label="${lg === 'fr' ? 'Écouter encore' : 'Listen again'}"` : ''}>${q.stem}</div><div class="btnrow plc-row">${q.opts.map((o, i) => `<button class="btn plc-opt" data-i="${i}" ${o.ok ? 'data-ok="1"' : ''} aria-label="${esc(o.label)}">${o.html}</button>`).join('')}</div>`, rung, qi, n);
-          const stemEl = $('.plc-stem[role="button"]'); if (stemEl) { stemEl.onclick = () => { sfx('tap'); if (said.length) speak(...said); }; stemEl.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stemEl.click(); } }; }
+          const stemEl = $('.plc-stem[role="button"]'); if (stemEl) { stemEl.onclick = () => { sfx('tap'); if (said.length) lfSay($('.plc-row'), ...said); }; stemEl.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stemEl.click(); } }; }
           // Tiko says hello first (once); the question is spoken once that is finished
           const lead = first ? speak(P.intro) : Promise.resolve(); first = false;
-          lead.then(() => { if (alive && my === token && !locked) speak(...said); });
-          const tapped = await new Promise(res => $$('.plc-opt').forEach(b => b.onclick = () => { if (locked || !alive) return; locked = true; b.classList.add('chosen'); sfx('pop'); res(b); }));
+          const asked = lead.then(() => { if (alive && my === token && !locked) return speak(...said); });
+          listenFirst($('.plc-row'), asked);   // the choices wait until Tiko has finished asking (the parent's "listen first" setting)
+          const row = $('.plc-row');   // a finger put down while the choices wait must not answer when lifted after they woke
+          row.addEventListener('pointerdown', () => { row._downWait = row.classList.contains('wait'); }, true);
+          for (const ev of ['pointerup', 'pointercancel']) row.addEventListener(ev, () => setTimeout(() => { row._downWait = false; }, 600), true);
+          const tapped = await new Promise(res => $$('.plc-opt').forEach(b => b.onclick = () => { if (locked || !alive || row.classList.contains('wait') || row._downWait) return; locked = true; b.classList.add('chosen'); sfx('pop'); res(b); }));
           if (tapped.dataset.ok) right++;
           await sleep(650); n++;
         }

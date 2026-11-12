@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 47;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 48;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -51,7 +51,7 @@ function switchProfile(id) {
 const DEFAULTS = {
   lang: 'en', stars: 0, stickers: [], boxes: {}, levels: {}, streak: {}, days: {}, counts: {}, seenStage: {},
   totals: {}, badges: {}, goals: [], due: {},
-  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true, review: 'discovery', voicePack: true,
+  settings: { stops: 5, perStop: 5, rate: 0.9, pitch: 1.6, pitch_fr: 1.25, sfx: true, music: true, ambient: true, ambientWork: false, sessionMin: 0, theme: 'unicorn', calm: false, breaks: true, nudge: true, artInPath: true, discovery: true, review: 'discovery', voicePack: true, listenFirst: true,
     font: 'andika', spacing: 0, textSize: 0, simpleHome: false,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
@@ -320,8 +320,9 @@ function voiceFor(lang) {
 let speakToken = 0, curAudio = null;
 const liveAudio = new Set();
 let unitChain = Promise.resolve();
-function stopSpeech() {
+function stopSpeech(internal) {
   speakToken++;
+  if (!internal) for (const b of [...lfWaiting]) if (b._lfSettle) b._lfSettle();   // answers waiting for Tiko's sentence: it was cut, so they are released too
   sayChain = Promise.resolve();       // a speech job that never reports its end must not hold up what is said next
   try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
   for (const a of [...liveAudio]) { try { a.pause(); } catch (e) { /* ignore */ } if (a.__fin) a.__fin(); }
@@ -364,7 +365,7 @@ function playClip(url) {
     // (a clip is never left audible after its promise resolves: it is paused first)
     tm = setTimeout(() => { try { a.pause(); a.removeAttribute('src'); a.load(); } catch (e) { /* ignore */ } fin(false); }, 10000);
     const arm = () => { clearTimeout(tm); tm = setTimeout(() => { try { a.pause(); } catch (e) { /* ignore */ } fin(true); }, (isFinite(a.duration) ? Math.max(0, a.duration - a.currentTime) : 20) * 1000 + 1500); };
-    a.onplaying = arm; a.ontimeupdate = () => { if (!a.paused) arm(); };
+    a.onplaying = () => { lfStarted(); arm(); }; a.ontimeupdate = () => { if (!a.paused) arm(); };
     a.onended = () => fin(true); a.onerror = () => fin(false); a.play().catch(err => fin(err && err.name === 'AbortError'));
   });
 }
@@ -519,7 +520,7 @@ function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang
     let done = false, startT = null, endT = null, keep = null;
     const fin = () => { if (done) return; done = true; clearTimeout(startT); clearTimeout(endT); clearInterval(keep); res(); };
     u.onend = fin; u.onerror = fin;
-    u.onstart = () => { clearTimeout(startT); endT = setTimeout(fin, 3000 + text.length * 160 / u.rate); };
+    u.onstart = () => { lfStarted(); clearTimeout(startT); endT = setTimeout(fin, 3000 + text.length * 160 / u.rate); };
     startT = setTimeout(fin, 10000);
     // Chrome can silently pause long-running speech; nudge it along
     keep = setInterval(() => { try { if (speechSynthesis.paused) speechSynthesis.resume(); } catch (e) { /* ignore */ } }, 1000);
@@ -529,6 +530,7 @@ function say(text, lang = S.lang, rate = S.settings.rate, pitch = langPitch(lang
     const tok = speakToken;
     const job = sayChain.then(async () => {
       if (tok !== speakToken) return;
+      lfTick();   // listen first: a new saying begins (also for sayings made without speak(), such as counting during an explanation)
       if (clip && await clipCached(clip)) { if (tok !== speakToken || await playClip(clip) || tok !== speakToken) return; }
       return dev();
     });
@@ -563,7 +565,7 @@ function playUrl(url) {
     const a = new Audio(url); curAudio = a; liveAudio.add(a);
     // resolves true when it played, false when the file couldn't be played (so the caller can fall back)
     let done = false; const fin = a.__fin = (ok = true) => { if (!done) { done = true; liveAudio.delete(a); res(ok); } };
-    a.onended = () => fin(true); a.onerror = () => fin(false); a.play().catch(err => fin(err && err.name === 'AbortError'));
+    a.onplaying = lfStarted; a.onended = () => fin(true); a.onerror = () => fin(false); a.play().catch(err => fin(err && err.name === 'AbortError'));
     setTimeout(() => fin(true), 4000);
   });
 }
@@ -571,22 +573,70 @@ function playBlob(blob) {
   return new Promise(res => {
     const url = URL.createObjectURL(blob), a = new Audio(url); curAudio = a; liveAudio.add(a);
     let done = false; const fin = a.__fin = () => { if (!done) { done = true; liveAudio.delete(a); URL.revokeObjectURL(url); res(); } };
-    a.onended = fin; a.onerror = fin; a.play().catch(fin);
+    a.onplaying = lfStarted; a.onended = fin; a.onerror = fin; a.play().catch(fin);
     setTimeout(fin, 6000);
   });
 }
 // speak(...parts): string | {unit} | {pause} | {text, lang}
-async function speak(...parts) {
+let lastSpeech = null;                                     // the promise of the latest speak(): see listenFirst
+function speak(...parts) {
   // the music goes quiet while Tiko talks, and drifts back a moment after she has finished
   music.speaking++; clearTimeout(music.upT); musicSet();
-  try { await speakParts(parts); } finally { music.speaking--; clearTimeout(music.upT); music.upT = setTimeout(musicSet, 900); }
+  const p = (async () => {
+    try { await speakParts(parts); } finally { music.speaking--; clearTimeout(music.upT); music.upT = setTimeout(musicSet, 900); }
+  })();
+  lastSpeech = p; return p;
+}
+// ---------- listen first (v48): the answers of a question wait until Tiko has finished asking ----------
+// A child who taps before she has heard the question gets nothing: no sound, no wobble, no attempt, and the tap is not
+// remembered. `box` is the container of the answers. It is released 250 ms after `promise` (a speak() or anything that
+// settles) settles however it settles, and in any case 8 s after the call, because speech on some tablets never reports its
+// end. A newer call for the same box replaces the older one. With the parent's setting off the box is simply alive.
+// The 8 s cap is per sentence: every new part Tiko starts to say (lfTick) re-arms it. Nobody waits in silence either: if nothing has
+// STARTED sounding 3 s after a sentence was asked for, the answers wake. "Started" means: for a recorded clip, the audio element's
+// `playing` event (it is really playing); for the device voice, the utterance's `start` event; for a phonics clip, `playing`.
+// Once a start has been seen for the sentence, only its end (or the 8 s cap) releases the answers. `opts.hard` is a fixed limit
+// from the call (used while Tiko explains, which is long and made of many small sayings); `opts.noQuiet` skips the 3 s rule.
+const LF_CAP = 8000, LF_SETTLE = 250, LF_QUIET = 3000, lfWaiting = new Set();
+function lfStop(box) { clearTimeout(box._lfCap); clearTimeout(box._lfSet); clearTimeout(box._lfQuiet); clearTimeout(box._lfHard); box._lfSet = 0; box._lfId = (box._lfId || 0) + 1; box._lfSettle = null; box._lfOpen = null; lfWaiting.delete(box); }
+function lfTick() {   // a new sentence (or sound) is about to be said: re-arm the cap and the "has it started" watch of every waiting box
+  for (const b of lfWaiting) if (b._lfOpen) { clearTimeout(b._lfCap); b._lfCap = setTimeout(b._lfOpen, LF_CAP); b._lfSeen = false; clearTimeout(b._lfQuiet); if (!b._lfNoQuiet) b._lfQuiet = setTimeout(b._lfOpen, LF_QUIET); }
+}
+function lfStarted() { for (const b of lfWaiting) { b._lfSeen = true; clearTimeout(b._lfQuiet); } }   // sound is really coming out
+function lfAlive(box, fade) {
+  box.classList.remove('wait');
+  $$('[aria-disabled]', box).forEach(b => b.removeAttribute('aria-disabled'));
+  if (fade) { box.classList.add('wake'); clearTimeout(box._lfWake); box._lfWake = setTimeout(() => box.classList.remove('wake'), 400); }
+}
+function listenFirst(box, promise, opts = {}) {
+  if (!box) return;
+  lfStop(box);
+  if (!S.settings.listenFirst) { lfAlive(box); return; }
+  const id = box._lfId;
+  box.classList.remove('wake'); box.classList.add('wait');
+  $$('.opt, .plc-opt', box).forEach(b => b.setAttribute('aria-disabled', 'true'));
+  const open = () => { if (box._lfId !== id) return; lfStop(box); lfAlive(box, true); };
+  const settle = () => { if (box._lfId !== id || box._lfSet) return; box._lfSet = setTimeout(open, LF_SETTLE); };
+  box._lfCap = setTimeout(open, LF_CAP); box._lfSettle = settle; box._lfOpen = open; box._lfSeen = false; box._lfNoQuiet = !!opts.noQuiet; lfWaiting.add(box);
+  if (!opts.noQuiet) box._lfQuiet = setTimeout(open, LF_QUIET);
+  if (opts.hard) box._lfHard = setTimeout(open, opts.hard);
+  Promise.resolve(promise).then(settle, settle);
+}
+// speak and hold the answers of `box` until it is said
+function lfSay(box, ...parts) { const p = speak(...parts); listenFirst(box, p); return p; }
+// a gate has just opened: wait for the sounds still playing and for the sentence that follows (if one follows at once)
+async function lfAfterGate() {
+  try { await unitChain; } catch (e) { /* ignore */ }
+  await sleep(120);
+  if (music.speaking > 0 && lastSpeech) { try { await lastSpeech; } catch (e) { /* ignore */ } }
 }
 async function speakParts(parts) {
-  stopSpeech(); const t = speakToken;
+  stopSpeech(true); const t = speakToken;
   await sleep(150);
   for (const p of parts.flat()) {
     if (t !== speakToken) return;
     if (!p) continue;
+    if (!p.pause && !p.run) lfTick();                    // listen first: the 8 s cap and the 3 s "has it started" watch are per sentence
     // normal-length speech goes out as one smooth piece; only very long text is split into sentences
     if (typeof p === 'string') { for (const s of (p.length > 160 ? p.split(/(?<=[.!?])\s+/) : [p])) { if (t !== speakToken) return; await say(s); } }
     else if (p.pause) await sleep(p.pause);
@@ -2551,7 +2601,7 @@ function wireReader(root) {
 }
 function askReading(q, meta) {
   return new Promise(resolve => {
-    let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
+    let done = false; const finish = v => { if (done) return; done = true; const o = $('.options'); if (o) lfStop(o); stopSpeech(); resolve(v); };
     const R = L().read, story = q.kind === 'story';
     app.innerHTML = actFrame(meta, `${promptHTML(q.title)}
       <div class="visual">${readerHTML(q.lines)}</div>
@@ -2560,18 +2610,18 @@ function askReading(q, meta) {
       <div class="options" ${story ? 'hidden' : ''}></div>`);
     const root = $('.stage');
     wireReader(root);
-    wire(meta, finish, () => speak(...q.speak), q.speak);
+    wire(meta, finish, () => lfSay($('.options'), ...q.speak), q.speak);
     const run = async () => { const r = await askChoice(q, meta, $('.options')); finish(r); };
+    speak(...q.speak);   // before run(): askChoice makes the answers wait for the question being said
     if (story) {
       $('.readdone').onclick = () => {
         sfx('good'); owlReact('happy'); $('.readdone').remove(); $('.helpbtn').remove();
         $('.bubble').textContent = q.q; $('.reader').classList.add('small');
         $('.options').hidden = false; speak(q.q); setIdle(() => nudge([q.q]));
-        q.retrySpeak = [q.q]; $('.replay').onclick = () => { sfx('tap'); speak(q.q); };   // now the question is what to repeat
+        q.retrySpeak = [q.q]; $('.replay').onclick = () => { sfx('tap'); lfSay($('.options'), q.q); };   // now the question is what to repeat
         run();
       };
     } else run();
-    speak(...q.speak);
   });
 }
 // Drag an answer onto its place (`q.drop` = selector of the place). The picture follows her finger; let go on the place
@@ -2587,7 +2637,7 @@ function dragOpt(b, target, choose) {
   };
   const glow = on => { const t = target(); if (t) t.classList.toggle('over', on); };
   b.addEventListener('pointerdown', e => {
-    if (b.disabled || id !== null) return;
+    if (b.disabled || id !== null || b.closest('.wait')) return;   // not while Tiko is still asking
     id = e.pointerId; sx = e.clientX; sy = e.clientY; drag = false;
     try { b.setPointerCapture(id); } catch (err) { /* ignore */ }
   });
@@ -2610,19 +2660,21 @@ function dragOpt(b, target, choose) {
 // multiple choice. If `container` given, renders options into it (used by paper missions).
 function askChoice(q, meta, container) {
   return new Promise(resolve => {
-    let done = false; const finish = v => { if (done) return; done = true; stopSpeech(); resolve(v); };
+    let lfBox = null;
+    let done = false; const finish = v => { if (done) return; done = true; if (lfBox) lfStop(lfBox); stopSpeech(); resolve(v); };
     if (!container) {
       app.innerHTML = actFrame(meta, `${promptHTML(q.title)}<div class="visual">${q.visual || ''}</div>
         <div class="options ${q.optClass || ''}" ${q.gate ? 'hidden' : ''}></div>`);
-      wire(meta, finish, () => speak(...q.speak), q.speak);
+      wire(meta, finish, () => lfSay($('.options'), ...q.speak), q.speak);
     }
     const root = $('.stage'), box = container || $('.options', root);
     // a picture-only answer gets a spoken name for screen readers when the question provides one (o.name)
     box.innerHTML = q.options.map((o, i) => `<button class="opt ${q.optClass || ''}" data-i="${i}" style="--i:${i}"${o.name ? ` aria-label="${esc(o.name)}"` : ''}>${o.html}</button>`).join('');
     const btns = $$('.opt', box);
+    lfBox = box;
     let attempts = 0, busy = false;
     const choose = async b => {
-      if (busy || b.disabled) return;
+      if (box.classList.contains('wait') || busy || b.disabled) return;   // listen first: a tap while Tiko is still asking leaves no trace
       const o = q.options[+b.dataset.i];
       if (String(o.val) === String(q.answer)) {
         busy = true; b.classList.add('correct'); btns.forEach(x => { if (x !== b) x.disabled = true; });
@@ -2639,24 +2691,29 @@ function askChoice(q, meta, container) {
         await sleep(350); finish(first);
       } else {
         attempts++; const mine = attempts; (q.wrong = q.wrong || []).push(String(o.val)); b.classList.add('wrong'); b.disabled = true; stopSpeech(); sfx('oops'); owlReact('think');
+        listenFirst(box, new Promise(() => {}));   // the others wait for Tiko's help; replaced below by the real sentence (the 8 s cap guards the gap)
         if (q.onMiss) q.onMiss(root, attempts);   // a cue that only ever appears after a miss (so it can't turn a guess into "known")
         await sleep(350);   // the soft "oops" first, then Tiko
         if (mine !== attempts || busy || done) return;   // she already tapped again (or got it right) — that tap takes over
-        if (attempts === 1 && btns.length > 2) speak(L().retry, { pause: 150 }, ...(q.retrySpeak || q.speak));
+        if (attempts === 1 && btns.length > 2) lfSay(box, L().retry, { pause: 150 }, ...(q.retrySpeak || q.speak));
         else {
           // second miss: Tiko shows HOW (puts together / takes away / counts with ticks), then the answer glows
-          if (q.explain && !q.__explained) { q.__explained = true; busy = true; stopSpeech(); await q.explain(root); busy = false; }
-          const c = btns.find(x => String(q.options[+x.dataset.i].val) === String(q.answer)); c.classList.add('hint'); speak(L().itsThis, ...(q.correctSpeak || []));
+          if (q.explain && !q.__explained) { q.__explained = true; busy = true; stopSpeech(); const ex = q.explain(root); listenFirst(box, ex, { noQuiet: true, hard: 20000 }); await ex; busy = false; }
+          const c = btns.find(x => String(q.options[+x.dataset.i].val) === String(q.answer)); c.classList.add('hint'); lfSay(box, L().itsThis, ...(q.correctSpeak || []));
         }
       }
     };
-    btns.forEach(b => b.addEventListener('click', () => { if (Date.now() - (b._dragT || 0) > 500) choose(b); }));
+    // a finger put down while the answers wait must not answer when it is lifted after they woke: remember it at pointerdown
+    box.addEventListener('pointerdown', () => { box._downWait = box.classList.contains('wait'); }, true);
+    for (const ev of ['pointerup', 'pointercancel']) box.addEventListener(ev, () => setTimeout(() => { box._downWait = false; }, 600), true);
+    btns.forEach(b => b.addEventListener('click', () => { if (box.classList.contains('wait') || box._downWait) return; if (Date.now() - (b._dragT || 0) > 500) choose(b); }));
     if (q.drop) btns.forEach(b => dragOpt(b, () => $(q.drop, root), choose));
     // brand-new item: all choices shown, the right one glows (errorless first meeting)
     const glowNew = () => { if (!q.hintNew) return; const c = btns.find(x => String(q.options[+x.dataset.i].val) === String(q.answer)); if (c) c.classList.add('hint'); };
-    if (q.setup) q.setup(root, () => { box.hidden = false; glowNew(); });
+    if (q.setup) q.setup(root, () => { box.hidden = false; glowNew(); listenFirst(box, lfAfterGate()); });   // gate open: wait for what Tiko says next
     if (!q.gate) glowNew();
-    if (!container) speak(...q.speak);
+    if (!container) { const sp = speak(...q.speak); if (!q.gate) listenFirst(box, sp); }
+    else if (music.speaking > 0 && lastSpeech) listenFirst(box, lastSpeech);   // a question being asked right now (sentences, stories, paper sums)
   });
 }
 function askBuild(q, meta) {
@@ -4009,6 +4066,7 @@ function parents() {
       <label class="set">Fun treat at the end of the path (art or thinking game) <input type="checkbox" data-s="artInPath" ${st.artInPath ? 'checked' : ''}></label>
       <label class="set">Discovery mode (mastered activities, or ones played twice today, rest; new ones sparkle) <input type="checkbox" data-s="discovery" ${st.discovery ? 'checked' : ''}></label>
       <label class="set">Focus nudges (Tiko says "Your turn!" after 15 s with no taps) <input type="checkbox" data-s="nudge" ${st.nudge ? 'checked' : ''}></label>
+      <label class="set">Listen first: the answers can only be touched once Tiko has finished asking (helps a child who taps before listening) <input type="checkbox" data-s="listenFirst" ${st.listenFirst !== false ? 'checked' : ''}></label>
       <label class="set">Sound effects <input type="checkbox" data-s="sfx" ${st.sfx ? 'checked' : ''}></label>
       <label class="set">Intro music <input type="checkbox" data-s="music" ${st.music ? 'checked' : ''}></label>
       <label class="set">Relaxing music on the home screen, menus, map and drawing (goes quiet when Tiko speaks) <input type="checkbox" data-s="ambient" ${st.ambient ? 'checked' : ''}></label>
