@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 51;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 52;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -55,22 +55,32 @@ const DEFAULTS = {
     font: 'andika', spacing: 0, textSize: 0, simpleHome: false,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
+const withDefaults = d => ({ ...structuredClone(DEFAULTS), ...d, settings: { ...DEFAULTS.settings, ...d.settings } });
 let S = load();
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem(storeKey()));
-    if (d) return { ...structuredClone(DEFAULTS), ...d, settings: { ...DEFAULTS.settings, ...d.settings } };
+    if (d) return withDefaults(d);
   } catch (e) { /* fall through */ }
   return structuredClone(DEFAULTS);
 }
-// lift tablets still on the old default pitch to the new bubblier one (custom choices are left alone)
-if (S.settings.pitch === 1.35) S.settings.pitch = 1.5;
-// v17: the voice had gone flat on her tablet — lift anything below the bubbly range back up (once)
-if (!S.settings.pitchV17) { if (S.settings.pitch < 1.6) S.settings.pitch = 1.6; S.settings.pitchV17 = true; }
-// v22: "known once = never again". Anything she has already got right (box 2+) becomes known for ever.
-if (!S.knownV22) { for (const k of Object.keys(S.boxes || {})) if (S.boxes[k] >= 2) { S.boxes[k] = 5; S.due[k] = 'never'; } S.knownV22 = true; }
-// v23: Memory pairs was too hard — new gentler ladder (2 pairs first), so she starts again at the bottom (once)
-if (!S.memV23) { S.levels = S.levels || {}; S.streak = S.streak || {}; S.levels.memory = 1; S.streak.memory = { ok: 0, bad: 0 }; S.memV23 = true; }
+// The one-off upgrades of an older save, as a function so that another child's save can go through the same path as the playing child's (done for S just below).
+function upgradeSave(S) {            // (the parameter is called S on purpose: the lines are the original start-up lines, word for word, and sections-check.js scans for them)
+  // lift tablets still on the old default pitch to the new bubblier one (custom choices are left alone)
+  if (S.settings.pitch === 1.35) S.settings.pitch = 1.5;
+  // v17: the voice had gone flat on her tablet — lift anything below the bubbly range back up (once)
+  if (!S.settings.pitchV17) { if (S.settings.pitch < 1.6) S.settings.pitch = 1.6; S.settings.pitchV17 = true; }
+  // v22: "known once = never again". Anything she has already got right (box 2+) becomes known for ever.
+  if (!S.knownV22) { for (const k of Object.keys(S.boxes || {})) if (S.boxes[k] >= 2) { S.boxes[k] = 5; S.due[k] = 'never'; } S.knownV22 = true; }
+  // v23: Memory pairs was too hard — new gentler ladder (2 pairs first), so she starts again at the bottom (once)
+  if (!S.memV23) { S.levels = S.levels || {}; S.streak = S.streak || {}; S.levels.memory = 1; S.streak.memory = { ok: 0, bad: 0 }; S.memV23 = true; }
+  return S;
+}
+upgradeSave(S);
+// another child's save, read from storage with the defaults and upgrades the app gives the playing child's save at start-up (null if there is none). Does not touch S.
+function loadSaveOf(id) {
+  try { const d = JSON.parse(localStorage.getItem(storeKey(id))); return d && typeof d === 'object' && !Array.isArray(d) ? upgradeSave(withDefaults(d)) : null; } catch (e) { return null; }
+}
 // ---------- save sections: prepared for keeping one child's progress in step across two tablets ----------
 // Each section carries a timestamp (S.stamp[section], ms) of its last change, written by save(). Nothing is sent anywhere.
 const SAVE_SECTIONS = {
@@ -382,11 +392,18 @@ function linkAll() {
 }
 function linkGet(id) {
   const all = linkAll(), r = Object.hasOwn(all, id) ? all[id] : null;
-  return r && typeof r === 'object' && typeof r.child === 'string' ? { child: r.child, up: r.up && typeof r.up === 'object' && !Array.isArray(r.up) ? r.up : {} } : null;
+  if (!(r && typeof r === 'object' && typeof r.child === 'string')) return null;
+  const o = { child: r.child, up: r.up && typeof r.up === 'object' && !Array.isArray(r.up) ? r.up : {} };
+  if (typeof r.uid === 'string' && r.uid) o.uid = r.uid;        // the account the link belongs to (set by the account screen)
+  if (r.pending === true) o.pending = true;                     // written before the child was created on the server; settled by the account screen
+  return o;
 }
 function linkSet(id, rec) {
   if (!id || !rec || typeof rec.child !== 'string') return false;
-  const all = linkAll(); putKey(all, String(id), { child: rec.child, up: rec.up && typeof rec.up === 'object' && !Array.isArray(rec.up) ? rec.up : {} });
+  const all = linkAll(), o = { child: rec.child, up: rec.up && typeof rec.up === 'object' && !Array.isArray(rec.up) ? rec.up : {} };
+  if (typeof rec.uid === 'string' && rec.uid) o.uid = rec.uid;
+  if (rec.pending === true) o.pending = true;
+  putKey(all, String(id), o);
   try { localStorage.setItem('tiko.link', JSON.stringify(all)); return true; } catch (e) { return false; }
 }
 function linkDrop(id) {
@@ -403,12 +420,14 @@ function cloudLoad() {
     const c = JSON.parse(localStorage.getItem('tiko.cloud'));
     if (!c || typeof c !== 'object' || typeof c.url !== 'string' || typeof c.key !== 'string') return Promise.resolve(false);
   } catch (e) { return Promise.resolve(false); }
-  if (typeof cloudState === 'function') return Promise.resolve(true);
-  if (!cloudScript) cloudScript = new Promise(res => {
-    const s = document.createElement('script');
-    s.src = 'cloud.js'; s.onload = () => res(true); s.onerror = () => { cloudScript = null; res(false); };
-    document.head.appendChild(s);
-  });
+  if (typeof cloudState === 'function' && typeof acctOpen === 'function') return Promise.resolve(true);
+  // cloud.js, then account.js (the parent's account screen, backend piece 4): both only on a tablet that has the switch
+  const add = src => new Promise(res => { const s = document.createElement('script'); s.src = src; s.onload = () => res(true); s.onerror = () => res(false); document.head.appendChild(s); });
+  if (!cloudScript) cloudScript = (async () => {
+    const ok = (typeof cloudState === 'function' || await add('cloud.js')) && (typeof acctOpen === 'function' || await add('account.js'));
+    if (!ok) cloudScript = null;
+    return !!ok;
+  })();
   return cloudScript;
 }
 // a new child starts fresh; only this tablet's sound choices are carried over from the child who is playing
@@ -4378,6 +4397,12 @@ function parents() {
   const showTab = k => { parentTab = k; secs.forEach(s => { s.hidden = s.dataset.tab !== k; }); $$('.ptab').forEach(b => { b.classList.toggle('on', b.dataset.t === k); b.setAttribute('aria-selected', b.dataset.t === k); }); };
   $$('.ptab').forEach(b => b.onclick = () => { showTab(b.dataset.t); $('.parent').scrollTop = 0; });
   showTab(parentTab);
+  // backend piece 4: the account section exists only on a tablet that has the switch (cloudLoad resolves false, and loads nothing, on every other tablet)
+  cloudLoad().then(ok => {
+    if (!ok || !secs[0].isConnected || typeof cloudState !== 'function' || !cloudState().on) return;
+    const sec = acctSection(), bk = $('.bkmsg').closest('section');
+    sec.dataset.tab = 'data'; sec.hidden = parentTab !== 'data'; bk.after(sec); secs.push(sec);
+  });
   $$('[data-s]').forEach(el => el.onchange = el.oninput = () => {
     const k = el.dataset.s; st[k] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : /^\d+$/.test(el.value) ? +el.value : el.value;
     save(); applySettings();

@@ -1150,3 +1150,34 @@ body:is([data-sp="1"], [data-sp="2"]) .bubble:not(.tikosay) { line-height: calc(
 .home.simple .owl.big { width: clamp(150px, 30vh, 260px); height: clamp(150px, 30vh, 260px); }
 .home.simple .whob { left: 18px; top: max(14px, env(safe-area-inset-top)); }   /* no friend button beside it on this screen */
 .btn.moreb { font-size: 24px; padding: 14px 26px; min-height: 56px; background: #ffffffd0; }
+/* the account screen (backend piece 4; only on a tablet that has the switch): it reuses the parent corner's look */
+.acct-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.acct-langs { display: flex; gap: 6px; }
+.acct .pbtn { min-height: 46px; }
+.acct-l.on { background: #1f7a6c; background: color-mix(in srgb, var(--teal-d) 68%, #000); color: #fff; }
+.acct h3.acct-h { font-size: 24px; }
+.acct h4 { margin: 16px 0 6px; font-size: 18px; }
+.acct label { display: block; font-size: 17px; font-weight: 600; margin: 12px 0 4px; }
+.acct label.acct-chk { display: flex; align-items: center; gap: 12px; min-height: 48px; font-weight: 500; margin: 6px 0; }
+.acct input[type=checkbox] { width: 46px; height: 46px; flex: none; margin: 0; }
+.acct p, .acct li, .acct h3, .acct label, .acct legend { overflow-wrap: anywhere; }
+.acct input[type=email], .acct input[type=text], .acct select { display: block; width: 100%; max-width: 480px; min-height: 48px; box-sizing: border-box; font-size: 18px; padding: 8px 12px; border: 2px solid #8a8a8a; border-radius: 10px; background: #fff; color: #222; }
+.acct .acct-nav, .acct .acct-btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.acct-help { font-size: 15px; }
+.acct-msg { min-height: 1.2em; margin: 6px 0; color: #9b1c1c; font-weight: 600; }
+.acct-note { background: #f1fbf9; border-radius: 12px; padding: 10px 14px; color: #14574c; font-weight: 600; }
+.acct-log { color: #14574c; font-weight: 600; }
+.acct-kid { border: 2px solid #ddd; border-radius: 16px; margin: 12px 0; padding: 8px 14px 12px; }
+.acct-kid legend { font-size: 18px; font-weight: 700; padding: 0 6px; }
+.acct-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid #eee; }
+.acct-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 17px; flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.acct-who small { flex-basis: 100%; font-size: 14px; color: #555; }
+.acct-av { font-size: 26px; }
+.acct-edit { flex: 1 1 100%; }
+.acct-ask { background: #fff7ed; border: 2px solid #b45309; border-radius: 14px; padding: 10px 14px; margin: 12px 0; }
+.acct-ask p { margin: 4px 0 8px; }
+.acct a.pbtn { display: inline-block; text-decoration: none; }
+.acct-det { margin: 10px 0; border: 2px solid #ddd; border-radius: 14px; padding: 0 14px 6px; }
+.acct-det summary { min-height: 46px; display: flex; align-items: center; font-weight: 700; font-size: 17px; cursor: pointer; }
+.acct-askrow { display: block; margin-top: 14px; }
+.acct-ask button:disabled { opacity: .55; }

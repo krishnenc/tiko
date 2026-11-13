@@ -3,7 +3,7 @@
 // OFF FOR EVERYONE. This file is not in index.html. app.js has cloudLoad(), which adds it only on a tablet that has the switch:
 // localStorage['tiko.cloud'] = { "url": "https://<project>.supabase.co", "key": "<publishable key>" }. There is no address and no key in the
 // repository. Without a valid switch every call answers { ok: false, error: 'off' } and no request is made.
-// Nothing in the app calls these functions yet (the account screen is a later piece).
+// Only the parent's account screen (account.js, loaded together with this file by cloudLoad) calls these functions; no child's screen does.
 //
 // Every call returns a promise of { ok: true, data } or { ok: false, error, detail? }; it never throws and never waits for ever
 // (15 s per request, 30 s overall per call, renewals and the repeat included).
@@ -306,6 +306,15 @@ function cloudSignOut() {
   });
 }
 
+// ends every OTHER session of this parent on the server (GoTrue logout scope "others"): this tablet stays signed in; the other tablets answer 401 and
+// their renewal is refused at their next call, so they ask for a new code. Not yet confirmed against the real service (the fake mimics it).
+function cloudSignOutOthers() {
+  return cloudGuard(async () => {
+    if (!cloudUid()) return cloudNoSession();
+    return cloudCall('POST', '/auth/v1/logout?scope=others', { auth: true });
+  });
+}
+
 // the caller's account id for a request, or null
 function cloudUid() { const s = cloudAuthGet(); return s ? s.uid : null; }
 const cloudNoSession = () => cloudBad(cloudCfg() ? 'signedout' : 'off');
@@ -340,12 +349,26 @@ function cloudConsent(c) {
   });
 }
 
-// registers or refreshes this tablet
-function cloudDevice(appVersion) {
+// the consents recorded for this account: [{ policy_version, what, withdrawn_at }] (read only; lets a screen tell whether a consent of the current wording exists)
+function cloudConsents() {
+  return cloudGuard(async () => {
+    const uid = cloudUid(); if (!uid) return cloudNoSession();
+    const r = await cloudCall('GET', '/rest/v1/consents?select=policy_version,what,withdrawn_at&account_id=eq.' + uid + '&order=id.asc', { auth: true });
+    if (!r.ok) return r;
+    if (!Array.isArray(r.data)) return cloudBad('server', 'unreadable');
+    return cloudOk(r.data.filter(cloudIsObj).map(c => ({ policy_version: c.policy_version, what: c.what, withdrawn_at: c.withdrawn_at || null })));
+  });
+}
+
+// registers or refreshes this tablet. With `backedUp` true it also asks the server to stamp last_backup_at: the database trigger (tg_devices_guard) replaces ANY
+// non-null value that differs from the stored one with its own now(), so the value sent is a fixed placeholder (the tablet's clock is never sent).
+function cloudDevice(appVersion, backedUp) {
   return cloudGuard(async () => {
     const uid = cloudUid(); if (!uid) return cloudNoSession();
     if (!Number.isInteger(appVersion) || appVersion < 0) return cloudBad('refused', 'version');
-    const r = await cloudCall('POST', '/rest/v1/devices?on_conflict=account_id,id', { auth: true, prefer: cloudUpsert, body: { id: cloudDeviceId(), account_id: uid, app_version: appVersion } });
+    const body = { id: cloudDeviceId(), account_id: uid, app_version: appVersion };
+    if (backedUp === true) body.last_backup_at = '2000-01-01T00:00:00Z';
+    const r = await cloudCall('POST', '/rest/v1/devices?on_conflict=account_id,id', { auth: true, prefer: cloudUpsert, body });
     if (!r.ok) return r;
     return cloudOk(Array.isArray(r.data) && r.data.length ? r.data[0] : null);
   });
