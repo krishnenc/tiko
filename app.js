@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 49;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 50;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -103,11 +103,12 @@ function mergeSaves(a, b) {
   const keys = (x, y) => [...new Set([...Object.keys(x), ...Object.keys(y)])];
   const cl = v => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
   const stampOf = (x, n) => N(O(x.stamp)[n]);
-  const maxMap = (x, y) => { const o = {}; for (const k of keys(O(x), O(y))) o[k] = Math.max(N(O(x)[k]), N(O(y)[k])); return o; };
+  const P = putKey, own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);       // every key is written with P: a key such as "__proto__" stays an ordinary key
+  const maxMap = (x, y) => { const o = {}; for (const k of keys(O(x), O(y))) P(o, k, Math.max(N(O(x)[k]), N(O(y)[k]))); return o; };
   const out = {};
   // everything that belongs to no section, and the settings, follow the newer settings stamp (equal: a)
   const sa = stampOf(a, 'settings'), sb = stampOf(b, 'settings'), win = sb > sa ? b : a, lose = win === a ? b : a;
-  for (const k of keys(lose, win)) if (!(k in SAVE_SECTIONS) && !Object.values(SAVE_SECTIONS).some(l => l.includes(k)) && k !== 'stamp') out[k] = cl(win[k] !== undefined ? win[k] : lose[k]);
+  for (const k of keys(lose, win)) if (!own(SAVE_SECTIONS, k) && !Object.values(SAVE_SECTIONS).some(l => l.includes(k)) && k !== 'stamp') P(out, k, cl(win[k] !== undefined ? win[k] : lose[k]));
   out.settings = { ...cl(O(win.settings)) };
   // `a` is always THIS tablet's save: the private settings (SAVE_PRIVATE_SETTINGS) are never taken from b (provisional: widened from name and nameSay, settled with the owner)
   for (const k of SAVE_PRIVATE_SETTINGS) if (k in O(a.settings)) out.settings[k] = a.settings[k]; else delete out.settings[k];
@@ -116,13 +117,13 @@ function mergeSaves(a, b) {
   const ba = O(a.boxes), bb = O(b.boxes), da = O(a.due), db = O(b.due), dueWins = (x, y) => (x === 'never' ? x : y === 'never' ? y : x > y ? x : y);
   out.boxes = {}; out.due = {};
   for (const k of new Set([...Object.keys(ba), ...Object.keys(bb), ...Object.keys(da), ...Object.keys(db)])) {
-    const ha = k in ba, hb = k in bb, xa = N(ba[k]), xb = N(bb[k]);
-    if (ha || hb) out.boxes[k] = Math.max(xa, xb);
+    const ha = own(ba, k), hb = own(bb, k), xa = N(ba[k]), xb = N(bb[k]);
+    if (ha || hb) P(out.boxes, k, Math.max(xa, xb));
     let d;
     if (ha && hb && xa !== xb) d = xa > xb ? da[k] : db[k];
-    else if (k in da && k in db) d = dueWins(da[k], db[k]);
-    else d = k in da ? da[k] : db[k];
-    if (d !== undefined) out.due[k] = d;
+    else if (own(da, k) && own(db, k)) d = dueWins(da[k], db[k]);
+    else d = own(da, k) ? da[k] : db[k];
+    if (d !== undefined) P(out.due, k, d);
   }
   // levels, streak, simonLen
   out.levels = maxMap(a.levels, b.levels);
@@ -131,17 +132,17 @@ function mergeSaves(a, b) {
   // journey
   out.seenStage = maxMap(a.seenStage, b.seenStage);
   out.counts = {};
-  for (const lg of keys(O(a.counts), O(b.counts))) out.counts[lg] = maxMap(O(a.counts)[lg], O(b.counts)[lg]);
+  for (const lg of keys(O(a.counts), O(b.counts))) P(out.counts, lg, maxMap(O(a.counts)[lg], O(b.counts)[lg]));
   out.placed = {};
-  for (const lg of keys(O(a.placed), O(b.placed))) out.placed[lg] = !!(O(a.placed)[lg] || O(b.placed)[lg]);
+  for (const lg of keys(O(a.placed), O(b.placed))) P(out.placed, lg, !!(O(a.placed)[lg] || O(b.placed)[lg]));
   // days and diary
   out.days = {};
   for (const d of keys(O(a.days), O(b.days))) {
     const x = O(a.days)[d], y = O(b.days)[d];
-    if (x === undefined || y === undefined) { out.days[d] = cl(x !== undefined ? x : y); continue; }
+    if (x === undefined || y === undefined) { P(out.days, d, cl(x !== undefined ? x : y)); continue; }
     const m = { ...cl(O(y)), ...cl(O(x)) };
-    for (const f of ['q', 'ok', 't']) if (f in O(x) || f in O(y)) m[f] = Math.max(N(O(x)[f]), N(O(y)[f]));
-    out.days[d] = m;
+    for (const f of ['q', 'ok', 't']) if (own(O(x), f) || own(O(y), f)) m[f] = Math.max(N(O(x)[f]), N(O(y)[f]));
+    P(out.days, d, m);
   }
   // the diary is a multiset: a row appears max(copies in a, copies in b) times; a's rows keep their order, b's extra rows follow, then a stable sort by date
   const inA = {}, inB = {}, rows = [...A(a.diary)];
@@ -155,7 +156,7 @@ function mergeSaves(a, b) {
   out.totals = maxMap(a.totals, b.totals);
   out.stickers = [...new Set([...A(a.stickers), ...A(b.stickers)])];
   out.badges = {};
-  for (const k of keys(O(a.badges), O(b.badges))) { const x = O(a.badges)[k], y = O(b.badges)[k]; out.badges[k] = x === undefined ? y : y === undefined ? x : (y < x ? y : x); }
+  for (const k of keys(O(a.badges), O(b.badges))) { const x = O(a.badges)[k], y = O(b.badges)[k]; P(out.badges, k, x === undefined ? y : y === undefined ? x : (y < x ? y : x)); }
   const gs = new Map(), ahead = (x, y) => {                       // true when x is further along than y
     if (!!x.done !== !!y.done) return !!x.done;
     if (x.done) return !!x.given !== !!y.given ? !!x.given : String(x.done) < String(y.done);   // both done: given first, else the earlier day
@@ -165,31 +166,31 @@ function mergeSaves(a, b) {
   out.goals = [...gs.values()].map(cl);
   // science
   out.sci = {};
-  for (const k of keys(O(a.sci), O(b.sci))) { const x = O(a.sci)[k], y = O(b.sci)[k]; out.sci[k] = x === undefined ? y : y === undefined ? x : (y > x ? y : x); }
+  for (const k of keys(O(a.sci), O(b.sci))) { const x = O(a.sci)[k], y = O(b.sci)[k]; P(out.sci, k, x === undefined ? y : y === undefined ? x : (y > x ? y : x)); }
   // provisional (settled with the owner before sync): books, plays, used, meta
   const has = k => a[k] !== undefined || b[k] !== undefined;    // these three appear in the result only if a save has them
   if (has('books')) out.books = {};
-  for (const k of keys(O(a.books), O(b.books))) { const x = O(a.books)[k], y = O(b.books)[k]; out.books[k] = x === undefined ? y : y === undefined ? x : (String(y) > String(x) ? y : x); }
+  for (const k of keys(O(a.books), O(b.books))) { const x = O(a.books)[k], y = O(b.books)[k]; P(out.books, k, x === undefined ? y : y === undefined ? x : (String(y) > String(x) ? y : x)); }
   if (has('plays')) out.plays = {};
   for (const k of keys(O(a.plays), O(b.plays))) {
     const x = O(a.plays)[k], y = O(b.plays)[k];
-    if (x === undefined || y === undefined) { out.plays[k] = cl(x !== undefined ? x : y); continue; }
+    if (x === undefined || y === undefined) { P(out.plays, k, cl(x !== undefined ? x : y)); continue; }
     const nx = isO(x) ? x : {}, ny = isO(y) ? y : {}, dx = String(nx.day || ''), dy = String(ny.day || '');
     const newer = dy > dx ? ny : nx, n = dx === dy ? Math.max(N(nx.n), N(ny.n)) : N(newer.n);
-    out.plays[k] = { total: Math.max(N(nx.total), N(ny.total)), day: newer.day === undefined ? '' : newer.day, n };
+    P(out.plays, k, { total: Math.max(N(nx.total), N(ny.total)), day: newer.day === undefined ? '' : newer.day, n });
   }
   if (has('used')) out.used = {};
   for (const k of keys(O(a.used), O(b.used))) {
     const x = O(a.used)[k], y = O(b.used)[k];
-    if (Array.isArray(x) || Array.isArray(y)) { const seen = new Set(); out.used[k] = [...A(x), ...A(y)].filter(v => { const j = JSON.stringify(v); return seen.has(j) ? false : (seen.add(j), true); }).map(cl); }
-    else out.used[k] = cl(x !== undefined ? x : y);
+    if (Array.isArray(x) || Array.isArray(y)) { const seen = new Set(); P(out.used, k, [...A(x), ...A(y)].filter(v => { const j = JSON.stringify(v); return seen.has(j) ? false : (seen.add(j), true); }).map(cl)); }
+    else P(out.used, k, cl(x !== undefined ? x : y));
   }
   for (const k of ['knownV22', 'memV23']) if (a[k] !== undefined || b[k] !== undefined) out[k] = !!(a[k] || b[k]);
   if (a.newChild !== undefined || b.newChild !== undefined) out.newChild = a.newChild !== false && b.newChild !== false;   // false in either: the child has started (a save that does not say counts for nothing)
   // stamps
   if (a.stamp !== undefined || b.stamp !== undefined) {
     out.stamp = {};
-    for (const n of keys(O(a.stamp), O(b.stamp))) out.stamp[n] = Math.max(stampOf(a, n), stampOf(b, n));
+    for (const n of keys(O(a.stamp), O(b.stamp))) P(out.stamp, n, Math.max(stampOf(a, n), stampOf(b, n)));
   }
   return out;
 }
@@ -202,7 +203,7 @@ const SAVE_PRIVATE_SETTINGS = ['name', 'nameSay', 'voice_en', 'voice_fr', 'rate'
 // Format of the cloud form of the sections (the server's `format` column): 1 = boxes and due as two flat maps (never shipped), 2 = boxes packed.
 const CLOUD_FORMAT = 2;
 // The cloud copy is bounded: the newest CLOUD_MAX_DAYS entries of `days` (by date key) and the last CLOUD_MAX_DIARY diary rows. Older history stays on the tablet and in backup files.
-const CLOUD_MAX_DAYS = 730, CLOUD_MAX_DIARY = 800;
+const CLOUD_MAX_DAYS = 730, CLOUD_MAX_DIARY = 800, CLOUD_MAX_GOALS = 200;      // the parent corner has no limit on goals; the cloud copy keeps the newest 200
 const putKey = (o, k, v) => Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });   // safe even for the key "__proto__"
 const newestDays = d => { const ks = Object.keys(d).sort(); if (ks.length <= CLOUD_MAX_DAYS) return d; const o = {}; for (const k of ks.slice(-CLOUD_MAX_DAYS)) putKey(o, k, d[k]); return o; };
 // boxes and due packed as { lang: { set: { id: entry } } }; entry = box (a number: due is 'never'), [box] (no due), [box, due], or [null, due] (a due with no box).
@@ -233,6 +234,7 @@ function cloudSections(s) {
     for (const k of SAVE_SECTIONS[n]) if (s[k] !== undefined) out[n][k] = JSON.parse(JSON.stringify(s[k]));
   }
   if (out.days.days && typeof out.days.days === 'object' && !Array.isArray(out.days.days)) out.days.days = newestDays(out.days.days);
+  if (Array.isArray(out.rewards.goals) && out.rewards.goals.length > CLOUD_MAX_GOALS) out.rewards.goals = out.rewards.goals.slice(-CLOUD_MAX_GOALS);
   if (Array.isArray(out.days.diary) && out.days.diary.length > CLOUD_MAX_DIARY) out.days.diary = out.days.diary.slice(-CLOUD_MAX_DIARY);
   if (s.boxes !== undefined || s.due !== undefined) out.boxes = { boxes: packBoxes(out.boxes.boxes, out.boxes.due) };
   const st = out.settings.settings;
@@ -240,63 +242,90 @@ function cloudSections(s) {
   else if (st !== undefined) out.settings.settings = {};
   return out;
 }
-// A complete, loadable save for a new local profile, from sections in their cloud form (format 2, or 1 with boxes and due as flat maps; told apart
-// by shape, or pass `format`). Defaults first, then every value that is well formed: each value is checked for type and shape and anything
-// malformed is dropped, never thrown on; unknown sections, keys and settings are ignored; only SAVE_SYNCED_SETTINGS are taken, with a type and
-// a value that fits. The private settings keep their defaults. The old one-off fixes are marked done (a restored save is already in the new shape).
+// A complete, loadable save for a new local profile, from sections in their cloud form. ALWAYS pass `format` (the server's `format` column: 1 or 2);
+// when it is given the shape is not sniffed (a format-2 section that also carries a `due` key would otherwise be read as format 1). Without it the
+// shape is guessed, for old tests only. Input whose JSON text is longer than CLOUD_MAX_INPUT characters is refused whole: nothing is taken and every
+// section is in `missing` and in `rejected`. Defaults first, then every value that is well formed: each value is checked for type, shape and range
+// (whole numbers in the ranges the app itself can produce, strings of bounded length, the exact diary row shape) and anything malformed is dropped,
+// not clamped, and never thrown on; unknown sections, keys and settings are ignored; only SAVE_SYNCED_SETTINGS are taken, and only with a value the
+// parent corner offers. The private settings keep their defaults. The old one-off fixes are marked done (a restored save is already in the new shape).
 // Returns { save, missing, rejected }:
 //   missing  = sections that were absent or not an object. They are left at the defaults and NOT stamped (a missing stamp counts as 0, so they
-//              never win a merge). A caller must refuse a restore when `missing` is not empty: in particular a missing `settings` section gives the
-//              default settings, which includes the practice style `review: 'discovery'`, and would silently change a gentle child to discovery.
-//   rejected = sections in which something was malformed and dropped (the rest of the section was kept).
-// Only the sections actually taken are stamped, from `stamps` (section -> ms) or now. "Nothing looks changed since it was fetched" holds only if
-// the caller writes `save` to storage as a profile's save and reloads the app (as sections-check.js fact 5 does); do not assign it to S and call save().
+//              never win a merge).
+//   rejected = sections in which something was malformed and dropped, or in which a key whose absence would silently change behaviour is
+//              absent (see CLOUD_REQUIRED: e.g. `settings` without `settings`, `lang` or `review` would turn a gentle child into a discovery child,
+//              `rewards` without `stars` would zero the stars), or whose stamp was invalid. A rejected section keeps the values that were fine but is NOT stamped when it
+//              is incomplete or its stamp is invalid.
+//   A caller must refuse a restore when `missing` or `rejected` is not empty (at the very least when `settings` is in either).
+// Only the sections actually taken (and complete) are stamped, from `stamps` (section -> ms) or now; a stamp that is not a whole number from 0 to
+// now plus one day makes that section rejected and unstamped. "Nothing looks changed since it was fetched" holds only if the caller writes `save` to
+// storage as a profile's save and reloads the app (as sections-check.js fact 5 does); do not assign it to S and call save().
+const CLOUD_MAX_INPUT = 8 * 131072;
+const CLOUD_REQUIRED = { boxes: ['boxes'], levels: ['levels', 'streak'], journey: ['seenStage', 'counts'], days: ['days'], rewards: ['stars', 'stickers', 'badges', 'goals', 'totals'], science: [], settings: ['settings', 'lang'], meta: [] };
 function fromCloudSections(sections, stamps, format) {
   const out = structuredClone(DEFAULTS), isP = v => v && typeof v === 'object' && !Array.isArray(v);
   const fin = v => typeof v === 'number' && isFinite(v), str = v => typeof v === 'string';
-  let src = {}; try { src = JSON.parse(JSON.stringify(sections)); } catch (e) { /* not copyable: treated as nothing */ }
+  let src = {}, text = ''; try { text = JSON.stringify(sections) || ''; src = JSON.parse(text || '{}'); } catch (e) { /* not copyable: treated as nothing */ }
   if (!isP(src)) src = {};
-  const missing = [], taken = [], rejected = new Set(); let cur = '';
+  const missing = [], taken = [], rejected = new Set(), unstamped = new Set(); let cur = '';
   const bad = () => rejected.add(cur);
-  // a plain object whose entries are cleaned by f (return undefined to drop an entry)
-  const mapOf = (v, f) => { if (!isP(v)) return undefined; const o = {}; for (const k of Object.keys(v)) { const x = f(v[k], k); if (x === undefined) bad(); else putKey(o, k, x); } return o; };
+  if (text.length > CLOUD_MAX_INPUT) { out.stamp = {}; return { save: out, missing: Object.keys(SAVE_SECTIONS), rejected: Object.keys(SAVE_SECTIONS) }; }
+  // a plain object whose entries are cleaned by f(value, key) (return undefined to drop an entry); keys longer than 200 characters and entries beyond cap are dropped
+  const mapOf = (v, f, cap = 5000) => { if (!isP(v)) return undefined; const o = {}; let n = 0; for (const k of Object.keys(v)) { if (k.length > 200 || n >= cap) { bad(); continue; } const x = f(v[k], k); if (x === undefined) bad(); else { putKey(o, k, x); n++; } } return o; };
   const listOf = (v, f, cap) => { if (!Array.isArray(v)) return undefined; const o = []; for (const x of v) { const y = f(x); if (y === undefined) bad(); else o.push(y); } if (o.length > cap) { bad(); return o.slice(-cap); } return o; };
-  const num = x => fin(x) ? x : undefined;
+  const ui = max => x => (Number.isInteger(x) && x >= 0 && x <= max ? x : undefined);      // whole number, 0..max
+  const date = x => (str(x) && x.length <= 20 ? x : undefined);
+  const levelMax = k => THINK_MAX[k] || MATH_MAX[k] || 3;                                 // the same maximum gradeLevel uses
   const CLEAN = {
-    stars: num, simonLen: num, lang: v => (v === 'en' || v === 'fr' ? v : undefined),
+    stars: ui(1e9), simonLen: ui(100), lang: v => (v === 'en' || v === 'fr' ? v : undefined),
     knownV22: v => (typeof v === 'boolean' ? v : undefined), memV23: v => (typeof v === 'boolean' ? v : undefined), newChild: v => (v === true ? true : undefined),
-    levels: v => mapOf(v, num), totals: v => mapOf(v, num), seenStage: v => mapOf(v, num),
-    streak: v => mapOf(v, x => (isP(x) && fin(x.ok) && fin(x.bad) ? { ok: x.ok, bad: x.bad } : undefined)),
-    counts: v => mapOf(v, x => mapOf(x, num)), placed: v => mapOf(v, x => (typeof x === 'boolean' ? x : undefined)),
-    books: v => mapOf(v, x => (str(x) && x.length <= 20 ? x : undefined)), sci: v => mapOf(v, x => (str(x) && x.length <= 20 ? x : undefined)), badges: v => mapOf(v, x => (str(x) && x.length <= 20 ? x : undefined)),
-    used: v => mapOf(v, x => listOf(x, y => (str(y) || fin(y) ? y : undefined), 5000)),
-    days: v => { const m = mapOf(v, x => { if (!isP(x)) return undefined; const o = {}; for (const f of Object.keys(x)) { if (fin(x[f])) putKey(o, f, x[f]); else bad(); } return o; }); if (m && Object.keys(m).length > CLOUD_MAX_DAYS) { bad(); return newestDays(m); } return m; },
-    plays: v => mapOf(v, x => (isP(x) && fin(x.total) ? { total: x.total, day: str(x.day) ? x.day : '', n: fin(x.n) ? x.n : 0 } : undefined)),
-    diary: v => listOf(v, r => (Array.isArray(r) && r.length <= 8 && r.every(c => str(c) || fin(c)) ? r : undefined), CLOUD_MAX_DIARY),
-    stickers: v => listOf(v, x => (str(x) && x.length <= 16 ? x : undefined), 200),
-    goals: v => listOf(v, g => (isP(g) && str(g.text) && g.text.length > 0 && g.text.length <= 40 && str(g.emoji) && g.emoji.length > 0 && g.emoji.length <= 16 && fin(g.cost) && fin(g.base)
-      && (g.done === null || str(g.done)) ? { id: fin(g.id) ? g.id : 0, emoji: g.emoji, text: g.text, cost: g.cost, base: g.base, done: g.done, ...(typeof g.given === 'boolean' ? { given: g.given } : {}) } : undefined), 50),
+    levels: v => mapOf(v, (x, k) => (Object.hasOwn(ACTS, k) && Number.isInteger(x) && x >= 1 && x <= levelMax(k) ? x : undefined)),
+    totals: v => mapOf(v, ui(1e9), 500), seenStage: v => mapOf(v, ui(STAGES.length), 20),
+    streak: v => mapOf(v, x => (isP(x) && ui(1e6)(x.ok) !== undefined && ui(1e6)(x.bad) !== undefined ? { ok: x.ok, bad: x.bad } : undefined), 200),
+    counts: v => mapOf(v, x => mapOf(x, ui(1e9), 200), 20), placed: v => mapOf(v, x => (typeof x === 'boolean' ? x : undefined), 20),
+    books: v => mapOf(v, date, 500), sci: v => mapOf(v, date, 2000), badges: v => mapOf(v, date, 500),
+    used: v => mapOf(v, x => listOf(x, y => ((str(y) && y.length <= 200) || Number.isInteger(y) ? y : undefined), 5000), 200),
+    days: v => {
+      const m = mapOf(v, x => {
+        if (!isP(x) || ui(1e6)(x.q) === undefined || ui(1e6)(x.ok) === undefined || (x.t !== undefined && ui(1e7)(x.t) === undefined)) return undefined;     // the weekly report reads q, ok and t
+        const o = { q: x.q, ok: x.ok }; if (x.t !== undefined) o.t = x.t; if (Object.keys(x).length !== Object.keys(o).length) bad(); return o;
+      }, 20000);
+      if (m && Object.keys(m).length > CLOUD_MAX_DAYS) { bad(); return newestDays(m); } return m;
+    },
+    plays: v => mapOf(v, x => (isP(x) && ui(1e9)(x.total) !== undefined && date(x.day) !== undefined && ui(1e6)(x.n) !== undefined ? { total: x.total, day: x.day, n: x.n } : undefined), 500),
+    diary: v => listOf(v, r => (Array.isArray(r) && r.length === 6 && r.every(c => str(c) && c.length <= 200) && (r[1] === 'en' || r[1] === 'fr') ? r : undefined), CLOUD_MAX_DIARY),
+    stickers: v => listOf(v, x => (str(x) && x.length > 0 && x.length <= 16 ? x : undefined), 200),
+    goals: v => listOf(v, g => (isP(g) && str(g.text) && g.text.length > 0 && g.text.length <= 80 && str(g.emoji) && g.emoji.length > 0 && g.emoji.length <= 16 && Number.isInteger(g.cost) && g.cost >= 1 && g.cost <= 1e6
+      && ui(1e9)(g.base) !== undefined && (g.done === null || date(g.done) !== undefined) ? { id: ui(1e16)(g.id) !== undefined ? g.id : 0, emoji: g.emoji, text: g.text, cost: g.cost, base: g.base, done: g.done, ...(typeof g.given === 'boolean' ? { given: g.given } : {}) } : undefined), CLOUD_MAX_GOALS),
   };
+  // the values the parent corner offers (stops 3 to 8, per stop 3 4 5 6 8, session 0 10 15 20 30 45, comfort 0 1 2, themes, fonts, tracks)
+  const OFFER = { stops: [3, 4, 5, 6, 7, 8], perStop: [3, 4, 5, 6, 8], sessionMin: [0, 10, 15, 20, 30, 45], spacing: [0, 1, 2], textSize: [0, 1, 2], review: ['discovery', 'gentle'], font: ['andika', 'hyper', 'lexend', 'dys'] };
   const okSetting = (k, v) => {
     if (!SAVE_SYNCED_SETTINGS.includes(k)) return false;
-    if (k === 'hide') return isP(v) && Object.values(v).every(x => typeof x === 'boolean');
+    if (k === 'hide') {
+      const ids = TRACKS.map(t => t[0]);
+      return isP(v) && Object.keys(v).every(x => ids.includes(x) && typeof v[x] === 'boolean') && !AREAS.every(x => v[x] === true);     // the parent corner never lets every area (AREAS) be hidden
+    }
     if (typeof v !== typeof DEFAULTS.settings[k]) return false;
-    if (typeof v === 'number') return fin(v) && v >= 0 && v <= 100000;
     if (k === 'theme') return Object.hasOwn(THEMES, v);
-    if (k === 'review') return v === 'discovery' || v === 'gentle';
-    if (k === 'font') return ['andika', 'hyper', 'lexend', 'dys'].includes(v);
-    return true;
+    if (OFFER[k]) return OFFER[k].includes(v);
+    return typeof v === 'boolean';
   };
-  const okSetting2 = (k, v) => okSetting(k, v) && (k !== 'spacing' && k !== 'textSize' || [0, 1, 2].includes(v));
+  const okSetting2 = okSetting;
   // one packed entry (see packBoxes) -> [box or undefined, due or undefined] or null when malformed
   const entry = e => {
-    const okBox = b => fin(b) && b >= 0 && b <= 5;
+    const okBox = b => Number.isInteger(b) && b >= 0 && b <= 5;
     if (okBox(e)) return [e, 'never'];
     if (Array.isArray(e) && e.length >= 1 && e.length <= 2 && (e[0] === null || okBox(e[0])) && (e.length === 1 ? e[0] !== null : str(e[1]))) return [e[0] === null ? undefined : e[0], e.length === 2 ? e[1] : undefined];
     return null;
   };
   const unpack = packed => {
-    const B = {}, D = {}, put = (k, e) => { const r = entry(e); if (!r) { bad(); return; } if (r[0] !== undefined) putKey(B, k, r[0]); if (r[1] !== undefined) putKey(D, k, r[1]); };
+    let count = 0;
+    const B = {}, D = {}, put = (k, e) => {
+      const r = entry(e); if (!r || k.length > 600 || count >= 20000) { bad(); return; }
+      if (r[1] !== undefined && r[1].length > 20) { bad(); return; }
+      count++; if (r[0] !== undefined) putKey(B, k, r[0]); if (r[1] !== undefined) putKey(D, k, r[1]);
+    };
     if (!isP(packed)) return null;
     for (const lg of Object.keys(packed)) {
       if (!isP(packed[lg])) { bad(); continue; }
@@ -317,24 +346,33 @@ function fromCloudSections(sections, stamps, format) {
       if (k === 'settings') {
         if (!isP(sec[k])) { bad(); continue; }
         for (const s of Object.keys(sec[k])) { if (okSetting2(s, sec[k][s])) putKey(out.settings, s, sec[k][s]); else bad(); }
+        if (!okSetting('review', sec[k].review)) { bad(); unstamped.add(n); }        // no (valid) practice style: a restore would silently change it
         continue;
       }
       const v = CLEAN[k](sec[k]); if (v === undefined) bad(); else out[k] = v;
     }
     if (n === 'boxes') {
-      const fmt = format === 1 || format === 2 ? format : (isP(sec.due) || (isP(sec.boxes) && Object.values(sec.boxes).some(fin)) ? 1 : 2);
+      const fmt = format === undefined ? (isP(sec.due) || (isP(sec.boxes) && Object.values(sec.boxes).some(fin)) ? 1 : 2) : format;      // sniffed only when the caller did not say
       let r = null;
       if (fmt === 1) {
-        const B = mapOf(sec.boxes === undefined ? {} : sec.boxes, x => (fin(x) && x >= 0 && x <= 5 ? x : undefined)), D = mapOf(sec.due === undefined ? {} : sec.due, x => (str(x) ? x : undefined));
+        const B = mapOf(sec.boxes === undefined ? {} : sec.boxes, x => (Number.isInteger(x) && x >= 0 && x <= 5 ? x : undefined), 20000), D = mapOf(sec.due === undefined ? {} : sec.due, x => date(x), 20000);
         if (B && D) r = { boxes: B, due: D };
-      } else if (sec.boxes !== undefined) r = unpack(sec.boxes);
+        if (sec.due === undefined) { bad(); unstamped.add(n); }           // boxes without due dates would bring every known item back for review
+      } else if (fmt === 2 && sec.boxes !== undefined) r = unpack(sec.boxes);
+      if (fmt !== 1 && fmt !== 2) bad();
       if (r) { out.boxes = r.boxes; out.due = r.due; } else if (sec.boxes !== undefined || sec.due !== undefined) bad();
     }
+    for (const k of CLOUD_REQUIRED[n]) if (!Object.prototype.hasOwnProperty.call(sec, k)) { bad(); unstamped.add(n); }
   }
   out.knownV22 = true; out.memV23 = true;
   if (out.newChild !== true) delete out.newChild;
   const t = Date.now(), st = isP(stamps) ? stamps : {};
-  out.stamp = {}; for (const n of taken) out.stamp[n] = fin(st[n]) ? st[n] : t;
+  out.stamp = {};
+  for (const n of taken) {
+    if (unstamped.has(n)) continue;
+    if (Object.prototype.hasOwnProperty.call(st, n)) { const s = st[n]; if (Number.isInteger(s) && s >= 0 && s <= t + 864e5) out.stamp[n] = s; else { cur = n; bad(); } }
+    else out.stamp[n] = t;
+  }
   return { save: out, missing, rejected: [...rejected] };
 }
 // ---------- the link record: which server child a local profile is, and what was last uploaded (tablet-wide, in no child's save or backup) ----------
