@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 50;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 51;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -393,6 +393,23 @@ function linkDrop(id) {
   const all = linkAll(); if (!Object.hasOwn(all, id)) return;
   delete all[id];
   try { if (Object.keys(all).length) localStorage.setItem('tiko.link', JSON.stringify(all)); else localStorage.removeItem('tiko.link'); } catch (e) { /* ignore */ }
+}
+// ---------- the parent-account backend (backend piece 3): cloud.js is NOT in index.html; this adds it only on a tablet that has the switch ----------
+// The switch is localStorage['tiko.cloud'] = { url, key } (set on the owner's own tablets; there is no address or key in the repository). Without it nothing is loaded and
+// nothing is asked of any server. Resolves true when cloud.js is ready (its functions all start with "cloud"; cloud.js itself says "off" when the switch is not valid).
+let cloudScript = null;
+function cloudLoad() {
+  try {
+    const c = JSON.parse(localStorage.getItem('tiko.cloud'));
+    if (!c || typeof c !== 'object' || typeof c.url !== 'string' || typeof c.key !== 'string') return Promise.resolve(false);
+  } catch (e) { return Promise.resolve(false); }
+  if (typeof cloudState === 'function') return Promise.resolve(true);
+  if (!cloudScript) cloudScript = new Promise(res => {
+    const s = document.createElement('script');
+    s.src = 'cloud.js'; s.onload = () => res(true); s.onerror = () => { cloudScript = null; res(false); };
+    document.head.appendChild(s);
+  });
+  return cloudScript;
 }
 // a new child starts fresh; only this tablet's sound choices are carried over from the child who is playing
 function addProfile(name) {
