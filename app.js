@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 53;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 54;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -454,6 +454,49 @@ function cloudLoad() {
 // celebrateAwards(), the one place every finished activity passes on its way back to home, the menu or the path (after the sticker and the awards, never in a question).
 function autoBackup(open) {
   try { cloudLoad().then(ok => { if (ok && typeof acctAuto === 'function') acctAuto(open === true); }).catch(() => {}); } catch (e) { /* never into a child's screen */ }
+}
+// The owner's hidden setup (piece 6, English only like the rest of the parent corner): the section the seven taps open. Reads localStorage directly and loads nothing
+// until "Save" is pressed. The pasted text is only validated (cloudParseSetup, the same function that checks the stored switch) and stored as { url, key }: it is
+// never logged, never put in a save, a backup file or an upload. "Turn off" signs out (best effort), removes tiko.cloud and tiko.auth, and leaves links, children and the online copy.
+function ownerSetup() {
+  const sec = document.createElement('section'); sec.className = 'ownersetup';
+  let cur = null; try { cur = JSON.parse(localStorage.getItem('tiko.cloud')); } catch (e) { /* none */ }
+  const set = cur && typeof cur === 'object' && typeof cur.url === 'string' && typeof cur.key === 'string';
+  let addr = ''; if (set) { try { addr = new URL(cur.url).origin; } catch (e) { addr = '(not a valid address)'; } }
+  sec.innerHTML = `<h3>Owner setup</h3>` + (set
+    ? `<p>Online backup is switched on for this tablet. Address: <b class="osaddr">${esc(addr)}</b>. Key ends in <b class="oskey">${esc(String(cur.key).slice(-4))}</b>.</p>
+       <button class="pbtn warn osoff">Turn off</button><span class="osask" hidden> Turn it off on this tablet? <button class="pbtn warn osyes">Yes, turn off</button> <button class="pbtn alt osno">Cancel</button></span>`
+    : `<p>Paste the setup text, then Save.</p><textarea class="osta" rows="4" style="width:100%;box-sizing:border-box;font:16px monospace" aria-label="Setup text" autocomplete="off" spellcheck="false"></textarea>
+       <button class="pbtn ossave">Save</button>`) +
+    ` <button class="pbtn alt osclose">Close</button><p class="osmsg" role="status" style="color:var(--teal-d);font-weight:600"></p>`;
+  const msg = t => { sec.querySelector('.osmsg').textContent = t; };
+  sec.querySelector('.osclose').onclick = () => sec.remove();
+  if (set) {
+    const ask = sec.querySelector('.osask'), off = sec.querySelector('.osoff');
+    off.onclick = () => { ask.hidden = false; off.hidden = true; };
+    sec.querySelector('.osno').onclick = () => { ask.hidden = true; off.hidden = false; };
+    sec.querySelector('.osyes').onclick = async () => {
+      msg('Turning off…'); sec.querySelectorAll('button').forEach(b => { b.disabled = true; });
+      try { if (await cloudLoad() && typeof cloudSignOut === 'function') await cloudSignOut(); } catch (e) { /* best effort */ }
+      try { localStorage.removeItem('tiko.cloud'); localStorage.removeItem('tiko.auth'); localStorage.removeItem('tiko.consent'); } catch (e) { /* ignore */ }
+      parents();
+    };
+  } else {
+    const saveBtn = sec.querySelector('.ossave');
+    saveBtn.onclick = async () => {
+      if (saveBtn.disabled) return;                                  // a second press while cloud.js is loading does nothing
+      saveBtn.disabled = true;
+      const text = sec.querySelector('.osta').value;
+      let ok = typeof cloudParseSetup === 'function';
+      if (!ok) ok = await new Promise(res => { const s = document.createElement('script'); s.src = 'cloud.js'; s.onload = () => res(true); s.onerror = () => res(false); document.head.appendChild(s); });
+      saveBtn.disabled = false;
+      const cfg = ok && typeof cloudParseSetup === 'function' ? cloudParseSetup(text) : null;
+      if (!cfg) { msg('That setup text is not accepted. Nothing was saved.'); return; }
+      try { localStorage.setItem('tiko.cloud', JSON.stringify({ url: cfg.url, key: cfg.key })); } catch (e) { msg('This tablet could not keep it. Nothing was saved.'); return; }
+      parents();
+    };
+  }
+  return sec;
 }
 let autoOpened = false;
 // a new child starts fresh; only this tablet's sound choices are carried over from the child who is playing
@@ -4416,6 +4459,7 @@ function parents() {
       <a class="pbtn alt privlink" href="privacy.html" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none">Read the privacy policy</a></section>
 
     <section><h3>🧹 Reset</h3><button class="pbtn warn rst">Reset all progress</button></section>
+    <p class="pver" style="text-align:center;font:600 13px system-ui,sans-serif;color:#444;margin:8px 0 0;padding:8px">Tiko v${APP_VERSION}</p>
   </div></div>`;
   $('.back').onclick = home;
   // the parent corner is long: its sections sit behind five tabs (the one last open is remembered while the app is open)
@@ -4433,6 +4477,13 @@ function parents() {
     const sec = acctSection(), bk = $('.bkmsg').closest('section');
     sec.dataset.tab = 'data'; sec.hidden = parentTab !== 'data'; bk.after(sec); secs.push(sec);
   });
+  // hidden (backend piece 6): seven taps within 4 s on the version line open "Owner setup" in the data tab; there is no other way to it and no hint of it
+  let vtaps = [];
+  $('.pver').onclick = () => {
+    const n = Date.now(); vtaps = vtaps.filter(t => n - t < 4000); vtaps.push(n);
+    if (vtaps.length < 7 || $('.ownersetup')) return;
+    vtaps = []; const sec = ownerSetup(); sec.dataset.tab = 'data'; $('.privlink').closest('section').after(sec); secs.push(sec); showTab('data'); sec.scrollIntoView({ block: 'center' });
+  };
   $$('[data-s]').forEach(el => el.onchange = el.oninput = () => {
     const k = el.dataset.s; st[k] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : /^\d+$/.test(el.value) ? +el.value : el.value;
     save(); applySettings();

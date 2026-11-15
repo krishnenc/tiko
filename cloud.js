@@ -73,20 +73,35 @@ function cloudKeyOk(k) {
   }
   return false;
 }
-// -> { url, key } or null. The address must be https, or the page's own origin (for the checks); nothing else (no path, no credentials).
-function cloudCfg() {
-  const c = cloudStoreGet('tiko.cloud');
+// The one address the app may talk to (piece 6): the https origins named in the page's own Content-Security-Policy (connect-src), read from its meta tag.
+// null in Node, where there is no page (the check then relies on the address rules alone, as before).
+function cloudPolicyOrigins() {
+  if (typeof document === 'undefined' || !document || typeof document.querySelector !== 'function') return null;
+  const m = document.querySelector('meta[http-equiv="Content-Security-Policy"]'), out = [];
+  const part = ((m && m.getAttribute('content')) || '').split(';').map(s => s.trim()).find(s => /^connect-src\s/.test(s));
+  for (const tok of (part || '').split(/\s+/).slice(1)) { if (/^https:\/\//.test(tok)) { try { out.push(new URL(tok).origin); } catch (e) { /* not an origin */ } } }
+  return out;
+}
+// { url, key } as written in the switch -> { url: origin, key } or null. The address must be https and an origin of the page's own policy, or the page's own origin
+// (for the checks); nothing else (no path, no credentials). Used for the stored switch and for the owner's setup text, so the two can never disagree.
+function cloudCheckCfg(c) {
   if (!cloudIsObj(c) || typeof c.url !== 'string' || typeof c.key !== 'string') return null;
   let u; try { u = new URL(c.url); } catch (e) { return null; }
-  const own = typeof location !== 'undefined' && !!location && !!location.origin && u.origin === location.origin;
+  // the page's own origin is for the checks only: accepted just when the page itself is on this machine (never on the live site)
+  const own = typeof location !== 'undefined' && !!location && !!location.origin && u.origin === location.origin && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
   if (!(u.protocol === 'https:' || own)) return null;
   if (u.username || u.password || u.search || u.hash || (u.pathname && u.pathname !== '/')) return null;
+  const pol = cloudPolicyOrigins();
+  if (pol && !own && !pol.includes(u.origin)) return null;
   if (!cloudKeyOk(c.key)) return null;
   return { url: u.origin, key: c.key };
 }
+function cloudCfg() { return cloudCheckCfg(cloudStoreGet('tiko.cloud')); }
+// the owner's pasted setup text ('{"url": "...", "key": "..."}', spaces and newlines around it allowed) -> { url, key } to store, or null (nothing to store)
+function cloudParseSetup(text) { try { return cloudCheckCfg(JSON.parse(String(text).trim())); } catch (e) { return null; } }
 
 // ---------------------------------------------------------------- the session (tiko.auth)
-function cloudAuthClear() { cloudGen++; cloudMem = null; cloudStoreDrop('tiko.auth'); }
+function cloudAuthClear() { cloudGen++; cloudMem = null; cloudStoreDrop('tiko.auth'); cloudStoreDrop('tiko.consent'); }   // tiko.consent (account.js): the consent id this tablet's session was confirmed for
 function cloudAuthShape(s) {
   return cloudIsObj(s) && typeof s.access === 'string' && typeof s.refresh === 'string' && typeof s.uid === 'string' && CLOUD_UUID.test(s.uid) && Number.isFinite(s.exp) && Number.isFinite(s.since)
     ? { access: s.access, refresh: s.refresh, exp: s.exp, uid: s.uid, email: typeof s.email === 'string' ? s.email : '', since: s.since } : null;

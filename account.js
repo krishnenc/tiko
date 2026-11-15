@@ -116,7 +116,7 @@ const ACCT_T = {
     restoreSave: 'This tablet’s memory is full, so nothing was added.', restoredH: 'Added to this tablet', restoredOk: n => `${n} was added to this tablet.`,
     nameLabel: 'Name on this tablet (optional)', nameHelp: 'The name stays on this tablet. It is never sent online, and it is not the nickname of the online copy.', nameSave: 'Save the name', nameSaved: 'The name was saved on this tablet.',
     voiceNote: 'The voice is chosen in the parent corner, on each tablet. It is not stored online.', doneBtn: 'Done',
-    secNewer: n => `Another tablet has a newer backup of ${n}. Open the account to choose.`, secHold: n => `A backup file was restored into ${n}. The online copy has not been changed. Open the account to choose.`, secWaiting: 'Backups are waiting for a sign-in. Open the account to sign in.',
+    secNewer: n => `Another tablet has a newer backup of ${n}. Open the account to choose.`, secHold: n => `A backup file was restored into ${n}. The online copy has not been changed. Open the account to choose.`, secWaiting: 'Backups are waiting for a sign-in. Open the account to sign in.', secConsent: 'Automatic backups are paused. Open the account to continue backups.',
     secPrev: n => `The earlier progress of ${n} was put back. The online copy has not been changed. Open the account to choose.`,
     thisSide: (n, d) => (n ? `On this tablet: ${n} ${n === 1 ? 'day' : 'days'} played, the last on ${d}.` : 'On this tablet: nothing played yet.'), onlineSide: (t, w) => `Online copy: saved ${t}, from ${w}.`,
     whoThis: 'this tablet', whoTab: n => `Tablet ${n}`, whoOther: 'another tablet',
@@ -210,7 +210,7 @@ const ACCT_T = {
     restoreSave: 'La mémoire de cette tablette est pleine : rien n’a été ajouté.', restoredH: 'Ajouté à cette tablette', restoredOk: n => `${n} a été ajouté à cette tablette.`,
     nameLabel: 'Prénom sur cette tablette (facultatif)', nameHelp: 'Le prénom reste sur cette tablette. Il n’est jamais envoyé en ligne, et ce n’est pas le surnom de la copie en ligne.', nameSave: 'Enregistrer le prénom', nameSaved: 'Le prénom a été enregistré sur cette tablette.',
     voiceNote: 'La voix se choisit dans le coin des parents, sur chaque tablette. Elle n’est pas conservée en ligne.', doneBtn: 'Terminé',
-    secNewer: n => `Une autre tablette a une sauvegarde plus récente de ${n}. Ouvrez le compte pour choisir.`, secHold: n => `Un fichier de sauvegarde a été restauré dans ${n}. La copie en ligne n’a pas été modifiée. Ouvrez le compte pour choisir.`, secWaiting: 'Des sauvegardes attendent une connexion. Ouvrez le compte pour vous connecter.',
+    secNewer: n => `Une autre tablette a une sauvegarde plus récente de ${n}. Ouvrez le compte pour choisir.`, secHold: n => `Un fichier de sauvegarde a été restauré dans ${n}. La copie en ligne n’a pas été modifiée. Ouvrez le compte pour choisir.`, secWaiting: 'Des sauvegardes attendent une connexion. Ouvrez le compte pour vous connecter.', secConsent: 'Les sauvegardes automatiques sont en pause. Ouvrez le compte pour continuer les sauvegardes.',
     secPrev: n => `La progression précédente de ${n} a été remise. La copie en ligne n’a pas été modifiée. Ouvrez le compte pour choisir.`,
     thisSide: (n, d) => (n ? `Sur cette tablette : ${n} ${n === 1 ? 'jour joué' : 'jours joués'}, le dernier le ${d}.` : 'Sur cette tablette : rien n’a encore été joué.'), onlineSide: (t, w) => `Copie en ligne : enregistrée ${t}, depuis ${w}.`,
     whoThis: 'cette tablette', whoTab: n => `la tablette ${n}`, whoOther: 'une autre tablette',
@@ -347,6 +347,11 @@ async function acctConsentsOk() {
   if (!r.ok) return r;
   return { ok: true, data: r.data.some(c => c.policy_version === ACCT_POLICY && c.what === ACCT_WHAT && !c.withdrawn_at) };
 }
+// The consent this tablet's session was confirmed for (tiko.consent: tablet-wide, next to the session; never in a child's save or a backup; dropped with the session by cloudAuthClear and by
+// "Turn off"). The automatic backup uploads only while it equals the current ACCT_POLICY + ACCT_WHAT: after a wording change nothing goes up until the parent has opened the account.
+const acctConsentId = () => ACCT_POLICY + '|' + ACCT_WHAT;
+function acctRememberConsent() { try { localStorage.setItem('tiko.consent', JSON.stringify({ uid: cloudState().uid, id: acctConsentId() })); } catch (e) { /* the automatic backup then simply stays paused */ } }
+function acctConsentCurrent() { try { const c = JSON.parse(localStorage.getItem('tiko.consent')); return !!c && c.id === acctConsentId() && !!c.uid && c.uid === cloudState().uid; } catch (e) { return false; } }
 // -> { ok: true, did } | { need: 'country' | 'consent' } | { error }
 async function acctEnsure() {
   let did = false;                    // true when this run had to make the account or record the consent (a sign-up being finished)
@@ -366,6 +371,7 @@ async function acctEnsure() {
     if (!c.ok) return { error: c.error };
     did = true;
   }
+  acctRememberConsent();              // the consent of the current wording is on the server (found or just recorded)
   const d = await cloudDevice(APP_VERSION);
   if (!d.ok) return { error: d.error };
   return { ok: true, did };
@@ -768,6 +774,7 @@ function acctNewer(p, detail) {
 // The link record is read again AFTER the upload (it may have changed while the request was out: a hold set by a restored file, the profile removed): the answer only updates up / at / fmt
 // and clears conflict / err; it never clears a hold that appeared meanwhile, and never recreates a record that is gone.
 async function acctBackupOne(p, rec, forced, kid) {
+  if (!rec) return { error: 'refused', gone: true };                 // the link record is gone (dropped meanwhile): nothing is uploaded
   if (rec.hold && !forced) return { held: true };
   if (rec.conflict && !forced) return { newer: true };
   const save = acctSaveOf(p); if (!save) return { error: 'refused', readFail: true };
@@ -808,6 +815,7 @@ function acctAuto(open) {
     if (A.running || Date.now() - A.last < ACCT_AUTO_GAP_MS) { A.again = true; A.open = A.open || open === true; acctAutoLater(); return; }
     const st = cloudState();
     if (!st.on || !st.signedIn || navigator.onLine === false) return;
+    if (!acctConsentCurrent()) return;                                  // an outdated (or never confirmed) consent: nothing goes up until the parent has opened the account
     const p = curProfile(), rec = p && acctRec(p);
     if (!rec || rec.hold) return;
     A.running = true; A.last = Date.now();
@@ -1025,6 +1033,7 @@ function acctSectionLines() {
       if (!st.signedIn && r.at && !r.hold && acctChanged(saveOf(p) || {}, r).length) waiting = true;
     }
     if (waiting) out.push(acctBoth('secWaiting'));
+    if (st.signedIn && !acctConsentCurrent() && PROFILES.list.some(p => { const r = linkGet(p.id); return r && !r.pending && r.uid === st.uid; })) out.push(acctBoth('secConsent'));
   } catch (e) { /* ignore */ }
   return out;
 }
