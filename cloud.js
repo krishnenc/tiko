@@ -7,7 +7,7 @@
 //
 // Every call returns a promise of { ok: true, data } or { ok: false, error, detail? }; it never throws and never waits for ever
 // (15 s per request, 30 s overall per call, renewals and the repeat included).
-// error: off | offline | signedout | code | throttled | country | limit | toobig | private | refused | storage | server
+// error: off | offline | signedout | code | throttled | country | limit | toobig | private | refused | storage | server | newer (cloudUpload only: another tablet wrote first)
 // Storage keys (tablet-wide, outside every child's save, never in a backup file): tiko.cloud (switch), tiko.auth (the session), tiko.device (this tablet's random id).
 // NEVER sent: the child's name or spoken name, voice choices, chat, recordings, photos, anything in SAVE_LOCAL or SAVE_PRIVATE_SETTINGS
 // (cloudUpload copies its payload once, checks the copy and sends that same copy; it refuses with 'private').
@@ -479,28 +479,54 @@ function cloudCheckPayload(sections, names) {
   }
   return null;
 }
-// uploads the named sections of one child in one request (every row has the same keys). `sections` is the output of cloudSections(S).
+// The stamps of the eight sections as an object { section: whole ms | null } -> a clean copy, or null when it is not exactly that
+function cloudStampMap(m) {
+  if (!cloudIsObj(m)) return null;
+  const out = {};
+  for (const n of CLOUD_SECTIONS_LIST) {
+    if (!Object.prototype.hasOwnProperty.call(m, n)) return null;
+    const v = m[n];
+    if (v !== null && !(typeof v === 'number' && Number.isInteger(v) && v >= 0)) return null;
+    out[n] = v;
+  }
+  return Object.keys(m).length === CLOUD_SECTIONS_LIST.length ? out : null;
+}
+// uploads the named sections of one child in ONE request, conditionally and all or nothing (backend/30_backup.sql, upload_sections). `sections` is the output
+// of cloudSections(S); `expect` is REQUIRED: an object naming all eight sections, each the updated_at (whole ms) this tablet believes the section has on the
+// server, or null for "no such row". The server compares them under a lock: if any differs NOTHING is written and the answer is
+// { ok: false, error: 'newer', detail: { stamps, devices } } (the server's truth: section -> ms or null, section -> device id). Otherwise { ok: true, data: { stamps } }
+// with the stamps of all eight sections as they are now. A server where the function does not exist answers 'server': there is NO fallback to an unconditional write.
 // The payload is copied ONCE through JSON (plain objects, own data only; a toJSON or a getter is run exactly once), every guard runs on that copy,
 // and the request body is made from that same copy.
-function cloudUpload(childId, sections, names) {
+function cloudUpload(childId, sections, names, expect) {
   return cloudGuard(async () => {
     const uid = cloudUid(); if (!uid) return cloudNoSession();
+    if (!cloudCfg()) return cloudBad('off');                      // no valid switch: always "off", whatever the arguments
     if (typeof childId !== 'string' || !CLOUD_UUID.test(childId.toLowerCase())) return cloudBad('refused', 'child');
-    let copy, nm;
-    try { copy = JSON.parse(JSON.stringify(sections)); nm = JSON.parse(JSON.stringify(names)); } catch (e) { return cloudBad('refused', 'data'); }
+    let copy, nm, ex;
+    try { copy = JSON.parse(JSON.stringify(sections)); nm = JSON.parse(JSON.stringify(names)); ex = JSON.parse(JSON.stringify(expect === undefined ? null : expect)); } catch (e) { return cloudBad('refused', 'data'); }
+    const want = cloudStampMap(ex);
+    if (!want) return cloudBad('refused', 'expect');
     const bad = cloudCheckPayload(copy, nm);
     if (bad) return cloudBad(bad);
-    const list = [...new Set(nm)], rows = [], device = cloudDeviceId(), format = typeof CLOUD_FORMAT === 'number' ? CLOUD_FORMAT : 2;
+    const list = [...new Set(nm)], rows = [], format = typeof CLOUD_FORMAT === 'number' ? CLOUD_FORMAT : 2;
     for (const n of list) {
       if (cloudBadText(copy[n])) return cloudBad('refused', n);
       if (cloudBytes(cloudJsonbText(copy[n])) > CLOUD_MAX_SECTION_BYTES) return cloudBad('toobig', n);
-      rows.push({ account_id: uid, child_id: childId.toLowerCase(), section: n, data: copy[n], format, device_id: device });
+      rows.push({ section: n, data: copy[n], format });
     }
-    const r = await cloudCall('POST', '/rest/v1/progress?on_conflict=account_id,child_id,section&select=section,updated_at', { auth: true, prefer: cloudUpsert, body: rows });
-    if (!r.ok) return r;
-    const stamps = {};
-    if (Array.isArray(r.data)) for (const x of r.data) if (cloudIsObj(x) && typeof x.section === 'string') stamps[x.section] = cloudMs(x.updated_at);
-    return cloudOk({ stamps });
+    const r = await cloudCall('POST', '/rest/v1/rpc/upload_sections', { auth: true, body: { p_child: childId.toLowerCase(), p_rows: rows, p_expect: want, p_device: cloudDeviceId() } });
+    if (!r.ok) {
+      if (r.error === 'refused' && /^404\b/.test(r.detail || '')) return cloudBad('server', 'missing');      // function not on the server: never an unconditional write
+      if (r.error === 'server' && /P0002/.test(r.detail || '')) return cloudBad('refused', 'nochild');       // PostgREST answers 500 for P0002 ("no such child"): a refusal, not an outage
+      return r;
+    }
+    const j = r.data, stamps = cloudIsObj(j) ? cloudStampMap(j.stamps) : null;
+    if (!stamps || typeof j.ok !== 'boolean') return cloudBad('server', 'unreadable');
+    if (j.ok) return cloudOk({ stamps });
+    const devices = {};
+    if (cloudIsObj(j.devices)) for (const n of CLOUD_SECTIONS_LIST) if (typeof j.devices[n] === 'string' && CLOUD_UUID.test(j.devices[n])) devices[n] = j.devices[n];
+    return cloudBad('newer', { stamps, devices });
   });
 }
 
@@ -546,7 +572,7 @@ function cloudDeleteAccount() {
     if (!cloudUid()) return cloudNoSession();
     const r = await cloudCall('POST', '/rest/v1/rpc/delete_my_account', { auth: true, body: {} });
     if (r.ok) { cloudAuthClear(); return cloudOk(); }
-    if (r.error === 'refused' && /P0002/.test(r.detail || '')) { cloudAuthClear(); return cloudOk({ already: true }); }
+    if ((r.error === 'refused' || r.error === 'server') && /P0002/.test(r.detail || '')) { cloudAuthClear(); return cloudOk({ already: true }); }      // PostgREST answers 500 for P0002
     return r;
   });
 }

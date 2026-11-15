@@ -13,6 +13,7 @@ careful reading and reviewed); the attack check described below is what proves i
 | `00_tables.sql` | the six tables, limits, server-set fields (triggers), the list of open countries, and the lock-down (rights revoked, row-level security on and forced) in the same transaction | first |
 | `10_security.sql` | repeats the lock-down, gives back only what is needed, writes the policies (including the refusal of anonymous users), and stops later objects from being born public | second |
 | `20_functions.sql` | `delete_my_account()` and `export_my_data()` | third |
+| `30_backup.sql` | `upload_sections(child, rows, expect, device)`: the conditional, all-or-nothing upload of a child's backup (piece 5). **The owner applies it** (paste it whole in the SQL editor after 00, 10, 20; it can be run twice), then `99_verify.sql`, then `rls-check.js` and `cloud-live-check.js`. It is not run yet. | after 20 |
 | `99_verify.sql` | read-only self-check of the settings; every row must say `true`; "info:" rows must be pasted back | fourth, and after any later change |
 | `90_dormant.sql` | dormant-account job. **Do not apply yet**: only when the email sender exists | later |
 
@@ -67,6 +68,12 @@ a later change to a table or a constraint (for example the progress size limit) 
   `auth.users`; the foreign keys (`on delete cascade`) then remove the account, consents, children, progress and devices.
 - `export_my_data()` (security invoker, so the policies still apply) returns `{ account, consents, children, progress, devices, exported_at }`;
   `account` also carries the sign-in email taken from the caller's own token (it may be stale after an email change).
+- `upload_sections(p_child, p_rows, p_expect, p_device)` (security invoker, empty `search_path`, signed-in callers only; file 30) is the only way the app
+  writes a child's backup. In one transaction it locks the caller's child row, compares the `updated_at` (whole milliseconds) the tablet believes each of
+  the eight sections has with the server's, and writes only if all eight agree; otherwise it writes nothing and returns the server's stamps and devices
+  (`{ ok: false, stamps, devices }`). It refuses a section outside the eight, a section twice, more than eight rows, an `expect` that does not name exactly
+  the eight, a child that is not the caller's (same answer as one that does not exist). Row-level security, the size check and `tg_progress_guard` still apply.
+  After file 30 is applied the app's old direct upsert into `progress` is no longer used by any code (the table policies themselves are unchanged).
 - Later objects are not born public: file 10 removes the default rights of `anon` and `authenticated` on new tables, sequences and
   functions made by the `postgres` role (to confirm that it takes effect; `99_verify.sql` prints the defaults). From then on every new
   table needs its own `revoke`/`grant`, RLS and policies, and every new view needs `security_invoker = true`. The function rule

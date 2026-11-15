@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 52;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 53;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -31,7 +31,7 @@ function loadProfiles() {
   return { list: [{ id: 'main', avatar: AVATARS[0] }], current: 'main' };
 }
 let PROFILES = loadProfiles();
-function saveProfiles() { try { localStorage.setItem(PROF_KEY, JSON.stringify(PROFILES)); } catch (e) { /* ignore */ } }
+function saveProfiles() { try { localStorage.setItem(PROF_KEY, JSON.stringify(PROFILES)); return true; } catch (e) { return false; } }
 const storeKey = (id = PROFILES.current) => (id === 'main' ? STORE_KEY : STORE_KEY + '.' + id);
 const curProfile = () => PROFILES.list.find(p => p.id === PROFILES.current) || PROFILES.list[0];
 // a key in IndexedDB that belongs to one child (the first child keeps the plain key)
@@ -386,27 +386,46 @@ function fromCloudSections(sections, stamps, format) {
   return { save: out, missing, rejected: [...rejected] };
 }
 // ---------- the link record: which server child a local profile is, and what was last uploaded (tablet-wide, in no child's save or backup) ----------
-// localStorage['tiko.link'] = { [profileId]: { child: '<server child id>', up: { <section>: <stamp last uploaded> } } }. Nothing writes it yet.
+// localStorage['tiko.link'] = { [profileId]: { child: '<server child id>', up: { <section>: <the server's stamp after the last upload or restore> }, uid, pending?,
+//   at: { <section>: <this tablet's own S.stamp[section] at that moment> }, conflict?: true, hold?: 'file' | 'prev', err?: '<error code>' } }.
+// at / conflict / hold / err are the backup's own flags (piece 5): they live only here, never in a child's save, never in backupText(), never uploaded.
 function linkAll() {
   try { const d = JSON.parse(localStorage.getItem('tiko.link')); return d && typeof d === 'object' && !Array.isArray(d) ? d : {}; } catch (e) { return {}; }
 }
+const linkMap = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+const LINK_MEMHOLD = {};                  // a hold that could not be written (storage full) is kept in memory for the session: the child's backups stay paused
 function linkGet(id) {
   const all = linkAll(), r = Object.hasOwn(all, id) ? all[id] : null;
   if (!(r && typeof r === 'object' && typeof r.child === 'string')) return null;
-  const o = { child: r.child, up: r.up && typeof r.up === 'object' && !Array.isArray(r.up) ? r.up : {} };
+  const o = { child: r.child, up: linkMap(r.up) };
   if (typeof r.uid === 'string' && r.uid) o.uid = r.uid;        // the account the link belongs to (set by the account screen)
   if (r.pending === true) o.pending = true;                     // written before the child was created on the server; settled by the account screen
+  if (r.at && typeof r.at === 'object' && !Array.isArray(r.at)) o.at = r.at;                      // this tablet's stamps when the last upload or restore happened
+  if (r.conflict === true) o.conflict = true;                   // another tablet has a newer online copy: nothing is uploaded until the parent chooses
+  if (r.hold === 'file' || r.hold === 'prev') o.hold = r.hold;  // nothing is uploaded for this child until the parent chooses (a backup file was restored / earlier progress was put back)
+  if (typeof r.err === 'string' && r.err.length <= 16) o.err = r.err;     // the last backup that could not be made and why (toobig, private, refused), for the account screen
+  if (Number.isInteger(r.fmt) && r.fmt >= 0) o.fmt = r.fmt;                // the format of the last full upload or restore (a backup sends all eight sections when it is not CLOUD_FORMAT)
+  if (!o.hold && Object.hasOwn(LINK_MEMHOLD, id)) o.hold = LINK_MEMHOLD[id];
   return o;
 }
 function linkSet(id, rec) {
   if (!id || !rec || typeof rec.child !== 'string') return false;
-  const all = linkAll(), o = { child: rec.child, up: rec.up && typeof rec.up === 'object' && !Array.isArray(rec.up) ? rec.up : {} };
+  const all = linkAll(), o = { child: rec.child, up: linkMap(rec.up) };
   if (typeof rec.uid === 'string' && rec.uid) o.uid = rec.uid;
   if (rec.pending === true) o.pending = true;
+  if (rec.at && typeof rec.at === 'object' && !Array.isArray(rec.at)) o.at = rec.at;
+  if (rec.conflict === true) o.conflict = true;
+  if (rec.hold === 'file' || rec.hold === 'prev') o.hold = rec.hold;
+  if (typeof rec.err === 'string' && rec.err && rec.err.length <= 16) o.err = rec.err;
+  if (Number.isInteger(rec.fmt) && rec.fmt >= 0) o.fmt = rec.fmt;
   putKey(all, String(id), o);
-  try { localStorage.setItem('tiko.link', JSON.stringify(all)); return true; } catch (e) { return false; }
+  try { localStorage.setItem('tiko.link', JSON.stringify(all)); delete LINK_MEMHOLD[id]; return true; } catch (e) { if (o.hold) LINK_MEMHOLD[id] = o.hold; return false; }
 }
+// a backup file was restored (or earlier progress put back) into a child that is linked: nothing is uploaded for that child until the parent chooses. Does nothing without a link record.
+// -> true when there is nothing to hold or the hold is saved; false when it could only be kept in memory (storage full): the caller tells the parent that backups are paused.
+function linkHold(id, why) { try { const r = linkGet(id); if (!r) return true; return linkSet(id, { ...r, hold: why }); } catch (e) { return false; } }
 function linkDrop(id) {
+  delete LINK_MEMHOLD[id];
   const all = linkAll(); if (!Object.hasOwn(all, id)) return;
   delete all[id];
   try { if (Object.keys(all).length) localStorage.setItem('tiko.link', JSON.stringify(all)); else localStorage.removeItem('tiko.link'); } catch (e) { /* ignore */ }
@@ -430,6 +449,13 @@ function cloudLoad() {
   })();
   return cloudScript;
 }
+// automatic backup (piece 5): one tiny hook, never awaited, never throwing, silent. Without the switch cloudLoad() resolves false and nothing else happens.
+// Called (a) once after the first home screen of a session (open = true: the online copy is looked at even if nothing changed here) and (b) at the end of
+// celebrateAwards(), the one place every finished activity passes on its way back to home, the menu or the path (after the sticker and the awards, never in a question).
+function autoBackup(open) {
+  try { cloudLoad().then(ok => { if (ok && typeof acctAuto === 'function') acctAuto(open === true); }).catch(() => {}); } catch (e) { /* never into a child's screen */ }
+}
+let autoOpened = false;
 // a new child starts fresh; only this tablet's sound choices are carried over from the child who is playing
 function addProfile(name) {
   const id = 'c' + Math.random().toString(36).slice(2, 10), used = PROFILES.list.map(p => p.avatar);
@@ -447,6 +473,7 @@ async function removeProfile(id) {
   let old = null; try { old = JSON.parse(localStorage.getItem(storeKey(id))); } catch (e) { /* ignore */ }
   try { localStorage.removeItem(storeKey(id)); } catch (e) { /* ignore */ }
   PROFILES.list = PROFILES.list.filter(p => p.id !== id); saveProfiles(); linkDrop(id);
+  try { localStorage.removeItem('tiko.prev.' + id); localStorage.removeItem('tiko.prevmeta.' + id); } catch (e) { /* ignore */ }      // the online copy stays in the account; the earlier-progress slot goes with the child
   try {
     await idb.del('rec', pkey('name', id)); recKeys.delete(pkey('name', id));
     for (const r of (old && old.readings) || []) await idb.del('rec', r.k);
@@ -1400,6 +1427,7 @@ async function celebrateAwards() {
   // a skill got harder: celebrate it so the progress is visible
   const ups = (S.levelUps || []).splice(0); save();
   for (const [a, n] of ups.slice(-2)) if (ACTS[a]) await celebrate(`<div class="prize">${ACTS[a].icon}</div><div class="lvlstars">${'⭐'.repeat(n)}</div>`, L().lvl.up, L().lvl.now(actName(a), n));
+  autoBackup();     // the activity is over and every celebration has been dismissed: a quiet, never-awaited backup (does nothing without the switch)
 }
 function celebrate(art, title, name, extra = '') {
   return new Promise(res => {
@@ -3742,6 +3770,7 @@ function backupText() { return JSON.stringify({ app: 'tiko', version: APP_VERSIO
 function restoreBackup(text) {
   const d = JSON.parse(text);
   if (!d || d.app !== 'tiko' || !d.data || typeof d.data.boxes !== 'object' || typeof d.data.settings !== 'object') throw new Error('not a Tiko backup');
+  linkHold(PROFILES.current, 'file');          // FIRST, so a restored file can never be uploaded by an automatic backup: a linked child waits for the parent's choice (no link record: nothing happens; a hold that cannot be saved stays in memory)
   S = { ...structuredClone(DEFAULTS), ...d.data, settings: { ...DEFAULTS.settings, ...d.data.settings } }; save();
   return d.date;
 }
@@ -3832,13 +3861,14 @@ function home(fromIntro, full) {
   if (placementActive()) return;                       // a game is already on screen
   if (needsPlacement() && !placeDeclined[S.lang]) { const first = fromIntro === true; placement().then(() => home(first)); return; }
   stopSpeech(); clearIdle(); applySettings(); zoomable(false); zone('home'); musicMode('calm');
+  if (!autoOpened) { autoOpened = true; setTimeout(() => autoBackup(true), 0); }      // once per session, after this first home screen has been drawn
   if (fromIntro === true) setTimeout(() => { if ($('.home')) speak(L().hi.tapStart); }, 500);   // (back buttons pass a click event — not 'from intro')
   if (S.seenStage[S.lang] === undefined) { S.seenStage[S.lang] = stageOf(); save(); }
   if (S.settings.simpleHome && full !== true) return homeSimple();
   app.innerHTML = `<div class="screen home">
     <button class="ic corner" aria-label="parents">⚙️</button>
-    <div class="langs"><button class="lang ${S.lang === 'en' ? 'on' : ''}" data-l="en">🇬🇧 English</button>
-      <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr">🇫🇷 Français</button></div>
+    <div class="langs"><button class="lang ${S.lang === 'en' ? 'on' : ''}" data-l="en" aria-label="English" aria-pressed="${S.lang === 'en'}">EN</button>
+      <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr" aria-label="Français" aria-pressed="${S.lang === 'fr'}">FR</button></div>
     <div class="hero">${owl('big')}${hid('chat') ? '' : `<button class="chatb">💬 ${L().chat.btn}</button>`}<h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
     <button class="btn primary huge pulse go">▶ ${L().start}</button>
     <div class="row">${[['read', '📖', L().reading], ['math', '🔢', L().maths], ['sci', '🚀', L().sciName], ['art', '🎨', L().artName], ['think', '🧠', L().thinkName], ['journey', '🗺️', L().read.journey], ['stickers', '🌟', L().stickers]]
@@ -4447,7 +4477,13 @@ function parents() {
   $$('.pav').forEach(sel => sel.onchange = () => { PROFILES.list.find(p => p.id === profAt(sel)).avatar = sel.value; saveProfiles(); });
   $$('.psw').forEach(b => b.onclick = () => switchProfile(profAt(b)));
   $$('.pdel').forEach(b => b.onclick = async () => {
-    if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again: erases this child for good'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Remove'; } }, 4000); return; }
+    if (!b.dataset.armed) {
+      b.dataset.armed = '1'; b.textContent = 'Tap again: erases this child for good';
+      // a child who is backed up to an account: the online copy stays (only on a tablet with the switch; otherwise exactly as before)
+      const note = typeof acctNote === 'function' ? acctNote('remove', profAt(b)) : '';
+      if (note) b.insertAdjacentHTML('afterend', `<p class="pdelnote" role="status">${note}</p>`);
+      setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Remove'; const n = b.parentNode.querySelector('.pdelnote'); if (n) n.remove(); } }, 4000); return;
+    }
     await removeProfile(profAt(b)); backToProfs('Removed.');
   });
   $('.padd').onclick = () => {
@@ -4503,7 +4539,13 @@ function parents() {
   drawRec(); vpPanel();
   let armed = false;
   $('.rst').onclick = e => {
-    if (!armed) { armed = true; e.target.textContent = 'Tap again to confirm reset'; setTimeout(() => { armed = false; e.target.textContent = 'Reset all progress'; }, 4000); return; }
+    if (!armed) {
+      armed = true; e.target.textContent = 'Tap again to confirm reset';
+      // a child who is backed up to an account: one more sentence (only on a tablet with the switch; otherwise exactly as before)
+      const note = typeof acctNote === 'function' ? acctNote('reset', PROFILES.current) : '';
+      if (note) e.target.insertAdjacentHTML('afterend', `<p class="rstnote" role="status">${note}</p>`);
+      setTimeout(() => { armed = false; e.target.textContent = 'Reset all progress'; const n = $('.rstnote'); if (n) n.remove(); }, 4000); return;
+    }
     const keep = S.settings; S = structuredClone(DEFAULTS); S.settings = keep; save(); parents();
   };
   const drawReadings = () => {
@@ -4563,7 +4605,7 @@ function parents() {
       const text = await f.text(), d = JSON.parse(text);
       if (!d || d.app !== 'tiko' || !d.data) throw new Error('x');
       $('.bkmsg').innerHTML = `Backup from <b>${esc(d.date || '?')}</b> with ${Object.values(d.data.boxes || {}).filter(v => v >= 5).length} things known. This replaces the progress on this tablet. <button class="pbtn warn doit">Yes, restore it</button>`;
-      $('.doit').onclick = () => { try { restoreBackup(text); applySettings(); parents(); setTimeout(() => { const m = $('.bkmsg'); if (m) { m.textContent = 'Restored ✓'; m.scrollIntoView({ block: 'center' }); } }, 50); } catch (err) { $('.bkmsg').textContent = 'That file could not be restored.'; } };
+      $('.doit').onclick = () => { try { restoreBackup(text); applySettings(); parents(); setTimeout(() => { const m = $('.bkmsg'); if (m) { m.textContent = 'Restored ✓'; const pz = typeof acctNote === 'function' ? acctNote('paused', PROFILES.current) : ''; if (pz) m.insertAdjacentHTML('beforeend', ` <span class="rstnote">${pz}</span>`); m.scrollIntoView({ block: 'center' }); } }, 50); } catch (err) { $('.bkmsg').textContent = 'That file could not be restored.'; } };
     } catch (err) { $('.bkmsg').textContent = 'That is not a Tiko backup file.'; }
     e.target.value = '';
   };

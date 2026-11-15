@@ -122,6 +122,20 @@ select 'progress has the foreign key (account_id, child_id) -> children (account
 union all
 select 'info: postgres has BYPASSRLS = ' || r.rolbypassrls::text, true from pg_roles r where r.rolname = 'postgres'
 
+-- file 30 (the conditional upload): only meaningful once 30_backup.sql has been run
+union all
+select 'upload_sections exists once, is security invoker, has an empty search_path, anon cannot run it, authenticated can',
+       (select count(*) from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = 'upload_sections') = 1
+       and coalesce((select not p.prosecdef
+                       and exists (select 1 from unnest(coalesce(p.proconfig, '{}')) s where s = 'search_path=""')
+                       and not has_function_privilege('anon', p.oid, 'execute')
+                       and has_function_privilege('authenticated', p.oid, 'execute')
+                       from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = 'upload_sections'), false)
+
+union all
+select 'info: upload_sections signature and settings: ' || coalesce((select p.oid::regprocedure::text || ' ' || coalesce(p.proconfig::text, 'none')
+       from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = 'upload_sections'), 'not installed'), true
+
 union all
 select 'info: default privileges now: ' || coalesce(string_agg(
          defaclrole::regrole::text || ' / ' || coalesce(nullif(defaclnamespace::regnamespace::text, '-'), 'global')
