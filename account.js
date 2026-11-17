@@ -80,7 +80,7 @@ const ACCT_T = {
     emailLabel: 'Your email address', emailHelp: 'We send sign-in codes to this address. We use it only for your account: sign-in, and messages about the account itself.', send: 'Send me a code', badEmail: 'Please check the email address.',
     consentHint: 'The button works when both boxes are ticked and the address looks right.', consentHintSigned: 'The button works when both boxes are ticked.',
     codeH: 'Enter your code', sent: e => `We sent a 6-digit code to ${e}. It works for 10 minutes.`, codeLabel: 'Code', codeShort: 'The code has 6 digits.',
-    resend: 'Send a new code', resendWait: n => `Send a new code (available in ${n} s)`, another: 'Use another address', newSent: 'A new code was sent.',
+    resend: 'Send a new code', codeHint: 'Take your time. If the code has not arrived, you can ask for a new one after a minute.', another: 'Use another address', newSent: 'A new code was sent.',
     settingUp: 'Setting up your account…', retryH: 'Not finished yet',
     kidsH: 'Your children', kidsP: 'Choose a nickname for the online copy. Please do not use your child’s name.', nickLabel: 'Nickname for the online copy',
     nickPh: n => `Child ${n}`, tick: 'Back up this child’s progress', save: 'Save and back up', saveName: 'Save',
@@ -174,7 +174,7 @@ const ACCT_T = {
     emailLabel: 'Votre adresse e-mail', emailHelp: 'Nous envoyons les codes de connexion à cette adresse. Elle ne sert qu’à votre compte : la connexion et les messages qui concernent le compte.', send: 'Envoyer un code', badEmail: 'Veuillez vérifier l’adresse e-mail.',
     consentHint: 'Le bouton fonctionne quand les deux cases sont cochées et que l’adresse semble correcte.', consentHintSigned: 'Le bouton fonctionne quand les deux cases sont cochées.',
     codeH: 'Saisissez votre code', sent: e => `Nous avons envoyé un code à 6 chiffres à ${e}. Il est valable 10 minutes.`, codeLabel: 'Code', codeShort: 'Le code comporte 6 chiffres.',
-    resend: 'Envoyer un nouveau code', resendWait: n => `Envoyer un nouveau code (disponible dans ${n} s)`, another: 'Utiliser une autre adresse', newSent: 'Un nouveau code a été envoyé.',
+    resend: 'Envoyer un nouveau code', codeHint: 'Prenez votre temps. Si le code n’est pas arrivé, vous pourrez en demander un nouveau après une minute.', another: 'Utiliser une autre adresse', newSent: 'Un nouveau code a été envoyé.',
     settingUp: 'Mise en place de votre compte…', retryH: 'Pas encore terminé',
     kidsH: 'Vos enfants', kidsP: 'Choisissez un surnom pour la copie en ligne. Merci de ne pas utiliser le prénom ni le nom de votre enfant.', nickLabel: 'Surnom pour la copie en ligne',
     nickPh: n => `Enfant ${n}`, tick: 'Sauvegarder la progression de cet enfant', save: 'Enregistrer et sauvegarder', saveName: 'Enregistrer',
@@ -520,13 +520,15 @@ const ACCT_VIEW = {
       <label for="acct-code">${esc(acctS('codeLabel'))}</label><input id="acct-code" class="acct-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12" value="${esc(ACCT.code)}" aria-describedby="acct-msg2">
       <p id="acct-msg2" class="acct-msg" role="alert"></p>
       <div class="acct-nav"><button class="pbtn acct-go">${esc(acctS('next'))}</button></div>
-      <div class="acct-nav"><button class="pbtn alt acct-resend" disabled>${esc(acctS('resend'))}</button><button class="pbtn alt acct-other">${esc(acctS('another'))}</button></div></section>`,
+      <div class="acct-nav"><button class="pbtn alt acct-resend" disabled>${esc(acctS('resend'))}</button><button class="pbtn alt acct-other">${esc(acctS('another'))}</button></div>
+      <p class="acct-hint">${esc(acctS('codeHint'))}</p></section>`,
     wire: () => {
       const inp = $('.acct-code'), go = $('.acct-go'), rs = $('.acct-resend');
       inp.oninput = () => { ACCT.code = inp.value; acctSay('#acct-msg2', ''); };
       const tick = () => {
         const left = Math.max(0, Math.ceil((ACCT.sentAt + ACCT_RESEND_S * 1000 - Date.now()) / 1000));
-        rs.textContent = left ? acctS('resendWait', left) : acctS('resend'); rs.dataset.wait = left; rs.disabled = ACCT.busy || left > 0;
+        // no visible countdown: a parent read the ticking seconds as the time left to type the code (the code works for 10 minutes); the button is simply unavailable for the first minute
+        rs.dataset.wait = left; rs.disabled = ACCT.busy || left > 0;
       };
       ACCT.sync = tick; tick(); ACCT.timer = setInterval(() => { if (!$('.acct-resend')) { clearInterval(ACCT.timer); return; } if (!ACCT.busy) tick(); }, 1000);
       $('.acct-other').onclick = () => acctGo('consent');
