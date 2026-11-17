@@ -269,12 +269,13 @@ create trigger devices_guard before insert or update on public.devices
   for each row execute function public.tg_devices_guard();
 
 -- ---------------------------------------------------------------- seed: open countries
--- 27 EU states, Iceland, Liechtenstein, Norway, United Kingdom. The owner's home country is added later.
+-- 27 EU states, Iceland, Liechtenstein, Norway, United Kingdom, and (owner's decision, 17 November 2026) Mauritius and
+-- South Africa. A project created before that date gets the last two from 40_countries.sql.
 -- (Done before row-level security is forced below.)
 insert into public.open_countries (code) values
   ('AT'),('BE'),('BG'),('HR'),('CY'),('CZ'),('DK'),('EE'),('FI'),('FR'),('DE'),('GR'),('HU'),('IE'),
   ('IT'),('LV'),('LT'),('LU'),('MT'),('NL'),('PL'),('PT'),('RO'),('SK'),('SI'),('ES'),('SE'),
-  ('IS'),('LI'),('NO'),('GB')
+  ('IS'),('LI'),('NO'),('GB'),('MU'),('ZA')
 on conflict (code) do nothing;
 
 -- ---------------------------------------------------------------- closed from birth

@@ -84,7 +84,7 @@ select 'policies in place: ' || count(*) || ' (expected 25)', count(*) = 25
 from pg_policies where schemaname = 'public'
 
 union all
-select 'open_countries holds ' || count(*) || ' countries (expected 31)', count(*) = 31
+select 'open_countries holds ' || count(*) || ' countries (expected 33)', count(*) = 33
 from public.open_countries
 
 union all

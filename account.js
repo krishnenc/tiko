@@ -24,8 +24,22 @@ const ACCT_COUNTRIES = {
   HU: ['Hungary', 'Hongrie'], IE: ['Ireland', 'Irlande'], IT: ['Italy', 'Italie'], LV: ['Latvia', 'Lettonie'], LT: ['Lithuania', 'Lituanie'], LU: ['Luxembourg', 'Luxembourg'],
   MT: ['Malta', 'Malte'], NL: ['Netherlands', 'Pays-Bas'], PL: ['Poland', 'Pologne'], PT: ['Portugal', 'Portugal'], RO: ['Romania', 'Roumanie'], SK: ['Slovakia', 'Slovaquie'],
   SI: ['Slovenia', 'Slovénie'], ES: ['Spain', 'Espagne'], SE: ['Sweden', 'Suède'], IS: ['Iceland', 'Islande'], LI: ['Liechtenstein', 'Liechtenstein'], NO: ['Norway', 'Norvège'],
-  GB: ['United Kingdom', 'Royaume-Uni'],
+  GB: ['United Kingdom', 'Royaume-Uni'], MU: ['Mauritius', 'Maurice'], ZA: ['South Africa', 'Afrique du Sud'],
 };
+// The country is pre-selected from the time zone this tablet is set to (v56). It is read on the tablet: no location is asked for, no request is made, nothing is looked up
+// from the network address. Only a zone that belongs to one open country is listed; anything else pre-selects nothing. The parent sees a line saying where the choice came
+// from and can change it; what is sent later is the country the parent leaves selected, as before.
+const ACCT_ZONES = {
+  'Europe/Vienna': 'AT', 'Europe/Brussels': 'BE', 'Europe/Sofia': 'BG', 'Europe/Zagreb': 'HR', 'Asia/Nicosia': 'CY', 'Europe/Nicosia': 'CY', 'Europe/Prague': 'CZ',
+  'Europe/Copenhagen': 'DK', 'Europe/Tallinn': 'EE', 'Europe/Helsinki': 'FI', 'Europe/Paris': 'FR', 'Europe/Berlin': 'DE', 'Europe/Busingen': 'DE', 'Europe/Athens': 'GR',
+  'Europe/Budapest': 'HU', 'Europe/Dublin': 'IE', 'Europe/Rome': 'IT', 'Europe/Riga': 'LV', 'Europe/Vilnius': 'LT', 'Europe/Luxembourg': 'LU', 'Europe/Malta': 'MT',
+  'Europe/Amsterdam': 'NL', 'Europe/Warsaw': 'PL', 'Europe/Lisbon': 'PT', 'Atlantic/Madeira': 'PT', 'Atlantic/Azores': 'PT', 'Europe/Bucharest': 'RO', 'Europe/Bratislava': 'SK',
+  'Europe/Ljubljana': 'SI', 'Europe/Madrid': 'ES', 'Atlantic/Canary': 'ES', 'Africa/Ceuta': 'ES', 'Europe/Stockholm': 'SE', 'Atlantic/Reykjavik': 'IS', 'Europe/Vaduz': 'LI',
+  'Europe/Oslo': 'NO', 'Europe/London': 'GB', 'Indian/Mauritius': 'MU', 'Africa/Johannesburg': 'ZA',
+};
+function acctGuessCountry(list) {
+  try { const c = ACCT_ZONES[Intl.DateTimeFormat().resolvedOptions().timeZone]; return c && Array.isArray(list) && list.includes(c) ? c : ''; } catch (e) { return ''; }
+}
 
 // ---------------------------------------------------------------- what is stored: the list, and the map that keeps it true
 // The lines of the "Stored" list (texts ln_<id> in ACCT_T). ACCT_COVER says which line speaks of each key of the save that is uploaded (SAVE_SECTIONS in app.js) and of each
@@ -72,6 +86,7 @@ const ACCT_T = {
     shortList: 'The online copy holds your email address, your country, your agreement, a random number for each tablet, and for each child a nickname, the picture, the language, the learning progress, the reward goals with the text you typed, and the settings. It never holds your child’s name, the voice, the chat, recordings, photos or drawings. It is kept on servers in the European Union.',
     showList: 'Show the full list',
     countryH: 'Your country', countryP: 'For now, accounts are open in some countries only. Tiko does not use your location, so please choose.', countryExisting: 'If you already have an account, choose any country: it is not changed.',
+    countryGuess: 'Chosen from the time zone this tablet is set to. Please check it and change it if it is wrong.',
     countryLabel: 'Country', countryPick: 'Choose a country', countryOther: 'Another country', countryLoading: 'Loading the list…', countryNone: 'Please choose a country.',
     closedH: 'Not open yet', closed: 'Accounts are not open in your country yet. Tiko works fully without one. You can keep the progress of your children safe with a backup file (Backup, above).',
     consentH: 'Your agreement',
@@ -166,6 +181,7 @@ const ACCT_T = {
     shortList: 'La copie en ligne contient votre adresse e-mail, votre pays, votre accord, un numéro au hasard par tablette, et pour chaque enfant un surnom, l’image, la langue, la progression, les objectifs de récompense avec le texte que vous avez écrit, et les réglages. Elle ne contient jamais le prénom de votre enfant, la voix, le chat, les enregistrements, les photos ni les dessins. Elle est conservée sur des serveurs situés dans l’Union européenne.',
     showList: 'Afficher la liste complète',
     countryH: 'Votre pays', countryP: 'Pour l’instant, les comptes ne sont ouverts que dans certains pays. Tiko n’utilise pas votre position : veuillez choisir.', countryExisting: 'Si vous avez déjà un compte, choisissez n’importe quel pays : il n’est pas modifié.',
+    countryGuess: 'Choisi d’après le fuseau horaire réglé sur cette tablette. Vérifiez-le et changez-le s’il est faux.',
     countryLabel: 'Pays', countryPick: 'Choisir un pays', countryOther: 'Un autre pays', countryLoading: 'Chargement de la liste…', countryNone: 'Veuillez choisir un pays.',
     closedH: 'Pas encore ouvert', closed: 'Les comptes ne sont pas encore ouverts dans votre pays. Tiko fonctionne très bien sans compte. Vous pouvez garder la progression de vos enfants en lieu sûr avec un fichier de sauvegarde (rubrique Sauvegarde).',
     consentH: 'Votre accord',
@@ -249,7 +265,8 @@ const ACCT_T = {
 // ---------------------------------------------------------------- state
 const ACCT = { lang: 'en', view: 'info', gen: 0, busy: false, country: '', adult: false, agree: false, email: '', code: '', nick: {}, tick: {}, only: null, renaming: null, ask: null,
   note: '', err: '', sentAt: 0, timer: 0, countries: null, countriesErr: '', data: null, dataErr: '', log: [], sync: null,
-  auto: { running: false, again: false, last: 0, timer: 0 }, restored: null, choosing: null };
+  auto: { running: false, again: false, last: 0, timer: 0 }, restored: null, choosing: null,
+  after: null };                       // where "Back to the parent corner" leads when the screen was opened from the first-time setup (setup.js); null = the parent corner
 const acctT = k => { const v = ACCT_T[ACCT.lang][k]; return v === undefined ? ACCT_T.en[k] : v; };
 const acctS = (k, ...a) => { const v = acctT(k); return typeof v === 'function' ? v(...a) : v; };
 const acctErr = code => ACCT_T[ACCT.lang].err[code] || ACCT_T[ACCT.lang].err.server;
@@ -329,7 +346,12 @@ function acctSection() {
   $('.acct-open', s).onclick = acctOpen;
   return s;
 }
-function acctLeave() { ACCT.gen++; clearInterval(ACCT.timer); ACCT.busy = false; ACCT.sync = null; document.documentElement.lang = S.lang; parentTab = 'data'; parents(); }
+function acctLeave() {
+  ACCT.gen++; clearInterval(ACCT.timer); ACCT.busy = false; ACCT.sync = null; document.documentElement.lang = S.lang;
+  const back = ACCT.after; ACCT.after = null;
+  if (typeof back === 'function') return back();          // opened from the setup: back to its last step
+  parentTab = 'data'; parents();
+}
 function acctReset() { Object.assign(ACCT, { country: '', adult: false, agree: false, email: '', code: '', nick: {}, tick: {}, only: null, renaming: null, ask: null, err: '', log: [], data: null, dataErr: '', restored: null, choosing: null }); }
 function acctOpen() {
   const gen = ++ACCT.gen;
@@ -458,6 +480,7 @@ const ACCT_VIEW = {
         body = `<label for="acct-country">${esc(acctS('countryLabel'))}</label>
           <select id="acct-country" class="acct-country"><option value="">${esc(acctS('countryPick'))}</option>${list.map(c => `<option value="${esc(c)}" ${ACCT.country === c ? 'selected' : ''}>${esc(name(c))}</option>`).join('')}
           <option value="*" ${ACCT.country === '*' ? 'selected' : ''}>${esc(acctS('countryOther'))}</option></select>
+          <p class="acct-help acct-guess" ${ACCT.guess && ACCT.country === ACCT.guess ? '' : 'hidden'}>${esc(acctS('countryGuess'))}</p>
           <p class="acct-msg" role="alert"></p>
           <div class="acct-nav"><button class="pbtn acct-next">${esc(acctS('next'))}</button></div>`;
       }
@@ -469,7 +492,7 @@ const ACCT_VIEW = {
       if (rt) rt.onclick = () => { ACCT.countriesErr = ''; acctLoadCountries(ACCT.gen); };
       if (!ACCT.countries && !ACCT.countriesErr && !ACCT.loadingC) acctLoadCountries(ACCT.gen);
       if (!sel) return;
-      sel.onchange = () => { ACCT.country = sel.value; acctSay('.acct-msg', ''); };
+      sel.onchange = () => { ACCT.country = sel.value; acctSay('.acct-msg', ''); const g = $('.acct-guess'); if (g) g.hidden = !(ACCT.guess && ACCT.country === ACCT.guess); };
       $('.acct-next').onclick = () => {
         if (!ACCT.country) { acctSay('.acct-msg', acctS('countryNone')); sel.focus(); return; }
         acctGo(ACCT.country === '*' ? 'closed' : 'consent');
@@ -713,6 +736,7 @@ async function acctLoadCountries(gen) {
   if (gen === ACCT.gen) ACCT.loadingC = false;
   if (!acctLive(gen) || ACCT.view !== 'country') return;
   if (r.ok) ACCT.countries = r.data; else ACCT.countriesErr = r.error;
+  if (r.ok && !ACCT.country) ACCT.country = ACCT.guess = acctGuessCountry(r.data);     // pre-selected from the tablet's time zone, only when the parent has chosen nothing yet
   acctDraw();
 }
 // the account's children and tablets; the link records are settled against what the server has (acctReconcile)

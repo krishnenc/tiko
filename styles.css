@@ -1191,3 +1191,50 @@ body:is([data-sp="1"], [data-sp="2"]) .bubble:not(.tikosay) { line-height: calc(
 .acct-facts { font-size: 15px; }
 .acct-secnote, .rstnote, .pdelnote { background: #fff7ed; border-radius: 12px; padding: 8px 12px; margin: 8px 0; color: #222; overflow-wrap: anywhere; }
 .rstnote, .pdelnote { font-weight: 600; }
+/* ================= v56: the first-time setup (setup.js) =================
+   Written text for a grown-up: the parent corner's plain look (system font, whatever the child's reading comfort), nothing moves, big targets. */
+.screen.setup { animation: none; justify-content: flex-start; font-family: system-ui, 'Segoe UI', sans-serif; color: #222; }
+.setup *, .setup *::before, .setup *::after { animation: none !important; transition: none !important; }
+body:has(.screen.setup) .world, body:has(.screen.setup) .world * { animation: none !important; }
+.su-card { width: min(100%, 920px); margin: auto; background: #fff; border-radius: 24px; padding: 14px 22px 12px; box-shadow: 0 6px 24px #0002; display: flex; flex-direction: column; gap: 6px; }
+.su-dots { display: flex; gap: 8px; justify-content: center; margin: 2px 0; }
+.su-dots i { width: 12px; height: 12px; border-radius: 50%; background: #c9d3d1; }
+.su-dots i.past { background: #6fb4a8; } .su-dots i.now { width: 28px; border-radius: 8px; background: #1f7a6c; }
+.su-h { margin: 0; font-size: 28px; outline: none; }
+.su-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.su-body p { font-size: 18px; line-height: 1.4; margin: 4px 0; color: #333; }
+.su-body small, .su-help { display: block; font-size: 15px; color: #555; font-weight: 400; }
+.su-body b { font-weight: 700; }
+.su-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 56px; padding: 6px 0; border-bottom: 1px solid #e6e6e6; font-size: 18px; }
+.su-row input[type=checkbox] { width: 44px; height: 44px; flex: none; margin: 0; }
+.su-name { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 18px; }
+.su-name input, .su-sel { min-height: 48px; max-width: 420px; font-size: 18px; padding: 8px 12px; border: 2px solid #777; border-radius: 10px; background: #fff; color: #222; user-select: text; -webkit-user-select: text; }
+.su-set { border: 0; padding: 0; margin: 6px 0; min-width: 0; }
+.su-set legend { font-weight: 700; font-size: 17px; padding: 0 0 6px; }
+.su-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.su-chip { position: relative; display: flex; }
+.su-chip input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.su-chip span { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 16px; border: 3px solid #b5b5b5; border-radius: 14px; font-size: 18px; background: #fafafa; color: #222; }
+.su-chip input:checked + span { border-color: #1f7a6c; background: #e6f5f2; font-weight: 700; }
+.su-chip input:focus-visible + span, .su-av:focus-visible, .su-th:focus-visible, .setup .pbtn:focus-visible, .su-name input:focus-visible, .su-sel:focus-visible, .su-row input:focus-visible { outline: 3px solid #1b5fd1; outline-offset: 2px; }
+.su-wide span { flex-direction: column; align-items: flex-start; gap: 0; }
+.su-col .su-chips { flex-direction: column; } .su-col .su-chip { width: 100%; } .su-col .su-chip span { width: 100%; }
+.su-avs { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.su-av { min-height: 48px; font-size: 28px; border: 3px solid #d0d0d0; border-radius: 12px; background: #fff; }
+.su-av.on { border-color: #1f7a6c; background: #e6f5f2; }
+.su-themes { display: flex; flex-wrap: wrap; gap: 8px; }
+.su-th { min-width: 0; flex: 1 1 110px; padding: 6px 8px; font-size: 16px; color: #222; }
+.su-th .owl { width: 64px; height: 64px; }
+.su-2col, .su-3col { display: grid; grid-template-columns: 1fr; gap: 0 24px; }
+.su-likes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 6px 0; }
+.su-like span { width: 100%; min-height: 64px; font-size: 20px; }
+.su-like i { font-style: normal; font-size: 32px; }
+.su-prev { background: #fffdf5; border: 2px solid #ddd; border-radius: 16px; padding: 8px 16px; margin: 6px 0; color: #4a3f5e; font-family: var(--font); font-weight: 700;
+  font-size: calc(26px * var(--tz, 1)); letter-spacing: var(--ls, 0); word-spacing: var(--ws, 0); line-height: calc(1.35 + var(--lhx, 0)); }
+.su-body .su-prev p { margin: 2px 0; font-size: inherit; line-height: inherit; color: inherit; }
+.su-sum { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 4px 0; font-size: 17px; }
+.su-sum dt { font-weight: 700; } .su-sum dd { margin: 0; overflow-wrap: anywhere; }
+.su-bk { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.su-nav { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; position: sticky; bottom: 0; background: #fff; padding-top: 8px; margin-top: 4px; }
+.setup .pbtn { min-height: 48px; font-size: 18px; margin: 0; }
+@media (min-width: 900px) { .su-2col { grid-template-columns: 1fr 1fr; } .su-3col { grid-template-columns: repeat(3, 1fr); } .su-likes { grid-template-columns: repeat(3, 1fr); } }

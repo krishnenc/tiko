@@ -1,6 +1,6 @@
 'use strict';
 /* Tiko – a calm, fun, bilingual reading & maths app. */
-const APP_VERSION = 55;   // keep in step with VERSION in sw.js; shown on the home screen
+const APP_VERSION = 56;   // keep in step with VERSION in sw.js; shown on the home screen
 
 // ================= helpers =================
 const $ = (s, r = document) => r.querySelector(s);
@@ -22,6 +22,8 @@ const STORE_KEY = 'tiko.v1';
 // Everything in S (progress, settings, name) belongs to the child who is playing. Switching child reloads the app,
 // so nothing of one child's session can leak into another's.
 const PROF_KEY = 'tiko.profiles';
+// First-launch setup (v56, setup.js): a tablet with no save at all, no list of children and no marker tiko.setup is a first launch. Decided here, before anything can write a save.
+const SETUP_FRESH = (() => { try { return !localStorage.getItem('tiko.v1') && !localStorage.getItem('tiko.profiles') && !localStorage.getItem('tiko.setup'); } catch (e) { return false; } })();
 const AVATARS = ['🦄', '🐱', '🐶', '🦊', '🐼', '🐸', '🦁', '🐧', '🐙', '🦋', '🐢', '🐝', '🚀', '⭐', '🌈', '🌻'];
 function loadProfiles() {
   try {
@@ -55,7 +57,16 @@ const DEFAULTS = {
     font: 'andika', spacing: 0, textSize: 0, simpleHome: false,
     voice_en: '', voice_fr: '', name: '', nameSay: '' },
 };
-const withDefaults = d => ({ ...structuredClone(DEFAULTS), ...d, settings: { ...DEFAULTS.settings, ...d.settings } });
+// What a child likes (v56, ticked in the setup, stays on this tablet): fixed keys only. They only decide what comes first where the app has a free order
+// (the home tracks, the art / thinking / science menus, the fun treat at the end of the path). Never a level, never repetition, never the order of a ladder.
+const LIKE_KEYS = ['space', 'stories', 'numbers', 'draw', 'music', 'puzzles'];
+const LIKE_AREAS = { space: 'sci', stories: 'read', numbers: 'math', draw: 'art', music: 'art', puzzles: 'think' };
+const LIKE_ACTS = { space: ['space', 'rocket', 'constel', 'zoom', 'wonder'], draw: ['paint', 'mirror', 'readDraw', 'cbn'], music: ['music'], puzzles: ['memory', 'simon', 'jigsaw', 'kim', 'odd'] };
+const withDefaults = d => {
+  const o = { ...structuredClone(DEFAULTS), ...d, settings: { ...DEFAULTS.settings, ...d.settings } };
+  if ('likes' in o.settings) { if (Array.isArray(o.settings.likes)) o.settings.likes = [...new Set(o.settings.likes.filter(k => LIKE_KEYS.includes(k)))]; else delete o.settings.likes; }   // unknown keys are dropped on load
+  return o;
+};
 let S = load();
 function load() {
   try {
@@ -209,7 +220,7 @@ function mergeSaves(a, b) {
 // never leave the tablet (the name Tiko says, this tablet's voice and speed, and frBoy, which stays on the tablet until the owner decides).
 // A new setting must be added to one of the two lists (sections-check.js fails otherwise), and is private until it is in the synced list.
 const SAVE_SYNCED_SETTINGS = ['stops', 'perStop', 'sessionMin', 'theme', 'calm', 'breaks', 'nudge', 'artInPath', 'discovery', 'review', 'hide', 'font', 'spacing', 'textSize', 'simpleHome', 'listenFirst', 'sfx', 'music', 'ambient', 'ambientWork', 'voicePack'];
-const SAVE_PRIVATE_SETTINGS = ['name', 'nameSay', 'voice_en', 'voice_fr', 'rate', 'pitch', 'pitch_fr', 'pitchV17', 'frBoy'];
+const SAVE_PRIVATE_SETTINGS = ['name', 'nameSay', 'voice_en', 'voice_fr', 'rate', 'pitch', 'pitch_fr', 'pitchV17', 'frBoy', 'likes'];     // likes (v56): stays on this tablet; a later sync would need the consent list and the lawyer first
 // Format of the cloud form of the sections (the server's `format` column): 1 = boxes and due as two flat maps (never shipped), 2 = boxes packed.
 const CLOUD_FORMAT = 2;
 // The cloud copy is bounded: the newest CLOUD_MAX_DAYS entries of `days` (by date key) and the last CLOUD_MAX_DIARY diary rows. Older history stays on the tablet and in backup files.
@@ -1303,7 +1314,7 @@ function diary(kind, set, id, extra) {
 let lastTouch = Date.now();
 addEventListener('pointerdown', () => { lastTouch = Date.now(); }, true);
 setInterval(() => {
-  if (document.hidden || Date.now() - lastTouch > 90000 || $('.parent')) return;
+  if (document.hidden || Date.now() - lastTouch > 90000 || $('.parent') || $('.setup') || (typeof SETUP !== 'undefined' && SETUP)) return;      // nothing is saved while a grown-up is in the setup, also behind the gate of its backup step (so a first launch cut short asks again)
   const d = S.days[today()] = S.days[today()] || { q: 0, ok: 0 }; d.t = (d.t || 0) + 15; save();
 }, 15000);
 function introduced(set, items) { const l = items.filter(i => boxOf(set, i.id) > 0); return l.length ? l : items.slice(0, 3); }
@@ -1510,6 +1521,9 @@ function nudge(replayParts) {
 
 // ================= maths levels =================
 const lvl = a => S.levels[a] || 1;
+// every maths activity to level n (or its highest level), streak cleared: the parent corner's "All maths to level" and the setup's "where to start" for numbers.
+// onlyUp (the setup): an activity already above n stays where it is. Does not save.
+function setMathStart(n, onlyUp) { Object.keys(MATH_MAX).forEach(k => { const to = Math.min(n, MATH_MAX[k]); if (onlyUp && lvl(k) >= to) return; S.levels[k] = to; S.streak[k] = { ok: 0, bad: 0 }; }); }
 const MATH_MAX = { count: 3, add: 5, sub: 5, money: 3, groups: 3, bonds: 2, next: 3, compare: 3, shapes: 3, patterns: 3, clock: 3, doubles: 2,
   missing: 3, skip: 3, tens: 3, measure: 3, flash: 3, pop: 3, mathStory: 2 };
 function gradeMath(a, first, max = MATH_MAX[a] || 3) { if (first) tally('mathOk'); gradeLevel(a, first, max); }
@@ -1674,6 +1688,12 @@ function mastered(a) {
 const AREAS = ['read', 'math', 'art', 'think', 'sci'];
 const TRACKS = [['read', '📖', 'Reading'], ['math', '🔢', 'Maths'], ['sci', '🚀', 'Science'], ['art', '🎨', 'Art'], ['think', '🧠', 'Thinking'],['journey', '🗺️', 'My journey (the reading map)'], ['stickers', '🌟', 'My stickers'], ['chat', '💬', 'Chat with Tiko']];
 const hid = k => !!(S.settings.hide || {})[k];
+// what this child likes (setup, v56): the ticked keys that are known; nothing ticked (or an old save) means nothing changes anywhere
+const likesOf = () => { const l = S.settings.likes; return Array.isArray(l) ? l.filter(k => LIKE_KEYS.includes(k)) : []; };
+const likedAreas = () => new Set(likesOf().map(k => LIKE_AREAS[k]));
+const likedActs = () => new Set(likesOf().flatMap(k => LIKE_ACTS[k] || []));
+// a stable sort that brings the liked ones first (items keep their own order otherwise); with nothing liked the list comes back as it was
+const likedFirst = (list, isLiked) => (likesOf().length ? [...list.filter(isLiked), ...list.filter(x => !isLiked(x))] : list);
 const readyFor = a => ACTS[a].area !== 'read' || (READ_UNLOCK[a] ?? 9) <= stageOf();
 function actState(a) {
   if (!S.settings.discovery) return 'open';
@@ -3914,7 +3934,7 @@ function home(fromIntro, full) {
       <button class="lang ${S.lang === 'fr' ? 'on' : ''}" data-l="fr" aria-label="Français" aria-pressed="${S.lang === 'fr'}">FR</button></div>
     <div class="hero">${owl('big')}${hid('chat') ? '' : `<button class="chatb">💬 ${L().chat.btn}</button>`}<h1 class="logo"><span>T</span><span>i</span><span>k</span><span>o</span></h1></div>
     <button class="btn primary huge pulse go">▶ ${L().start}</button>
-    <div class="row">${[['read', '📖', L().reading], ['math', '🔢', L().maths], ['sci', '🚀', L().sciName], ['art', '🎨', L().artName], ['think', '🧠', L().thinkName], ['journey', '🗺️', L().read.journey], ['stickers', '🌟', L().stickers]]
+    <div class="row">${[...likedFirst([['read', '📖', L().reading], ['math', '🔢', L().maths], ['sci', '🚀', L().sciName], ['art', '🎨', L().artName], ['think', '🧠', L().thinkName]], ([k]) => likedAreas().has(k)), ['journey', '🗺️', L().read.journey], ['stickers', '🌟', L().stickers]]
       .filter(([k]) => !hid(k)).map(([k, ic, n]) => `<button class="btn card" data-m="${k}">${ic}<span>${n}</span></button>`).join('')}
     </div>
     <div class="row" style="align-items:center;gap:12px"><div class="starcount">⭐ ${S.stars} &nbsp; 🌟 ${S.stickers.length} &nbsp; 🏅 ${Object.keys(S.badges).length}</div>
@@ -3972,7 +3992,8 @@ function homeSimple() {
 function menu(area) {
   if (sessionOver()) return calmEnding();
   zone(area); musicMode('calm');
-  const ids = Object.keys(ACTS).filter(k => ACTS[k].area === area), sug = suggestIn(area);
+  // art, thinking and science have no ladder: what the child likes comes first there (reading and maths keep their own order)
+  const ids = likedFirst(Object.keys(ACTS).filter(k => ACTS[k].area === area), k => ['art', 'think', 'sci'].includes(area) && likedActs().has(k)), sug = suggestIn(area);
   const TAG = { new: '✨', mastered: '🏆', rest: '💤' };
   // few choices at a time: a long menu shows the suggested activity and the next ones she can play (six in all);
   // the others wait behind one "More" card
@@ -4032,7 +4053,8 @@ function buildPath() {
   // (v38: science takes its turn too — art, thinking, science, day after day)
   const treats = [['art', ['paint', 'cbn', 'music', 'mirror', 'mix', 'readDraw']], ['think', ['memory', 'simon', 'jigsaw', 'kim', 'odd']], ['sci', ['space', 'wonder', 'constel', 'rocket', 'space', 'wonder', 'constel', 'zoom']]].filter(([k]) => !hid(k));
   let treatAt = -1;   // where the end-of-path treat sits in `stops` (the top-up below only adds after it)
-  if (S.settings.artInPath && treats.length) { const list = treats[dayNo % treats.length][1]; treatAt = stops.length; stops.push(list[Math.floor(dayNo / treats.length) % list.length]); }
+  // what the child likes only reorders inside the area the day picks (liked activities first); the day still picks the area and the place in the full list, as before
+  if (S.settings.artInPath && treats.length) { const list = likedFirst(treats[dayNo % treats.length][1], a => likedActs().has(a)); treatAt = stops.length; stops.push(list[Math.floor(dayNo / treats.length) % list.length]); }
   // with reading or maths hidden the plan runs short: top it up from the tracks she does see (new things first)
   const want = S.settings.stops + (S.settings.artInPath && treats.length ? 1 : 0);
   if (stops.length < want) {
@@ -4221,16 +4243,16 @@ async function stickerBook(tab = 'stickers') {
 }
 
 // ================= parents =================
-function parentGate() {
+function parentGate(ok = parents, back = home) {       // the setup (setup.js) passes where to go on success and where the home button leads
   musicMode('off');
   const a = 3 + rand(6), b = 4 + rand(5), ans = a * b; let val = '';
   app.innerHTML = `<div class="screen gate"><h2>👪 ${L().parents}: ${a} × ${b} = ?</h2><div class="gatein">&nbsp;</div>
     <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '⌫', 0, '✔'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div>
     <button class="btn back">🏠</button></div>`;
-  $('.back').onclick = home;
+  $('.back').onclick = () => back();
   $$('[data-k]').forEach(btn => btn.onclick = () => {
     const k = btn.dataset.k;
-    if (k === '⌫') val = val.slice(0, -1); else if (k === '✔') { if (+val === ans) return parents(); val = ''; } else if (val.length < 3) val += k;
+    if (k === '⌫') val = val.slice(0, -1); else if (k === '✔') { if (+val === ans) return ok(); val = ''; } else if (val.length < 3) val += k;
     $('.gatein').textContent = val || ' ';
   });
 }
@@ -4339,6 +4361,8 @@ function parents() {
         ${p.id === PROFILES.current ? '<span class="ptag">playing now</span>' : '<button class="pbtn alt psw">Switch to this child</button><button class="pbtn warn pdel">Remove</button>'}</div>`).join('')}</div>
       <div class="profadd"><input class="nm-in padd-name" type="text" maxlength="30" placeholder="New child's name (optional)"><button class="pbtn padd">➕ Add a child</button></div>
       ${needsPlacement() ? '<p>This child will start with a short, ungraded game that places them on the journey. Skip it if you would rather choose the starting place yourself.</p><button class="pbtn alt pskip">Skip the starting game</button>' : ''}
+      <p>Go through the first-time questions again for the child marked <b>playing now</b>: picture, look, sounds, reading comfort, practice style, play time and what they like. Nothing changes until you press the last button, and progress is not touched.</p>
+      <button class="pbtn alt setup-again">Run setup again</button>
       <p class="profmsg" style="color:var(--teal-d);font-weight:600"></p></section>
 
     <section><h3>🧒 The child's name</h3>
@@ -4539,8 +4563,11 @@ function parents() {
   });
   $('.padd').onclick = () => {
     if (PROFILES.list.length >= 8) { $('.profmsg').textContent = 'Eight children is the most one tablet can hold.'; return; }
-    backToProfs(addProfile($('.padd-name').value) ? 'Added ✓ Tap "Switch to this child" to play as them or change their settings.' : 'There is no room left on this tablet to add a child.');
+    const added = addProfile($('.padd-name').value);
+    if (added) { const np = PROFILES.list.find(p => p.id === added); if (np) { np.setup = true; saveProfiles(); } }       // the first-time setup runs for this child when they are switched to (setup.js)
+    backToProfs(added ? 'Added ✓ Tap "Switch to this child" to play as them or change their settings. The first-time questions come up when you switch.' : 'There is no room left on this tablet to add a child.');
   };
+  $('.setup-again').onclick = () => { if (typeof setupRun === 'function') setupRun('again'); };
   if ($('.pskip')) $('.pskip').onclick = () => { S.placed = S.placed || {}; S.placed.en = S.placed.fr = true; save(); backToProfs('The starting game is skipped.'); };
   $$('.vs').forEach(b => b.onclick = () => {
     st.pitch = +b.dataset.p; st.pitch_fr = +b.dataset.pf; st.rate = +b.dataset.r; save();
@@ -4554,7 +4581,7 @@ function parents() {
     diffMsg(`${lg === 'en' ? 'English' : 'French'}: journey now starts at ${T.en.journey[target]} (${n} earlier items marked as known).`);
   });
   $$('.mset').forEach(b => b.onclick = () => {
-    const n = +b.dataset.n; Object.keys(MATH_MAX).forEach(k => { S.levels[k] = Math.min(n, MATH_MAX[k]); S.streak[k] = { ok: 0, bad: 0 }; }); save();
+    const n = +b.dataset.n; setMathStart(n); save();
     diffMsg(`All maths activities set to level ${n} (or their highest level).`);
   });
   $$('.tset').forEach(b => b.onclick = () => {
@@ -4817,4 +4844,14 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 applySettings();
 // a tablet shared by several children asks who is playing, once each time the app is opened
 let picked = false; try { picked = !!sessionStorage.getItem('tiko.picked'); } catch (e) { /* ignore */ }
-if (PROFILES.list.length > 1 && !picked) profilePicker(intro); else intro();
+// The first-time setup (setup.js, loaded after this file) comes before the intro on a first launch of the tablet, and for a child added in the parent corner when they are switched to.
+// Never for a save that already exists, and never in front of a child who opens the app on an existing profile.
+const bootGo = () => {
+  const why = SETUP_FRESH ? 'first' : curProfile().setup === true ? 'child' : null;
+  if (!why) return intro();
+  // setup.js is a classic script after this one: wait until it has run. A child (a pending profile) never lands in the grown-up questions: the multiplication gate comes first;
+  // its home button goes to the intro and leaves the pending flag, so the questions come again the next time the app opens on that child.
+  const run = () => (typeof setupRun !== 'function' ? intro() : why === 'child' ? parentGate(() => setupRun('child'), intro) : setupRun(why));
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true }); else run();
+};
+if (PROFILES.list.length > 1 && !picked) profilePicker(bootGo); else bootGo();

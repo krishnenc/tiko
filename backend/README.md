@@ -62,8 +62,8 @@ a later change to a table or a constraint (for example the progress size limit) 
   instant; an upsert of an existing child or device does not count as a new one); a progress section must be a JSON object of at
   most 131072 bytes (128 KB, measured on its text form); section names are a fixed list of eight. 128 KB is a first, generous
   value: a later piece measures real section sizes and may lower it (the free database is 500 MB: to confirm).
-- An account can only be created for a country in `open_countries` (31 rows: 27 EU states, IS, LI, NO, GB; add the home country later with
-  `insert into public.open_countries (code) values ('XX');` in the SQL editor). An upsert of an existing account row skips that check.
+- An account can only be created for a country in `open_countries` (33 rows: 27 EU states, IS, LI, NO, GB, and since 17 November 2026 MU and ZA; a project created
+  before that date gets the last two from `40_countries.sql`). The account screen offers every code in the table; the names come from `ACCT_COUNTRIES` (`account.js`), and a code without a name there is shown as the bare code. An upsert of an existing account row skips that check.
 - `delete_my_account()` (security definer, empty `search_path`, no parameters, signed-in callers only) deletes the caller's row in
   `auth.users`; the foreign keys (`on delete cascade`) then remove the account, consents, children, progress and devices.
 - `export_my_data()` (security invoker, so the policies still apply) returns `{ account, consents, children, progress, devices, exported_at }`;
